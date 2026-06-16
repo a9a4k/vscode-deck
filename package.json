@@ -2,7 +2,7 @@
   "name": "deck",
   "displayName": "Deck",
   "description": "Switch between git worktrees of multiple registered repositories from a single secondary sidebar tree.",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "publisher": "a9a4k",
   "repository": {
     "type": "git",
