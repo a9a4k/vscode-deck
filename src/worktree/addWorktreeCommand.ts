@@ -239,11 +239,14 @@ export class AddWorktreeCommand {
 
 function defaultBaseRef(branches: string[]): string {
   for (const name of ['main', 'master']) {
-    const local = branches.find((branch) => branch === name);
-    if (local) return local;
+    const origin = branches.find((branch) => branch === `origin/${name}`);
+    if (origin) return origin;
 
     const remote = branches.find((branch) => branch.endsWith(`/${name}`));
     if (remote) return remote;
+
+    const local = branches.find((branch) => branch === name);
+    if (local) return local;
   }
 
   return branches[0] ?? 'HEAD';

@@ -352,6 +352,28 @@ describe('AddWorktreeCommand', () => {
     expect(switcher.switchTo).toHaveBeenCalledWith('/work/myrepo.worktrees/feature-bar');
   });
 
+  it('defaults the base ref to origin/main', async () => {
+    const { command } = createCommand();
+    const input = createAcceptingInputBox();
+
+    vi.mocked(listBranches).mockResolvedValue(['main', 'origin/main', 'feature/foo']);
+    vi.mocked(vscode.window.showQuickPick).mockImplementation(async (items) => {
+      const picks = items as Array<{ action?: string }>;
+      return picks.find((item) => item.action === 'create');
+    });
+    vi.mocked(vscode.window.showInputBox)
+      .mockResolvedValueOnce('feature/bar')
+      .mockResolvedValueOnce('origin/main');
+    vi.mocked(vscode.window.createInputBox).mockReturnValue(input as vscode.InputBox);
+
+    await command.run({ repositoryPath: '/work/myrepo' });
+
+    expect(vscode.window.showInputBox).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ value: 'origin/main' }),
+    );
+  });
+
   it('does nothing when branch picking is cancelled', async () => {
     const { command, switcher } = createCommand();
 
