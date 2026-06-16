@@ -98,6 +98,49 @@ describe('TmuxCli', () => {
     ]);
   });
 
+  it('sends a command line literally to the session pane and presses Enter', async () => {
+    const runner = new MockRunner([
+      { code: 0, stdout: '', stderr: '' },
+      { code: 0, stdout: '', stderr: '' },
+    ]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await tmux.sendCommandLine('wt-_work_repo__term-1', 'npm test -- --watch');
+
+    expect(runner.calls).toEqual([
+      {
+        command: 'tmux',
+        args: [
+          '-L',
+          'deck',
+          '-f',
+          '/ext/resources/deck.conf',
+          'send-keys',
+          '-t',
+          'wt-_work_repo__term-1',
+          '-l',
+          '--',
+          'npm test -- --watch',
+        ],
+        cwd: undefined,
+      },
+      {
+        command: 'tmux',
+        args: [
+          '-L',
+          'deck',
+          '-f',
+          '/ext/resources/deck.conf',
+          'send-keys',
+          '-t',
+          'wt-_work_repo__term-1',
+          'Enter',
+        ],
+        cwd: undefined,
+      },
+    ]);
+  });
+
   it('builds attach args for the Deck socket and exact session target', () => {
     const tmux = new TmuxCli('/ext/resources/deck.conf', new MockRunner([]));
 

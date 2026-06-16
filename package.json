@@ -65,6 +65,25 @@
           "type": "string",
           "default": "",
           "markdownDescription": "tmux `automatic-rename-format` value for Deck Terminals. Empty uses tmux's default foreground-command naming. See the [tmux Formats guide](https://github.com/tmux/tmux/wiki/Formats) for the `#{…}` syntax and examples."
+        },
+        "deck.terminalLaunchers": {
+          "type": "array",
+          "default": [],
+          "description": "TerminalLaunchers available in every repository.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
         }
       }
     },
@@ -157,6 +176,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "deck.runLauncher",
+        "title": "Run Terminal Launcher",
+        "icon": "$(play)"
+      },
+      {
         "command": "deck.openTerminal",
         "title": "Open Terminal"
       },
@@ -230,6 +254,11 @@
           "group": "inline"
         },
         {
+          "command": "deck.runLauncher",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable",
+          "group": "inline@5"
+        },
+        {
           "command": "deck.switchWorktree",
           "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.main)",
           "group": "navigation@1"
@@ -297,6 +326,10 @@
         },
         {
           "command": "deck.addTerminal",
+          "when": "false"
+        },
+        {
+          "command": "deck.runLauncher",
           "when": "false"
         },
         {

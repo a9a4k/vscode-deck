@@ -12,10 +12,30 @@ export interface AddTerminalTmuxCli {
   ensureSession(session: string, cwd: string): Promise<void>;
 }
 
-interface WorktreeNodeLike {
+export interface WorktreeNodeLike {
   worktree: {
     path: string;
   };
+}
+
+export async function createAndOpenTerminal(
+  tmux: AddTerminalTmuxCli,
+  node: WorktreeNodeLike,
+  sessionUriCodec: SessionUriCodec,
+): Promise<string> {
+  const prefix = terminalSessionPrefix(node.worktree.path);
+  const existing = await tmux.listSessions(prefix);
+  const termN = allocateTermN(node.worktree.path, existing.map((session) => session.sessionName));
+  const session = terminalSessionName(node.worktree.path, termN);
+  await tmux.ensureSession(session, node.worktree.path);
+
+  await vscode.commands.executeCommand(
+    'vscode.openWith',
+    sessionUriCodec.encode({ worktreePath: node.worktree.path, term: termN }),
+    'deck.terminal',
+    { viewColumn: vscode.ViewColumn.Active },
+  );
+  return session;
 }
 
 export class AddTerminalCommand {
@@ -34,19 +54,7 @@ export class AddTerminalCommand {
     if (!node) return;
 
     await this.beforeCreate();
-
-    const prefix = terminalSessionPrefix(node.worktree.path);
-    const existing = await this.tmux.listSessions(prefix);
-    const termN = allocateTermN(node.worktree.path, existing.map((session) => session.sessionName));
-    const session = terminalSessionName(node.worktree.path, termN);
-    await this.tmux.ensureSession(session, node.worktree.path);
-
-    await vscode.commands.executeCommand(
-      'vscode.openWith',
-      this.sessionUriCodec.encode({ worktreePath: node.worktree.path, term: termN }),
-      'deck.terminal',
-      { viewColumn: vscode.ViewColumn.Active },
-    );
+    await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec);
     this.refresh();
   }
 }

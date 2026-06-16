@@ -10,6 +10,8 @@ const vscodeState = vi.hoisted(() => ({
   addTerminalArgs: undefined as unknown[] | undefined,
   addRepositoryRun: vi.fn(),
   addTerminalRun: vi.fn(),
+  runLauncherArgs: undefined as unknown[] | undefined,
+  runLauncherRun: vi.fn(),
   agentDetectionArgs: undefined as unknown[] | undefined,
   agentPaneProbeInstances: [] as Array<{ args: unknown[] }>,
   agentSetupPromptArgs: undefined as unknown[] | undefined,
@@ -108,6 +110,7 @@ const vscodeState = vi.hoisted(() => ({
     listSessions: ReturnType<typeof vi.fn>;
     newAnchorSession: ReturnType<typeof vi.fn>;
     panePid: ReturnType<typeof vi.fn>;
+    sendCommandLine: ReturnType<typeof vi.fn>;
     serverStartTime: ReturnType<typeof vi.fn>;
     setOption: ReturnType<typeof vi.fn>;
     unsetOption: ReturnType<typeof vi.fn>;
@@ -334,6 +337,7 @@ vi.mock('../src/terminal/tmuxCli', () => ({
     killSession = vi.fn(async () => undefined);
     newAnchorSession = vi.fn(async () => undefined);
     panePid = vi.fn(async () => 1234);
+    sendCommandLine = vi.fn(async () => undefined);
     windowName = vi.fn(async () => 'zsh');
     terminalSession = vi.fn(async (sessionName: string) =>
       vscodeState.tmuxSessions.find((session) => session.sessionName === sessionName) ?? {
@@ -480,12 +484,23 @@ vi.mock('../src/agent/agentSetupPrompt', () => ({
 }));
 
 vi.mock('../src/terminal/addTerminalCommand', () => ({
+  createAndOpenTerminal: vi.fn(async () => 'wt-_work_repo__term-1'),
   AddTerminalCommand: class {
     constructor(...args: unknown[]) {
       vscodeState.addTerminalArgs = args;
     }
 
     run = vscodeState.addTerminalRun;
+  },
+}));
+
+vi.mock('../src/terminal/runLauncherCommand', () => ({
+  RunLauncherCommand: class {
+    constructor(...args: unknown[]) {
+      vscodeState.runLauncherArgs = args;
+    }
+
+    run = vscodeState.runLauncherRun;
   },
 }));
 
@@ -526,6 +541,7 @@ describe('activate', () => {
     vi.clearAllMocks();
     vscodeState.addRepositoryArgs = undefined;
     vscodeState.addTerminalArgs = undefined;
+    vscodeState.runLauncherArgs = undefined;
     vscodeState.agentDetectionArgs = undefined;
     vscodeState.agentPaneProbeInstances = [];
     vscodeState.agentSetupPromptArgs = undefined;
@@ -585,6 +601,7 @@ describe('activate', () => {
     vscodeState.configListeners = [];
     vscodeState.showWarningMessage.mockClear();
     vscodeState.showInformationMessage.mockReset();
+    vscodeState.runLauncherRun.mockResolvedValue(undefined);
     vscodeState.withProgress.mockClear();
     vscodeState.withProgress.mockImplementation((_options, task) => task({ report: vi.fn() }));
     vscodeState.showTextDocument.mockClear();
@@ -1050,6 +1067,20 @@ describe('activate', () => {
     await addTerminalRegistration[1]({ worktree: { path: '/work/repo' } });
 
     expect(vscodeState.addTerminalRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
+  });
+
+  it('registers deck.runLauncher through RunLauncherCommand', async () => {
+    const context = createContext();
+
+    await activate(context as never);
+    const runLauncherRegistration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.runLauncher',
+    );
+    if (!runLauncherRegistration) throw new Error('missing deck.runLauncher registration');
+    await runLauncherRegistration[1]({ worktree: { path: '/work/repo' } });
+
+    expect(vscodeState.runLauncherArgs?.[0]).toBe(vscodeState.tmuxInstances[0]);
+    expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
   });
 
   it('registers deck.installAgentHooks through the setup prompt', async () => {

@@ -109,6 +109,21 @@ describe('package contributions', () => {
     expect(pkg.contributes.configuration?.properties?.['deck.tmuxConfig']).toBeUndefined();
   });
 
+  it('contributes TerminalLauncher settings', () => {
+    expect(pkg.contributes.configuration?.properties?.['deck.terminalLaunchers']).toMatchObject({
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string' },
+          command: { type: 'string' },
+        },
+        required: ['command'],
+      },
+    });
+  });
+
   it('does not ship node-pty or its postinstall workaround', () => {
     expect(pkg.dependencies?.['node-pty']).toBeUndefined();
     expect(pkg.devDependencies?.['node-pty']).toBeUndefined();
@@ -225,6 +240,29 @@ describe('package contributions', () => {
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.addTerminal',
+      when: 'false',
+    });
+  });
+
+  it('contributes TerminalLauncher as an inline play action on Worktree rows', () => {
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.runLauncher',
+      title: 'Run Terminal Launcher',
+      icon: '$(play)',
+    });
+
+    expect(
+      pkg.contributes.menus['view/item/context'].filter(
+        (item: { command: string }) => item.command === 'deck.runLauncher',
+      ),
+    ).toEqual([{
+      command: 'deck.runLauncher',
+      when:
+        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable',
+      group: 'inline@5',
+    }]);
+    expect(pkg.contributes.menus.commandPalette).toContainEqual({
+      command: 'deck.runLauncher',
       when: 'false',
     });
   });

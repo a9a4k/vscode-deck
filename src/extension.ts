@@ -20,6 +20,7 @@ import { WorktreeRootStore } from './worktree/worktreeRootStore';
 import { DeckTreeDragAndDropController } from './tree/deckTreeDragAndDropController';
 import { WorktreeOrderStore } from './worktree/worktreeOrderStore';
 import { AddTerminalCommand } from './terminal/addTerminalCommand';
+import { RunLauncherCommand } from './terminal/runLauncherCommand';
 import { TerminalRemovalCommand } from './terminal/killTerminalCommand';
 import { OpenTerminalCommand } from './terminal/openTerminalCommand';
 import { OpenTerminalInNewWindowCommand } from './terminal/openTerminalInNewWindowCommand';
@@ -228,6 +229,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     undefined,
     ensureSnapshotRestored,
   );
+  const runLauncher = new RunLauncherCommand(
+    tmux,
+    refreshTree,
+    undefined,
+    undefined,
+    ensureSnapshotRestored,
+  );
   const terminalEditorProvider = new TerminalEditorProvider(
     context.extensionUri,
     tmuxConfigPath,
@@ -418,6 +426,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.addRepository', () => addRepository.run()),
     vscode.commands.registerCommand('deck.addWorktree', (node) => addWorktree.run(node)),
     vscode.commands.registerCommand('deck.addTerminal', (node) => addTerminal.run(node)),
+    vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>
       openTerminalInNewWindow.run(node),

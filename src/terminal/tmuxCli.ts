@@ -85,6 +85,32 @@ export class TmuxCli {
     throw new Error(result.stderr || result.stdout || `tmux new-session failed: ${result.code}`);
   }
 
+  async sendCommandLine(session: string, command: string): Promise<void> {
+    const literal = await this.runner.run('tmux', [
+      ...this.baseArgs(),
+      'send-keys',
+      '-t',
+      session,
+      '-l',
+      '--',
+      command,
+    ]);
+    if (literal.code !== 0) {
+      throw new Error(literal.stderr || literal.stdout || `tmux send-keys failed: ${literal.code}`);
+    }
+
+    const enter = await this.runner.run('tmux', [
+      ...this.baseArgs(),
+      'send-keys',
+      '-t',
+      session,
+      'Enter',
+    ]);
+    if (enter.code !== 0) {
+      throw new Error(enter.stderr || enter.stdout || `tmux send-keys Enter failed: ${enter.code}`);
+    }
+  }
+
   async killSession(session: string): Promise<void> {
     const result = await this.runner.run('tmux', [
       ...this.baseArgs(),
