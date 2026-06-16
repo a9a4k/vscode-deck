@@ -51,7 +51,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'User Watch'),
     );
 
-    await new RunLauncherCommand(tmux, refresh, undefined, resolveLaunchers).run({
+    await new RunLauncherCommand(tmux, { refresh, resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
@@ -91,7 +91,7 @@ describe('RunLauncherCommand', () => {
     const resolveLaunchers = vi.fn(async () => ({ repo: [], user: [] }));
     vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[0]);
 
-    await new RunLauncherCommand(tmux, vi.fn(), undefined, resolveLaunchers).run({
+    await new RunLauncherCommand(tmux, { refresh: vi.fn(), resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 

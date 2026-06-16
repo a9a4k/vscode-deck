@@ -229,13 +229,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     undefined,
     ensureSnapshotRestored,
   );
-  const runLauncher = new RunLauncherCommand(
-    tmux,
-    refreshTree,
-    undefined,
-    undefined,
-    ensureSnapshotRestored,
-  );
+  const runLauncher = new RunLauncherCommand(tmux, {
+    refresh: refreshTree,
+    beforeCreate: ensureSnapshotRestored,
+  });
   const terminalEditorProvider = new TerminalEditorProvider(
     context.extensionUri,
     tmuxConfigPath,

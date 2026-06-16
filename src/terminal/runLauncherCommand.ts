@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
-import { hasLaunchers, resolveLaunchers, type LauncherGroups } from '../launchers/resolveLaunchers';
+import {
+  hasLaunchers,
+  resolveLaunchers as resolveLauncherGroups,
+  type LauncherGroups,
+} from '../launchers/resolveLaunchers';
 import type { TerminalLauncher } from '../launchers/terminalLaunchers';
 import {
   createAndOpenTerminal,
@@ -17,23 +21,40 @@ type LauncherQuickPickItem = vscode.QuickPickItem & {
   configure?: true;
 };
 
+interface RunLauncherCommandOptions {
+  refresh?: () => void;
+  sessionUriCodec?: SessionUriCodec;
+  resolveLaunchers?: (
+    worktreePath: string,
+    userLauncherConfig: unknown,
+  ) => Promise<LauncherGroups>;
+  beforeCreate?: () => Promise<void>;
+}
+
 export class RunLauncherCommand {
+  private readonly refresh: () => void;
+  private readonly sessionUriCodec: SessionUriCodec;
+  private readonly resolveLaunchers: (
+    worktreePath: string,
+    userLauncherConfig: unknown,
+  ) => Promise<LauncherGroups>;
+  private readonly beforeCreate: () => Promise<void>;
+
   constructor(
     private readonly tmux: RunLauncherTmuxCli,
-    private readonly refresh: () => void = () => undefined,
-    private readonly sessionUriCodec: SessionUriCodec = new SessionUriCodec(),
-    private readonly resolve: (
-      worktreePath: string,
-      userLauncherConfig: unknown,
-    ) => Promise<LauncherGroups> = resolveLaunchers,
-    private readonly beforeCreate: () => Promise<void> = () => Promise.resolve(),
-  ) {}
+    options: RunLauncherCommandOptions = {},
+  ) {
+    this.refresh = options.refresh ?? (() => undefined);
+    this.sessionUriCodec = options.sessionUriCodec ?? new SessionUriCodec();
+    this.resolveLaunchers = options.resolveLaunchers ?? resolveLauncherGroups;
+    this.beforeCreate = options.beforeCreate ?? (() => Promise.resolve());
+  }
 
   async run(node: WorktreeNodeLike | undefined): Promise<void> {
     if (!node) return;
 
     const userLaunchers = vscode.workspace.getConfiguration('deck').get('terminalLaunchers', []);
-    const groups = await this.resolve(node.worktree.path, userLaunchers);
+    const groups = await this.resolveLaunchers(node.worktree.path, userLaunchers);
     const picked = await vscode.window.showQuickPick(toQuickPickItems(groups), {
       placeHolder: 'Run Terminal Launcher',
     });
