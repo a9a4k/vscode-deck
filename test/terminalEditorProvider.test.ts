@@ -232,8 +232,7 @@ describe('TerminalEditorProvider', () => {
     });
   });
 
-  it('refreshes open agent tab icons from AgentStatus changes', async () => {
-    let status: { status: 'inProgress'; statusAt: number; agent: 'codex' } | undefined;
+  it('keeps the agent tab icon at identity regardless of agent status', async () => {
     const terminalSessions = vi.fn(async () => ({
       sessionName: 'wt-_work_alpha-main__term-1',
       windowName: 'codex',
@@ -247,8 +246,6 @@ describe('TerminalEditorProvider', () => {
       undefined,
       undefined,
       terminalSessions,
-      undefined,
-      () => status,
     );
     const terminalPanel = panel();
     const document = provider.openCustomDocument({
@@ -258,18 +255,10 @@ describe('TerminalEditorProvider', () => {
 
     provider.resolveCustomEditor(document, terminalPanel as never);
     await flush();
+
     expect((terminalPanel as { iconPath?: { base: { fsPath: string }; paths: string[] } }).iconPath).toEqual({
       base: { fsPath: '/extension' },
       paths: ['resources', 'codex-code.png'],
-    });
-
-    status = { status: 'inProgress', statusAt: 1, agent: 'codex' };
-    provider.refreshIcons();
-    await flush();
-
-    expect((terminalPanel as { iconPath?: { base: { fsPath: string }; paths: string[] } }).iconPath).toEqual({
-      base: { fsPath: '/extension' },
-      paths: ['resources', 'codex-working.gif'],
     });
   });
 
@@ -337,7 +326,6 @@ describe('TerminalEditorProvider', () => {
 
     provider.resolveCustomEditor(document, terminalPanel as never);
     await flush();
-    provider.refreshIcons();
     provider.refreshTitles(['wt-_work_alpha-main__term-1']);
     await flush();
 

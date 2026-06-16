@@ -55,6 +55,17 @@ This **amends ADR-0023/0039**: a tab's agent *identity glyph and title* are show
 only while the tab is visible, not live on background tabs (the status dot/color
 remain live regardless).
 
+**The icon glyph is agent *identity* only — never working/AgentStatus state.**
+Since `iconPath` writes are visible-gated, a status-driven icon would freeze at
+whatever state a tab held when last visible and lie on background tabs (the stuck
+"working" spinner after a hidden agent completed); a perpetual working animation
+also distracts and, as a GIF, ignores `workbench.reduceMotion`. Agent identity
+changes only when the agent starts/stops (a window rename, which already
+re-decorates), so a static identity glyph is always correct. The **working
+state** reaches the tab only via the live attention dot (the FileDecoration
+path above) and the sidebar row — not the glyph. This reverses the working-icon
+half of the tab-icon work; the working GIFs remain in use on the sidebar row.
+
 ## Considered Options
 
 - **Write decoration, then re-activate the previously-active tab** — rejected:

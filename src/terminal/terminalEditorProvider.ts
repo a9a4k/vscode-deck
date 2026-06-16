@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import type { AgentStatus } from '../agent/agentStatusStore';
 import { resolveAgentIcon } from '../agent/agentIconResolver';
 import { SessionUriCodec } from './sessionUriCodec';
 import { TERMINAL_SCROLLBACK_LINES } from './terminalScrollback';
@@ -101,7 +100,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     // TerminalSnapshot restore, losing scrollback. Gating it makes the reattach
     // bind to the restored session instead.
     private readonly beforeReattach: () => Promise<void> = () => Promise.resolve(),
-    private readonly resolveAgentStatus: (sessionName: string) => AgentStatus | undefined = () => undefined,
   ) {
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       const fontKeys = [
@@ -150,12 +148,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     for (const sessionName of changedSessionNames) {
       const panel = this.panels.get(sessionName);
       if (panel) this.applyTabDecoration(sessionName, panel);
-    }
-  }
-
-  refreshIcons(): void {
-    for (const [sessionName, panel] of this.panels) {
-      this.applyTabDecoration(sessionName, panel);
     }
   }
 
@@ -255,15 +247,20 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     void this.resolveTerminalSession(sessionName).then((terminal) => {
       if (!terminal || !panel.visible) return;
       panel.title = resolveTerminalLabel(terminal.windowName, terminal.paneTitle);
-      panel.iconPath = this.resolveTabIcon(terminal.windowName, this.resolveAgentStatus(sessionName));
+      panel.iconPath = this.resolveTabIcon(terminal.windowName);
       this.staleDecorations.delete(sessionName);
     });
   }
 
-  private resolveTabIcon(windowName: string, status?: AgentStatus): TerminalTabIconPath {
+  // Identity only — no working/AgentStatus state. The tab is not Deck's live
+  // status surface (ADR-0042): iconPath can't update on a hidden tab without
+  // stealing focus, so a status-driven icon would lie on background tabs, and a
+  // perpetual working animation distracts. Live status rides the sidebar row and
+  // the tab's own attention dot (a FileDecoration, which works on hidden tabs).
+  private resolveTabIcon(windowName: string): TerminalTabIconPath {
     // A WebviewPanel's iconPath rejects ThemeIcon, so unlike the sidebar row's
     // codicon fallback the non-agent tab ships the same glyph as light/dark SVGs.
-    return resolveAgentIcon({ windowName, status, resourcesDir: 'resources' }, {
+    return resolveAgentIcon({ windowName, resourcesDir: 'resources' }, {
       uriFile: (path) => vscode.Uri.joinPath(this.extensionUri, ...path.split(/[\\/]/)),
       themeIcon: () => ({
         light: vscode.Uri.joinPath(this.extensionUri, 'resources', 'terminal-light.svg'),

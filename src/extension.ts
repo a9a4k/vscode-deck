@@ -239,7 +239,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshTree,
     (sessionName) => tmux.terminalSession(sessionName),
     ensureSnapshotRestored,
-    (sessionName) => agentStatuses.get(sessionName),
   );
   agentTitlePoll = tmuxAvailability.available
     ? new AgentTitlePoll({
@@ -253,9 +252,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const agentTitlePollWatch = agentTitlePoll?.onChange((changedSessionNames) => {
     refreshTree();
     terminalEditorProvider.refreshTitles(changedSessionNames);
-  });
-  const agentTabIconWatch = agentStatuses.onDidChange(() => {
-    terminalEditorProvider.refreshIcons();
   });
   agentTitlePoll?.start();
   const openTerminal = new OpenTerminalCommand({
@@ -403,7 +399,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ...(agentExitSweep ? [agentExitSweep] : []),
     ...(agentTitlePoll ? [agentTitlePoll] : []),
     ...(agentTitlePollWatch ? [agentTitlePollWatch] : []),
-    agentTabIconWatch,
     agentStatusDecorationProvider,
     agentStatusDecorationWatch,
     agentStatusCollapseWatch,

@@ -1003,21 +1003,6 @@ describe('activate', () => {
     expect(poll.start).toHaveBeenCalled();
   });
 
-  it('wires AgentStatus changes to tab icon refresh', async () => {
-    const context = createContext();
-
-    await activate(context as never);
-
-    const provider = vscodeState.registerCustomEditorProvider.mock.calls[0]?.[1] as {
-      refreshIcons(): void;
-    };
-    const refreshIcons = vi.spyOn(provider, 'refreshIcons');
-
-    for (const listener of vscodeState.agentStatusStoreChangeListeners) listener();
-
-    expect(refreshIcons).toHaveBeenCalledOnce();
-  });
-
   it('shares pending WorktreeRemoval state between the command and tree', async () => {
     const context = createContext();
 
