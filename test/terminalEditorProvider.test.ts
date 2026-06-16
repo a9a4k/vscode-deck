@@ -26,6 +26,7 @@ function panel() {
   return {
     dispose: vi.fn(),
     title: '',
+    visible: true,
     webview: {
       options: {},
       html: '',
@@ -35,6 +36,7 @@ function panel() {
       onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
     },
     onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeViewState: vi.fn(() => ({ dispose: vi.fn() })),
   };
 }
 
@@ -309,6 +311,76 @@ describe('TerminalEditorProvider', () => {
     provider.refreshTitles(['wt-_work_alpha-main__term-1']);
     await flush();
     expect(terminalPanel.title).toBe('second task');
+  });
+
+  it('does not decorate a hidden Terminal tab, which would steal the active tab', async () => {
+    const terminalSessions = vi.fn(async () => ({
+      sessionName: 'wt-_work_alpha-main__term-1',
+      windowName: 'claude',
+      paneTitle: '✳ background task',
+    }));
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => bridge(),
+      undefined,
+      undefined,
+      terminalSessions,
+    );
+    const terminalPanel = panel();
+    terminalPanel.visible = false;
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    await flush();
+    provider.refreshIcons();
+    provider.refreshTitles(['wt-_work_alpha-main__term-1']);
+    await flush();
+
+    expect(terminalPanel.title).toBe('');
+    expect((terminalPanel as { iconPath?: unknown }).iconPath).toBeUndefined();
+  });
+
+  it('decorates a hidden Terminal tab once it becomes visible', async () => {
+    const terminalSessions = vi.fn(async () => ({
+      sessionName: 'wt-_work_alpha-main__term-1',
+      windowName: 'claude',
+      paneTitle: '✳ background task',
+    }));
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => bridge(),
+      undefined,
+      undefined,
+      terminalSessions,
+    );
+    const terminalPanel = panel();
+    terminalPanel.visible = false;
+    let viewStateHandler: (() => void) | undefined;
+    terminalPanel.onDidChangeViewState.mockImplementation((handler: () => void) => {
+      viewStateHandler = handler;
+      return { dispose: vi.fn() };
+    });
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    await flush();
+    expect(terminalPanel.title).toBe('');
+
+    terminalPanel.visible = true;
+    viewStateHandler?.();
+    await flush();
+
+    expect(terminalPanel.title).toBe('background task');
   });
 
   it('disposes the panel when the webview acknowledges terminal exit', () => {
@@ -591,6 +663,7 @@ function panelStub() {
     dispose: vi.fn(),
     reveal: vi.fn(),
     title: '',
+    visible: true,
     webview: {
       options: {},
       html: '',
@@ -600,6 +673,7 @@ function panelStub() {
       onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
     },
     onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeViewState: vi.fn(() => ({ dispose: vi.fn() })),
   };
 }
 

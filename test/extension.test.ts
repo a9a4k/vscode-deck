@@ -1452,6 +1452,8 @@ describe('activate', () => {
         disposePanel = handler;
         return { dispose: vi.fn() };
       }),
+      onDidChangeViewState: vi.fn(() => ({ dispose: vi.fn() })),
+      visible: true,
     };
 
     await activate(context as never);

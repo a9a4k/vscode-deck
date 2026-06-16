@@ -80,6 +80,8 @@ export type TerminalEditorDisposeHandler = (sessionName: string) => Promise<void
 
 export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvider<TerminalDocument> {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
+  // Sessions whose decoration we skipped while hidden — re-applied when shown.
+  private readonly staleDecorations = new Set<string>();
   private readonly configChangeSubscription: vscode.Disposable;
   private activePanel: vscode.WebviewPanel | undefined;
 
@@ -201,6 +203,12 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         applyTabDecoration();
         this.onTitleChange();
       }),
+      // Decoration deferred while hidden lands here: a Terminal tab carries its
+      // current label/icon the moment it's shown. Gated on staleness so a plain
+      // tab switch does no work when nothing changed while the tab was hidden.
+      panel.onDidChangeViewState(() => {
+        if (panel.visible && this.staleDecorations.has(document.sessionName)) applyTabDecoration();
+      }),
       panel.webview.onDidReceiveMessage((message: TerminalWebviewMessage) => {
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
@@ -224,6 +232,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     panel.onDidDispose(() => {
       if (this.panels.get(document.sessionName) === panel) {
         this.panels.delete(document.sessionName);
+        this.staleDecorations.delete(document.sessionName);
       }
       if (this.activePanel === panel) this.activePanel = undefined;
       void this.onPanelDispose(document.sessionName);
@@ -233,10 +242,21 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
   }
 
   private applyTabDecoration(sessionName: string, panel: vscode.WebviewPanel): void {
+    // Writing title/iconPath to a *hidden* WebviewPanel makes VS Code activate
+    // that tab, so a background Terminal's agent status/title change would steal
+    // the active tab. Decorate only the visible tab; defer the rest (without even
+    // resolving the session, so a tab switch stays cheap) and re-apply on
+    // onDidChangeViewState. The sidebar row carries live status for hidden
+    // Terminals meanwhile. See ADR-0042.
+    if (!panel.visible) {
+      this.staleDecorations.add(sessionName);
+      return;
+    }
     void this.resolveTerminalSession(sessionName).then((terminal) => {
-      if (!terminal) return;
+      if (!terminal || !panel.visible) return;
       panel.title = resolveTerminalLabel(terminal.windowName, terminal.paneTitle);
       panel.iconPath = this.resolveTabIcon(terminal.windowName, this.resolveAgentStatus(sessionName));
+      this.staleDecorations.delete(sessionName);
     });
   }
 
