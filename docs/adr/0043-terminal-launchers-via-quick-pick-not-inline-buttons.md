@@ -16,8 +16,7 @@ count, and carry free labels.
 
 - **Lettered inline buttons (one per launcher), painted via regenerated
   `slot-N.svg` files gated by a `deck.launcherCount` context key.** Prototyped and
-  working *for the global case* (see `docs/handoffs/custom-terminal-launchers*.md`).
-  Rejected: structurally cannot be per-repo — the icon path and the count context
+  working *for the global case*. Rejected: structurally cannot be per-repo — the icon path and the count context
   key are both window-global, so every Worktree row renders the *same* buttons
   regardless of which repo it belongs to.
 - **Per-repo config via `.vscode/settings.json` (resource scope).** Rejected: only
