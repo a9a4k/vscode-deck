@@ -103,6 +103,10 @@ _Avoid_: window name / tab title (those are the surfaces it is shown on, not the
 The toast Deck raises when a Terminal's AgentStatus changes to NeedsInput or Completed, naming the agent by the labels the user already reads in the tree — Repository, Worktree branch, AgentTitle — followed by the agent's own ask, with an Open Terminal action. Identity leads so the line stays legible when the toast collapses to one ellipsised line.
 _Avoid_: alert, popup; "agent needs input"/"agent done" alone (unactionable without identity)
 
+**TerminalLauncher**:
+A user-defined command that opens a new Terminal and runs in it. Sourced from two places merged in a Quick Pick behind a Worktree row's launch button: global user settings (`deck.terminalLaunchers`) and a per-repo committed file (`<worktree>/.deck/launchers.json`), repo entries shown first. Deck types the command into a fresh Terminal exactly as the user would, so a launcher that runs an agent is observed and resumed by the existing AgentSession machinery — Deck still does not own the agent lifecycle.
+_Avoid_: agent preset (no prompt templates/transports — it is just a command), task (VS Code tasks are a separate system), button (the surface is one row button opening a Quick Pick, not a button per launcher — VS Code cannot render per-row dynamic menu buttons)
+
 **Terminal**:
 A persistent shell owned by Deck — one tmux session on the DeckSocket — shown as a row under a Worktree and opened as an xterm.js editor tab addressed by `deck-terminal:/<worktree>/term-N`. Like a file, the Terminal is the durable thing and its tab is just a view onto it: closing the tab leaves the Terminal running, and any Terminal can be opened from any mounted Worktree without a Switch. Its Worktree is fixed when it is created and never changes — a Terminal cannot move to another Worktree or Repository.
 _Avoid_: tmux session, tmux window, pane (the backing mechanism); tab (a disposable view, not the Terminal itself)
@@ -121,6 +125,7 @@ _Avoid_: file watcher, watcher controller (implementation); polling (it is event
 - A **Worktree** hosts zero or more **Terminals**.
 - A **Terminal**'s AgentStatus change to NeedsInput/Completed raises one **AgentStatusNotification**.
 - A **Terminal** belongs to exactly one **Worktree** and lives on the one **DeckSocket**.
+- A **Worktree** row offers its Repository's **TerminalLaunchers** (from the worktree's `.deck/launchers.json`) merged with the user's global ones.
 - A **TerminalSnapshot** captures every **Terminal** on the **DeckSocket**.
 - A **Terminal** may be running one **AgentSession**; the **TerminalSnapshot** captures it so the agent is resumed (not just the shell) on restore.
 - A **Switch** changes which **Worktree** is mounted; a **DetachedOpen** does not.
