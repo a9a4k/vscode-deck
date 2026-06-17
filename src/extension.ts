@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
+import { revealWithRetry } from './tree/revealWithRetry';
 import { ActiveWorktreeStore } from './switch/activeWorktreeStore';
 import { DetachedOpener } from './switch/detachedOpener';
 import { WorktreeSwitcher } from './switch/worktreeSwitcher';
@@ -693,16 +694,22 @@ async function revealActiveTerminalInTree(
   const decoded = activeDeckTerminal();
   if (!decoded) return;
 
+  let terminalNode: RepositoryTreeNode | undefined;
   try {
-    const terminalNode = await tree.findTerminal(decoded.sessionName, decoded.worktreePath);
-    if (!terminalNode) return;
-    await treeView.reveal(terminalNode, { select: true, focus: false });
+    // findTerminal walks getChildren (a git subprocess) and can fail on a hidden
+    // view; this should not surface as an unhandled rejection from a tab event.
+    terminalNode = await tree.findTerminal(decoded.sessionName, decoded.worktreePath);
   } catch (error) {
-    // findTerminal walks getChildren (a git subprocess) and reveal can fail on
-    // a hidden view; neither should surface as an unhandled rejection from a
-    // tab event.
-    console.warn('Deck: revealing the active terminal failed', error);
+    console.warn('Deck: finding the active terminal failed', error);
+    return;
   }
+  if (!terminalNode) return;
+
+  const node = terminalNode;
+  const revealed = await revealWithRetry(() =>
+    treeView.reveal(node, { select: true, focus: false }),
+  );
+  if (!revealed) console.warn('Deck: revealing the active terminal failed after retries');
 }
 
 async function openAgentStatusTerminal(
