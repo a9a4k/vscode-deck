@@ -1,0 +1,3 @@
+[
+  { "label": "sandcastle", "command": "npx tsx .sandcastle/main.mts" }
+]

@@ -6,6 +6,7 @@ references/**
 docs/**
 .sandcastle/**
 .claude/**
+.deck/**
 .agents/**
 .fallow/**
 tmp/**
