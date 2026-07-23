@@ -111,10 +111,7 @@ function renderedProjection(
   activeWorktreePath: string | undefined,
 ): string {
   const mainWorktreePath = worktrees.find((worktree) => !worktree.bare)?.path;
-  const ordered = reconcileWorktreeOrder(
-    order === undefined ? undefined : [...order],
-    [...worktrees],
-  );
+  const ordered = reconcileWorktreeOrder(order, worktrees);
 
   return JSON.stringify(ordered.map((worktree) => {
     const item = describeWorktreeTreeItem(
@@ -122,14 +119,14 @@ function renderedProjection(
       samePath(worktree.path, activeWorktreePath),
       mainWorktreePath,
     );
-    return [
-      worktree.path,
-      item.label,
-      item.description,
-      item.contextValue,
-      item.tooltip,
-      worktree.createdAt,
-    ];
+    return {
+      path: worktree.path,
+      label: item.label,
+      description: item.description,
+      contextValue: item.contextValue,
+      tooltip: item.tooltip,
+      createdAt: worktree.createdAt ?? null,
+    };
   }));
 }
 

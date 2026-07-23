@@ -58,7 +58,7 @@ export class AddWorktreeCommand {
   constructor(
     private readonly switcher: SwitcherLike,
     private readonly detachedOpener: DetachedOpenerLike,
-    private readonly refresh: (repositoryPath: string) => Promise<void> | void,
+    private readonly reconcileWorktrees: (repositoryPath: string) => Promise<void> | void,
     private readonly worktreeRoots: WorktreeRootStoreLike = {
       get: () => undefined,
       set: async () => undefined,
@@ -96,7 +96,7 @@ export class AddWorktreeCommand {
     }
 
     await this.worktreeRoots.set(commonDir, path.dirname(request.path));
-    await this.refresh(node.repositoryPath);
+    await this.reconcileWorktrees(node.repositoryPath);
     try {
       await this.worktreeCreateLaunchers.run({ worktree: { path: request.path } });
     } catch (error) {
