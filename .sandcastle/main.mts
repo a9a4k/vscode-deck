@@ -24,7 +24,7 @@ import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
 const execFile = promisify(execFileCb);
 
-const MODEL = "gpt-5.5";
+const MODEL = "gpt-5.6-sol";
 const MAX_ITERATIONS = 10;
 const MAX_PARALLEL = 4;
 const IDLE_TIMEOUT_SECONDS = 1800;
