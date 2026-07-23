@@ -18,7 +18,10 @@ import { BranchDeletionPreferenceStore } from './worktree/branchDeletionPreferen
 import { WorktreeListCacheStore } from './worktree/worktreeListCacheStore';
 import { WorktreeRemovalCommand } from './worktree/worktreeRemovalCommand';
 import { WorktreeRootStore } from './worktree/worktreeRootStore';
-import { DeckTreeDragAndDropController } from './tree/deckTreeDragAndDropController';
+import {
+  DeckTreeDragAndDropController,
+  type TreeRefreshScope,
+} from './tree/deckTreeDragAndDropController';
 import { WorktreeOrderStore } from './worktree/worktreeOrderStore';
 import { AddTerminalCommand } from './terminal/addTerminalCommand';
 import { RunLauncherCommand } from './terminal/runLauncherCommand';
@@ -239,13 +242,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   let externalGitSyncVersion = 0;
 
-  function refreshTree(scope?: { repositoryPath?: string; worktreePath?: string }): void {
-    if (scope?.worktreePath !== undefined) {
-      tree.refreshWorktree(scope.worktreePath);
-    } else if (scope?.repositoryPath !== undefined) {
-      tree.refreshRepository(scope.repositoryPath);
-    } else {
+  function refreshTree(scope?: TreeRefreshScope): void {
+    if (scope === undefined) {
       tree.refresh();
+    } else if (scope.worktreePath !== undefined) {
+      tree.refreshWorktree(scope.worktreePath);
+    } else {
+      tree.refreshRepository(scope.repositoryPath);
     }
     terminalPoll?.start();
     syncExternalGitWatches();
@@ -340,9 +343,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     try {
       await treeView?.reveal(repository, { expand: true, select: true });
     } catch (error) {
-      // Reveal can fail if VS Code's internal element map is out of sync
-      // with the freshly-constructed RepositoryNode; the repository is still in
-      // the tree, just not scrolled into view.
       console.warn('Deck: TreeView.reveal failed', error);
     }
   };

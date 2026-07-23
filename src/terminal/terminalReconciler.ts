@@ -35,19 +35,19 @@ export class TerminalReconciler {
       return;
     }
 
-    const diff = this.options.model.apply(sessions);
+    const worktreeDiffs = this.options.model.apply(sessions);
     const locations = uniqueLocations(this.options.listTerminalLocations());
     await this.pruneTerminalOrders(locations);
     this.options.updateTerminalDecorations(decorationTerminals(this.options.model, locations));
 
-    if (diff.some((worktree) => worktree.removed.length > 0)) {
+    if (worktreeDiffs.some((worktreeDiff) => worktreeDiff.removed.length > 0)) {
       this.options.wakeAgentExitSweep();
     }
-    const worktreePaths = new Map(
+    const worktreePathsBySessionPrefix = new Map(
       locations.map((location) => [terminalSessionPrefix(location.worktreePath), location.worktreePath]),
     );
-    for (const worktree of diff) {
-      const worktreePath = worktreePaths.get(worktree.sessionPrefix);
+    for (const worktreeDiff of worktreeDiffs) {
+      const worktreePath = worktreePathsBySessionPrefix.get(worktreeDiff.sessionPrefix);
       if (worktreePath !== undefined) this.options.refreshWorktree(worktreePath);
     }
   }

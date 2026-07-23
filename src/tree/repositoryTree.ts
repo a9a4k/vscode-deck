@@ -333,9 +333,9 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       // viewsWelcome ("No repositories yet") flash on every tree.refresh().
       const repositories = this.repositoryRegistry.list();
       this.resolveActiveRepository(false);
-      const nodes = repositories.map((p) => {
-        this.resolveRepositoryCommonDir(p);
-        return this.toRepositoryNode(p);
+      const nodes = repositories.map((repositoryPath) => {
+        this.resolveRepositoryCommonDir(repositoryPath);
+        return this.toRepositoryNode(repositoryPath);
       });
       return nodes;
     }

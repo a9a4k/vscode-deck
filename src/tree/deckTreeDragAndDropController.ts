@@ -39,24 +39,30 @@ type DragPayload =
       worktreePath: string;
     };
 
-interface RepositoryNodeLike {
+interface DeckNodeLike {
   contextValue?: string;
-  repositoryPath: string;
-  worktree?: never;
-  terminal?: never;
+  repositoryPath?: string;
+  worktree?: {
+    path: string;
+  };
+  worktreePath?: string;
+  terminal?: {
+    sessionName: string;
+  };
 }
 
-interface WorktreeNodeLike {
-  contextValue?: string;
+interface RepositoryNodeLike extends DeckNodeLike {
+  repositoryPath: string;
+}
+
+interface WorktreeNodeLike extends DeckNodeLike {
   repositoryPath: string;
   worktree: {
     path: string;
   };
-  terminal?: never;
 }
 
-interface TerminalNodeLike {
-  contextValue?: string;
+interface TerminalNodeLike extends DeckNodeLike {
   repositoryPath: string;
   worktreePath: string;
   terminal: {
@@ -64,28 +70,13 @@ interface TerminalNodeLike {
   };
 }
 
-interface UnhandledNodeLike {
-  contextValue?: string;
-  worktreeNode: unknown;
-  repositoryPath?: never;
-  worktree?: never;
-  terminal?: never;
-}
-
 interface TerminalSessionLister {
   listSessions(prefix?: string): Promise<TmuxSession[]>;
 }
 
-type DeckNodeLike =
-  | RepositoryNodeLike
-  | WorktreeNodeLike
-  | TerminalNodeLike
-  | UnhandledNodeLike;
-
-interface TreeRefreshScope {
-  repositoryPath?: string;
-  worktreePath?: string;
-}
+export type TreeRefreshScope =
+  | { repositoryPath: string; worktreePath?: never }
+  | { worktreePath: string; repositoryPath?: never };
 
 export class DeckTreeDragAndDropController
   implements vscode.TreeDragAndDropController<DeckNodeLike>
@@ -275,21 +266,26 @@ function toPayload(node: DeckNodeLike): DragPayload | undefined {
 }
 
 function isRepositoryNode(node: DeckNodeLike): node is RepositoryNodeLike {
-  return node.contextValue === 'deck.repository';
+  return (
+    node.contextValue === 'deck.repository'
+    && node.repositoryPath !== undefined
+  );
 }
 
 function isWorktreeNode(node: DeckNodeLike): node is WorktreeNodeLike {
   return (
-    node.contextValue?.startsWith('deck.worktree') === true &&
-    'worktree' in node
+    node.contextValue?.startsWith('deck.worktree') === true
+    && node.repositoryPath !== undefined
+    && node.worktree !== undefined
   );
 }
 
 function isTerminalNode(node: DeckNodeLike): node is TerminalNodeLike {
   return (
-    node.contextValue?.startsWith('deck.terminal') === true &&
-    'terminal' in node &&
-    'worktreePath' in node
+    node.contextValue?.startsWith('deck.terminal') === true
+    && node.repositoryPath !== undefined
+    && node.worktreePath !== undefined
+    && node.terminal !== undefined
   );
 }
 
