@@ -142,8 +142,12 @@ Watches the DeckSocket for Terminals created or killed **outside** Deck (e.g. an
 _Avoid_: tmux watcher (it watches for Terminals, the domain thing); session sync (it only triggers reconcile; tmux stays the source of truth)
 
 **TerminalPoll**:
-The one poll that observes Terminals on the DeckSocket — a 2s `list-sessions` tick, running only while the window is focused. It carries two facets: AgentTitle relabels for existing rows (targeted, ADR-0046) and the session-set diff that realizes ExternalTerminalWatch (whole-tree, structural). Formerly named AgentTitlePoll, when titles were its only job.
-_Avoid_: AgentTitlePoll (stale name — titles are now one facet); background sync (it is focus-gated and owns no state; tmux stays the source of truth)
+The one poll that observes Terminals on the DeckSocket — a 2s `list-sessions` tick, running only while the window is focused — and the sole writer of the TerminalModel. Each tick is one unprefixed `list-sessions` partitioned by Deck's session-name grammar; the diff against the TerminalModel drives targeted AgentTitle relabels (ADR-0046) and the structural add/remove reconciliation that realizes ExternalTerminalWatch. Deck's own Terminal mutations request an immediate extra tick (wake) instead of touching the model. Formerly named AgentTitlePoll (titles-only), then a stateless announcer whose session-set diff fired whole-tree refreshes.
+_Avoid_: AgentTitlePoll (stale name); background sync (it is focus-gated; tmux stays the source of truth — the TerminalModel is its bounded-staleness view, not a second truth)
+
+**TerminalModel**:
+The tree's in-memory, bounded-staleness view of the Terminals on the DeckSocket, from which Terminal rows render synchronously (no per-render `list-sessions`). Three rules keep it from becoming the truth/mirror seam ADR-0014 removed: it is never persisted (ADR-0008 §4 — Deck persists no Terminal list); it has a single writer, the reconciler that observes the DeckSocket — Deck's own commands never edit it, they trigger a re-observation; and tmux remains the source of truth — every row shown was reported by tmux within the last observation. The accepted staleness contract: a Terminal killed outside Deck may linger as a row for up to one observation interval (≤2s focused), the same window ADR-0052 accepted for discovery. Removals require a trusted observation: Deck never concludes a Terminal died — no row removal, no TerminalOrder prune, no status reap — from an observation taken while the DeckSocket is down, bare, or restoring; such an observation instead triggers the TerminalSnapshot restore and the model waits for a post-restore tick.
+_Avoid_: terminal cache (a cache implies the live path exists and this is an optimization — rows have no other source), session list cache (the ADR-0014 store this deliberately is not: that was persisted and hand-invalidated)
 
 ## Relationships
 
