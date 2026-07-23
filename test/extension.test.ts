@@ -137,6 +137,13 @@ const vscodeState = vi.hoisted(() => ({
     startPeriodicSave: ReturnType<typeof vi.fn>;
     periodicSave: { dispose: ReturnType<typeof vi.fn> };
   }>,
+  listWorktrees: vi.fn(async (repositoryPath: string) => [{
+    path: repositoryPath,
+    head: 'head',
+    branch: 'main',
+    bare: false,
+    detached: false,
+  }]),
   watchGitCommonDir: vi.fn(),
   workspaceFolders: [{ uri: { fsPath: '/work/alpha-main' } }],
   tmuxPreflight: vi.fn(async () => ({ available: true })),
@@ -272,15 +279,27 @@ vi.mock('../src/worktree/branchDeletionPreferenceStore', () => ({
 
 vi.mock('../src/worktree/worktreeListCacheStore', () => ({
   WorktreeListCacheStore: class {
-    get = vi.fn();
+    private readonly values = new Map<string, unknown>();
+    get = vi.fn((commonDir: string) => this.values.get(commonDir));
+    set = vi.fn(async (commonDir: string, worktrees: unknown) => {
+      this.values.set(commonDir, worktrees);
+    });
   },
 }));
 
 vi.mock('../src/repository/repositoryCommonDirCache', () => ({
   RepositoryCommonDirCache: class {
-    get = vi.fn();
+    private readonly values = new Map<string, string>();
+    get = vi.fn((repositoryPath: string) => this.values.get(repositoryPath));
+    set = vi.fn(async (repositoryPath: string, commonDir: string) => {
+      this.values.set(repositoryPath, commonDir);
+    });
   },
   resolveCommonDirSafe: vi.fn(async () => null),
+}));
+
+vi.mock('../src/git/worktrees', () => ({
+  listWorktrees: vscodeState.listWorktrees,
 }));
 
 vi.mock('../src/repository/vscodeExternalGitWatch', () => ({
@@ -337,7 +356,6 @@ vi.mock('../src/tree/repositoryTree', () => ({
     describeSession = vi.fn();
     refresh = vi.fn();
     refreshRepository = vi.fn();
-    refreshRepositories = vi.fn();
     refreshWorktree = vi.fn();
     refreshWorkspaceFolders = vi.fn();
     updateTerminalDecorations = vi.fn();
@@ -641,6 +659,14 @@ describe('activate', () => {
       vscodeState.externalWatchDisposables.push(disposable);
       return disposable;
     });
+    vscodeState.listWorktrees.mockClear();
+    vscodeState.listWorktrees.mockImplementation(async (repositoryPath: string) => [{
+      path: repositoryPath,
+      head: 'head',
+      branch: 'main',
+      bare: false,
+      detached: false,
+    }]);
     vscodeState.onDidChangeTabGroups.mockClear();
     vscodeState.onDidChangeTabs.mockClear();
     vscodeState.onDidChangeWindowState.mockClear();
@@ -1040,13 +1066,21 @@ describe('activate', () => {
 
     expect(vscodeState.watchGitCommonDir).toHaveBeenCalledOnce();
     expect(vscodeState.watchGitCommonDir).toHaveBeenCalledWith('/git/alpha', expect.any(Function));
+    await vi.waitFor(() => expect(vscodeState.listWorktrees).toHaveBeenCalledTimes(2));
+    vscodeState.listWorktrees.mockClear();
     const tree = vscodeState.repositoryTreeInstances[0];
     tree.refresh.mockClear();
+    const repositoryCommonDirCache = vscodeState.repositoryTreeArgs?.[4] as {
+      get: ReturnType<typeof vi.fn>;
+    };
+    repositoryCommonDirCache.get.mockReturnValue('/git/alpha');
     const commonDirChanged = vscodeState.watchGitCommonDir.mock.calls[0]?.[1];
     if (!commonDirChanged) throw new Error('missing common-dir change listener');
     commonDirChanged();
 
-    expect(tree.refreshRepositories).toHaveBeenCalledWith('/git/alpha');
+    await vi.waitFor(() => expect(vscodeState.listWorktrees).toHaveBeenCalledTimes(2));
+    expect(vscodeState.listWorktrees).toHaveBeenCalledWith('/work/alpha-main');
+    expect(vscodeState.listWorktrees).toHaveBeenCalledWith('/work/alpha-linked');
     expect(tree.refresh).not.toHaveBeenCalled();
 
     vi.mocked(resolveCommonDirSafe).mockImplementation(async (_cache, repositoryPath) =>
@@ -1057,8 +1091,10 @@ describe('activate', () => {
     );
     if (!refreshRegistration) throw new Error('missing deck.refresh registration');
     tree.refresh.mockClear();
-    refreshRegistration[1]();
+    vscodeState.listWorktrees.mockClear();
+    await refreshRegistration[1]();
 
+    expect(vscodeState.listWorktrees).toHaveBeenCalledTimes(2);
     expect(tree.refresh).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(vscodeState.watchGitCommonDir).toHaveBeenCalledTimes(2));
     expect(vscodeState.watchGitCommonDir).toHaveBeenLastCalledWith('/git/beta', expect.any(Function));
@@ -1145,21 +1181,24 @@ describe('activate', () => {
     await activate(context as never);
 
     expect(vscodeState.repositoryTreeArgs?.[7]).toBeInstanceOf(Set);
-    expect(vscodeState.removeWorktreeArgs?.[6]).toBe(vscodeState.repositoryTreeArgs?.[7]);
+    expect(vscodeState.removeWorktreeArgs?.[5]).toBe(vscodeState.repositoryTreeArgs?.[7]);
   });
 
-  it('routes Worktree command refreshes to the cached Repository', async () => {
+  it('routes Worktree commands through Repository reconciliation', async () => {
     const context = createContext();
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
     const refreshAfterAdd = vscodeState.addWorktreeArgs?.[2] as
-      | ((repositoryPath: string) => void)
+      | ((repositoryPath: string) => Promise<void>)
       | undefined;
     if (!refreshAfterAdd) throw new Error('missing AddWorktree refresh callback');
+    vi.mocked(resolveCommonDirSafe).mockResolvedValue('/git/alpha');
     tree.refresh.mockClear();
+    tree.refreshRepository.mockClear();
 
-    refreshAfterAdd('/work/alpha-main');
+    await refreshAfterAdd('/work/alpha-main');
 
+    expect(vscodeState.listWorktrees).toHaveBeenCalledWith('/work/alpha-main');
     expect(tree.refreshRepository).toHaveBeenCalledWith('/work/alpha-main');
     expect(tree.refresh).not.toHaveBeenCalled();
   });
@@ -1311,7 +1350,7 @@ describe('activate', () => {
   });
 
   it('scopes workspace-folder changes while keeping visibility regain as a root refresh', async () => {
-    const context = createContext();
+    const context = createContext(['/work/alpha-main']);
 
     await activate(context as never);
     const openTerminalRegistration = vscodeState.registerCommand.mock.calls.find(
@@ -1339,7 +1378,10 @@ describe('activate', () => {
     expect(tree.refreshWorkspaceFolders).toHaveBeenCalledOnce();
     expect(tree.refresh).not.toHaveBeenCalled();
 
-    visibilityChanged({ visible: true });
+    vi.mocked(resolveCommonDirSafe).mockResolvedValue('/git/alpha');
+    vscodeState.listWorktrees.mockClear();
+    await visibilityChanged({ visible: true });
+    expect(vscodeState.listWorktrees).toHaveBeenCalledWith('/work/alpha-main');
     expect(tree.refresh).toHaveBeenCalledOnce();
   });
 

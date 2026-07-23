@@ -35,7 +35,7 @@ export class AddRepositoryCommand {
     private readonly activeWorktrees: ActiveWorktreeStoreLike,
     private readonly switcher: SwitcherLike,
     private readonly detachedOpener: DetachedOpenerLike,
-    private readonly refresh: () => void,
+    private readonly refresh: () => Promise<void> | void,
     private readonly reveal: (repositoryPath: string) => Promise<void>,
     private readonly repositoryCommonDirCache: CommonDirCacheLike = PASS_THROUGH_COMMON_DIR_CACHE,
   ) {}

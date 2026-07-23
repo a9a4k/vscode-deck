@@ -87,23 +87,18 @@ function createCommand(rootPath?: string, worktreeCreateLaunchers = { run: vi.fn
     get: vi.fn(() => rootPath),
     set: vi.fn(async () => undefined),
   };
-  const worktreeListCache = {
-    add: vi.fn(async () => undefined),
-  };
   return {
     command: new AddWorktreeCommand(
       switcher,
       detachedOpener,
       refresh,
       worktreeRoots,
-      worktreeListCache,
       undefined,
       worktreeCreateLaunchers,
     ),
     detachedOpener,
     refresh,
     switcher,
-    worktreeListCache,
     worktreeCreateLaunchers,
     worktreeRoots,
   };
@@ -249,6 +244,37 @@ describe('AddWorktreeCommand', () => {
     expect(worktreeCreateLaunchers.run).toHaveBeenCalledOnce();
   });
 
+  it('waits for Worktree reconciliation before running create launchers', async () => {
+    let finishReconcile: (() => void) | undefined;
+    const reconcile = vi.fn(() => new Promise<void>((resolve) => {
+      finishReconcile = resolve;
+    }));
+    const worktreeCreateLaunchers = { run: vi.fn(async () => undefined) };
+    const command = new AddWorktreeCommand(
+      { switchTo: vi.fn(async () => undefined) },
+      { open: vi.fn(async () => undefined) },
+      reconcile,
+      {
+        get: () => '/custom/worktrees',
+        set: async () => undefined,
+      },
+      undefined,
+      worktreeCreateLaunchers,
+    );
+    const input = createAcceptingInputBox();
+    pickExistingBranch();
+    vi.mocked(vscode.window.createInputBox).mockReturnValue(input as vscode.InputBox);
+
+    const run = command.run({ repositoryPath: '/work/myrepo' });
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+
+    expect(worktreeCreateLaunchers.run).not.toHaveBeenCalled();
+    finishReconcile?.();
+    await run;
+
+    expect(worktreeCreateLaunchers.run).toHaveBeenCalledOnce();
+  });
+
   it('still offers the post-create toast when firing launchers fails', async () => {
     const worktreeCreateLaunchers = {
       run: vi.fn(async () => {
@@ -290,8 +316,8 @@ describe('AddWorktreeCommand', () => {
     expect(switcher.switchTo).toHaveBeenCalledWith('/custom/worktrees/feature-foo');
   });
 
-  it('updates the worktree-list cache after successful creation', async () => {
-    const { command, worktreeListCache } = createCommand('/custom/worktrees');
+  it('leaves Worktree cache updates to reconciliation', async () => {
+    const { command } = createCommand('/custom/worktrees');
     const input = createAcceptingInputBox();
 
     pickExistingBranch();
@@ -299,36 +325,7 @@ describe('AddWorktreeCommand', () => {
 
     await command.run({ repositoryPath: '/work/myrepo' });
 
-    expect(worktreeListCache.add).toHaveBeenCalledWith('/git/myrepo', {
-      path: '/custom/worktrees/feature-foo',
-      head: '',
-      bare: false,
-      detached: false,
-      branch: 'feature/foo',
-    });
-  });
-
-  it('adds the new worktree creation timestamp to the optimistic cache row', async () => {
-    const { command, worktreeListCache } = createCommand('/custom/worktrees');
-    const input = createAcceptingInputBox();
-
-    pickExistingBranch();
-    vi.mocked(worktreeCreationTimes).mockResolvedValue(new Map([
-      ['/custom/worktrees/feature-foo', 1234],
-    ]));
-    vi.mocked(vscode.window.createInputBox).mockReturnValue(input as vscode.InputBox);
-
-    await command.run({ repositoryPath: '/work/myrepo' });
-
-    expect(worktreeCreationTimes).toHaveBeenCalledWith('/git/myrepo');
-    expect(worktreeListCache.add).toHaveBeenCalledWith('/git/myrepo', {
-      path: '/custom/worktrees/feature-foo',
-      head: '',
-      bare: false,
-      detached: false,
-      branch: 'feature/foo',
-      createdAt: 1234,
-    });
+    expect(worktreeCreationTimes).not.toHaveBeenCalled();
   });
 
   it('lets the folder picker replace the parent while preserving the branch slug', async () => {

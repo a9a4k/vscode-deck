@@ -110,7 +110,6 @@ describe('WorktreeRemovalCommand', () => {
       vi.fn(),
       undefined,
       undefined,
-      undefined,
       terminalCascade,
     );
 
@@ -142,7 +141,6 @@ describe('WorktreeRemovalCommand', () => {
       vi.fn(),
       undefined,
       undefined,
-      undefined,
       terminalCascade,
     );
 
@@ -161,43 +159,12 @@ describe('WorktreeRemovalCommand', () => {
     );
   });
 
-  it('updates the worktree-list cache after successful removal', async () => {
-    const activeWorktrees = {
-      get: vi.fn(() => undefined),
-      clear: vi.fn(async () => undefined),
-    };
-    const refresh = vi.fn();
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
-    const command = new WorktreeRemovalCommand(
-      activeWorktrees,
-      refresh,
-      undefined,
-      worktreeListCache,
-    );
-
-    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
-      'Remove (keep branch)' as never,
-    );
-
-    await command.run(node);
-
-    expect(worktreeListCache.remove).toHaveBeenCalledWith('/git/repo', '/repo/feature');
-    expect(refresh).toHaveBeenCalledOnce();
-  });
-
   it('removes the row before git removal finishes', async () => {
     const activeWorktrees = {
       get: vi.fn(() => undefined),
       clear: vi.fn(async () => undefined),
     };
     const refresh = vi.fn();
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
     const pendingRemovals = new Set<string>();
     const removeDone = deferred<void>();
     vi.mocked(removeWorktree).mockReturnValueOnce(removeDone.promise);
@@ -205,7 +172,6 @@ describe('WorktreeRemovalCommand', () => {
       activeWorktrees,
       refresh,
       undefined,
-      worktreeListCache,
       undefined,
       undefined,
       pendingRemovals,
@@ -219,7 +185,6 @@ describe('WorktreeRemovalCommand', () => {
     await waitUntil(() => removeWorktree.mock.calls.length > 0);
 
     try {
-      expect(worktreeListCache.remove).toHaveBeenCalledWith('/git/repo', '/repo/feature');
       expect(refresh).toHaveBeenCalledOnce();
     } finally {
       removeDone.resolve();
@@ -228,12 +193,42 @@ describe('WorktreeRemovalCommand', () => {
     }
   });
 
+  it('waits for Worktree reconciliation before starting git removal', async () => {
+    let finishReconcile: (() => void) | undefined;
+    const reconcile = vi.fn(() => new Promise<void>((resolve) => {
+      finishReconcile = resolve;
+    }));
+    const command = new WorktreeRemovalCommand(
+      {
+        get: vi.fn(() => undefined),
+        clear: vi.fn(async () => undefined),
+      },
+      reconcile,
+      undefined,
+      undefined,
+      undefined,
+      new Set(),
+    );
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
+      'Remove (keep branch)' as never,
+    );
+
+    const run = command.run(node);
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+
+    expect(removeWorktree).not.toHaveBeenCalled();
+    finishReconcile?.();
+    await run;
+    await waitUntil(() => removeWorktree.mock.calls.length > 0);
+
+    expect(removeWorktree).toHaveBeenCalledOnce();
+  });
+
   it('runs the background removal under a notification progress indicator', async () => {
     const command = new WorktreeRemovalCommand(
       { get: vi.fn(() => undefined), clear: vi.fn(async () => undefined) },
       vi.fn(),
       undefined,
-      { add: vi.fn(async () => undefined), remove: vi.fn(async () => undefined) },
       undefined,
       undefined,
       new Set<string>(),
@@ -261,10 +256,6 @@ describe('WorktreeRemovalCommand', () => {
       clear: vi.fn(async () => undefined),
     };
     const refresh = vi.fn();
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
     const pendingRemovals = new Set<string>();
     const removeDone = deferred<void>();
     vi.mocked(removeWorktree).mockReturnValueOnce(removeDone.promise);
@@ -272,7 +263,6 @@ describe('WorktreeRemovalCommand', () => {
       activeWorktrees,
       refresh,
       undefined,
-      worktreeListCache,
       undefined,
       undefined,
       pendingRemovals,
@@ -424,16 +414,11 @@ describe('WorktreeRemovalCommand', () => {
       clear: vi.fn(async () => undefined),
     };
     const refresh = vi.fn();
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
     const pendingRemovals = new Set<string>();
     const command = new WorktreeRemovalCommand(
       activeWorktrees,
       refresh,
       undefined,
-      worktreeListCache,
       undefined,
       undefined,
       pendingRemovals,
@@ -445,15 +430,13 @@ describe('WorktreeRemovalCommand', () => {
     vi.mocked(removeWorktree).mockRejectedValueOnce({ stderr: 'is dirty' });
 
     await command.run(node);
-    await waitUntil(() => worktreeListCache.add.mock.calls.length > 0);
+    await waitUntil(() => vscode.window.showErrorMessage.mock.calls.length > 0);
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       'Cannot remove worktree: is dirty',
     );
     expect(deleteBranch).not.toHaveBeenCalled();
     expect(activeWorktrees.clear).toHaveBeenCalledWith('/git/repo');
-    expect(worktreeListCache.remove).toHaveBeenCalledWith('/git/repo', '/repo/feature');
-    expect(worktreeListCache.add).toHaveBeenCalledWith('/git/repo', node.worktree);
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(pendingRemovals.has('/repo/feature')).toBe(false);
   });
@@ -467,16 +450,11 @@ describe('WorktreeRemovalCommand', () => {
       get: vi.fn(() => true),
       set: vi.fn(async () => undefined),
     };
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
     const refresh = vi.fn();
     const command = new WorktreeRemovalCommand(
       activeWorktrees,
       refresh,
       branchDeletionPreferences,
-      worktreeListCache,
     );
 
     vi.mocked(vscode.window.showWarningMessage)
@@ -495,8 +473,6 @@ describe('WorktreeRemovalCommand', () => {
     );
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
     expect(activeWorktrees.clear).toHaveBeenCalledWith('/git/repo');
-    expect(worktreeListCache.remove).toHaveBeenCalledWith('/git/repo', '/repo/feature');
-    expect(worktreeListCache.add).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalledOnce();
   });
 
@@ -509,16 +485,11 @@ describe('WorktreeRemovalCommand', () => {
       get: vi.fn(() => true),
       set: vi.fn(async () => undefined),
     };
-    const worktreeListCache = {
-      add: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined),
-    };
     const refresh = vi.fn();
     const command = new WorktreeRemovalCommand(
       activeWorktrees,
       refresh,
       branchDeletionPreferences,
-      worktreeListCache,
     );
 
     vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
@@ -535,7 +506,6 @@ describe('WorktreeRemovalCommand', () => {
       "Cannot delete branch: error: cannot delete branch 'feature' checked out at '/repo/other'",
     );
     expect(readBranchTip).not.toHaveBeenCalled();
-    expect(worktreeListCache.add).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalledOnce();
   });
 

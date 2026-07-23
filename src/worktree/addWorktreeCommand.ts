@@ -9,9 +9,7 @@ import {
   addWorktree,
   listBranches,
   type AddWorktreeOptions,
-  type Worktree,
 } from '../git/worktrees';
-import { worktreeCreationTimes } from '../git/worktreeCreationTimes';
 import { branchWorktreeName, defaultWorktreePath } from './defaultWorktreePath';
 
 const CREATE_BRANCH_LABEL = 'Create new branch...';
@@ -33,10 +31,6 @@ interface DetachedOpenerLike {
 interface WorktreeRootStoreLike {
   get(commonDir: string): string | undefined;
   set(commonDir: string, rootPath: string): Promise<void>;
-}
-
-interface WorktreeListCacheLike {
-  add(commonDir: string, worktree: Worktree): Promise<void>;
 }
 
 interface WorktreeCreateLaunchersLike {
@@ -64,13 +58,10 @@ export class AddWorktreeCommand {
   constructor(
     private readonly switcher: SwitcherLike,
     private readonly detachedOpener: DetachedOpenerLike,
-    private readonly refresh: (repositoryPath: string) => void,
+    private readonly refresh: (repositoryPath: string) => Promise<void> | void,
     private readonly worktreeRoots: WorktreeRootStoreLike = {
       get: () => undefined,
       set: async () => undefined,
-    },
-    private readonly worktreeListCache: WorktreeListCacheLike = {
-      add: async () => undefined,
     },
     private readonly repositoryCommonDirCache: CommonDirCacheLike = PASS_THROUGH_COMMON_DIR_CACHE,
     private readonly worktreeCreateLaunchers: WorktreeCreateLaunchersLike = {
@@ -105,17 +96,7 @@ export class AddWorktreeCommand {
     }
 
     await this.worktreeRoots.set(commonDir, path.dirname(request.path));
-    const createdAt = (await worktreeCreationTimes(commonDir)).get(path.normalize(request.path));
-    const worktree: Worktree = {
-      path: request.path,
-      head: '',
-      bare: false,
-      detached: false,
-      branch: request.branch,
-    };
-    if (createdAt !== undefined) worktree.createdAt = createdAt;
-    await this.worktreeListCache.add(commonDir, worktree);
-    this.refresh(node.repositoryPath);
+    await this.refresh(node.repositoryPath);
     try {
       await this.worktreeCreateLaunchers.run({ worktree: { path: request.path } });
     } catch (error) {

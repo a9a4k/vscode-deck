@@ -35,7 +35,7 @@ export interface RegisterRepositorySeedOptions {
   seedPath: string;
   registry: RepositoryRegistryLike;
   activeWorktrees: ActiveWorktreeStoreLike;
-  refresh: () => void;
+  refresh: () => Promise<void> | void;
   reveal: (repositoryPath: string) => Promise<void>;
   repositoryCommonDirCache?: CommonDirCacheLike;
 }
@@ -59,7 +59,7 @@ export async function registerRepositorySeed({
 
   await registry.append(seedPath);
   await activeWorktrees.set(commonDir, seedPath);
-  refresh();
+  await refresh();
   await reveal(seedPath);
   return { kind: 'registered', repositoryPath: seedPath, commonDir };
 }

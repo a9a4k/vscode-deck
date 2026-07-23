@@ -2,6 +2,7 @@ import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
+import { listWorktrees } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
 import { revealWithRetry } from './tree/revealWithRetry';
 import { ActiveWorktreeStore } from './switch/activeWorktreeStore';
@@ -18,6 +19,7 @@ import { BranchDeletionPreferenceStore } from './worktree/branchDeletionPreferen
 import { WorktreeListCacheStore } from './worktree/worktreeListCacheStore';
 import { WorktreeRemovalCommand } from './worktree/worktreeRemovalCommand';
 import { WorktreeRootStore } from './worktree/worktreeRootStore';
+import { WorktreeReconciler } from './worktree/worktreeReconciler';
 import {
   DeckTreeDragAndDropController,
   type TreeRefreshScope,
@@ -225,6 +227,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     wakeAgentExitSweep,
     refreshWorktree: (worktreePath) => tree.refreshWorktree(worktreePath),
   });
+  const worktreeReconciler = new WorktreeReconciler({
+    repositories: repositoryRegistry,
+    commonDirs: {
+      get: (repositoryPath) => repositoryCommonDirCache.get(repositoryPath),
+      resolve: (repositoryPath) =>
+        resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
+    },
+    worktreeListCache,
+    worktreeOrders,
+    listWorktrees,
+    activeWorktreePath: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    refreshRepository: (repositoryPath) => tree.refreshRepository(repositoryPath),
+    pendingWorktreeRemovals,
+  });
+  const reconcileRepositoryWorktrees = async (repositoryPath: string): Promise<void> => {
+    await worktreeReconciler.reconcile(repositoryPath).catch((error) => {
+      console.warn(`Deck: reconciling Worktrees for ${repositoryPath} failed`, error);
+    });
+  };
   agentExitSweep = tmuxAvailability.available
     ? new AgentExitSweep({
         sidecars: agentSidecars,
@@ -238,7 +259,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     : undefined;
   const externalGitWatch = new ExternalGitWatch(
     watchGitCommonDir,
-    (commonDir) => tree.refreshRepositories(commonDir),
+    (commonDir) => {
+      void worktreeReconciler.reconcileCommonDir(commonDir).catch((error) => {
+        console.warn('Deck: reconciling external Git change failed', error);
+      });
+    },
   );
   let externalGitSyncVersion = 0;
 
@@ -263,6 +288,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   syncExternalGitWatches();
+  void worktreeReconciler.reconcileAll().catch((error) => {
+    console.warn('Deck: reconciling Worktrees during activation failed', error);
+  });
 
   const addTerminal = new AddTerminalCommand(
     tmux,
@@ -329,9 +357,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const addWorktree = new AddWorktreeCommand(
     switcher,
     detachedOpener,
-    (repositoryPath) => refreshTree({ repositoryPath }),
+    reconcileRepositoryWorktrees,
     worktreeRoots,
-    worktreeListCache,
     repositoryCommonDirCache,
     worktreeCreateLaunchers,
   );
@@ -360,9 +387,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const removeWorktree = new WorktreeRemovalCommand(
     activeWorktrees,
-    (repositoryPath) => refreshTree({ repositoryPath }),
+    reconcileRepositoryWorktrees,
     branchDeletionPreferences,
-    worktreeListCache,
     repositoryCommonDirCache,
     terminalCascade,
     pendingWorktreeRemovals,
@@ -439,7 +465,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activeWorktrees,
     switcher,
     detachedOpener,
-    refreshTree,
+    async () => {
+      await worktreeReconciler.reconcileAll().catch((error) => {
+        console.warn('Deck: reconciling Worktrees after adding a Repository failed', error);
+      });
+      refreshTree();
+    },
     revealRepository,
     repositoryCommonDirCache,
   );
@@ -478,7 +509,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     terminalEditorProvider,
     disconnectedTabs,
-    vscode.commands.registerCommand('deck.refresh', () => {
+    vscode.commands.registerCommand('deck.refresh', async () => {
+      await worktreeReconciler.reconcileAll().catch((error) => {
+        console.warn('Deck: reconciling Worktrees during manual refresh failed', error);
+      });
       refreshTree();
       terminalPoll?.wake();
     }),
@@ -533,8 +567,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!state.focused) return;
       void markActiveTerminalRead(agentStatuses);
     }),
-    treeView.onDidChangeVisibility((event) => {
-      if (event.visible) refreshTree();
+    treeView.onDidChangeVisibility(async (event) => {
+      if (!event.visible) return;
+      await worktreeReconciler.reconcileAll().catch((error) => {
+        console.warn('Deck: reconciling Worktrees when showing the tree failed', error);
+      });
+      refreshTree();
     }),
   );
   disconnectedTabs.start();

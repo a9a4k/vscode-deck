@@ -9,7 +9,8 @@ export function watchGitCommonDir(
   debounceMs = DEFAULT_DEBOUNCE_MS,
 ): Disposable {
   let timeout: NodeJS.Timeout | undefined;
-  const schedule = () => {
+  const schedule = (uri: vscode.Uri) => {
+    if (isIgnoredGitChange(uri.path)) return;
     if (timeout !== undefined) clearTimeout(timeout);
     timeout = setTimeout(() => {
       timeout = undefined;
@@ -39,7 +40,7 @@ export function watchGitCommonDir(
   };
 }
 
-function createWatcher(commonDir: string, pattern: string, onChange: () => void): Disposable {
+function createWatcher(commonDir: string, pattern: string, onChange: (uri: vscode.Uri) => void): Disposable {
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(vscode.Uri.file(commonDir), pattern),
   );
@@ -56,4 +57,11 @@ function createWatcher(commonDir: string, pattern: string, onChange: () => void)
       watcher.dispose();
     },
   };
+}
+
+function isIgnoredGitChange(uriPath: string): boolean {
+  return (
+    /\/(?:index\.lock|worktrees\/[^/]+\/index\.lock)$/.test(uriPath)
+    || /\/\.watchman-cookie-/.test(uriPath)
+  );
 }

@@ -8,7 +8,7 @@ const vscodeState = vi.hoisted(() => ({
     onDidCreate: ReturnType<typeof vi.fn>;
     onDidChange: ReturnType<typeof vi.fn>;
     onDidDelete: ReturnType<typeof vi.fn>;
-    handlers: Array<() => void>;
+    handlers: Array<(uri: { path: string }) => void>;
   }>,
 }));
 
@@ -37,19 +37,19 @@ describe('watchGitCommonDir', () => {
     vscodeState.createFileSystemWatcher.mockImplementation(() => {
       const watcher = {
         dispose: vi.fn(),
-        onDidCreate: vi.fn((handler: () => void) => {
+        onDidCreate: vi.fn((handler: (uri: { path: string }) => void) => {
           watcher.handlers.push(handler);
           return { dispose: vi.fn() };
         }),
-        onDidChange: vi.fn((handler: () => void) => {
+        onDidChange: vi.fn((handler: (uri: { path: string }) => void) => {
           watcher.handlers.push(handler);
           return { dispose: vi.fn() };
         }),
-        onDidDelete: vi.fn((handler: () => void) => {
+        onDidDelete: vi.fn((handler: (uri: { path: string }) => void) => {
           watcher.handlers.push(handler);
           return { dispose: vi.fn() };
         }),
-        handlers: [] as Array<() => void>,
+        handlers: [] as Array<(uri: { path: string }) => void>,
       };
       vscodeState.watchers.push(watcher);
       return watcher;
@@ -60,8 +60,8 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    vscodeState.watchers[0].handlers[0]();
-    vscodeState.watchers[1].handlers[1]();
+    vscodeState.watchers[0].handlers[0]({ path: '/git/alpha/HEAD' });
+    vscodeState.watchers[1].handlers[1]({ path: '/git/alpha/worktrees/feature/HEAD' });
     vi.advanceTimersByTime(249);
 
     expect(refresh).not.toHaveBeenCalled();
@@ -75,9 +75,27 @@ describe('watchGitCommonDir', () => {
     ]);
     expect(refresh).toHaveBeenCalledOnce();
 
-    vscodeState.watchers[2].handlers[2]();
+    vscodeState.watchers[2].handlers[2]({ path: '/git/alpha/worktrees/feature' });
     vi.advanceTimersByTime(250);
 
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores index locks and watchman cookie files before debounce', () => {
+    const refresh = vi.fn();
+
+    watchGitCommonDir('/git/alpha', refresh);
+    const changed = vscodeState.watchers[2].handlers[1];
+    changed({ path: '/git/alpha/index.lock' });
+    changed({ path: '/git/alpha/worktrees/feature/index.lock' });
+    changed({ path: '/git/alpha/.watchman-cookie-host-123' });
+    vi.advanceTimersByTime(250);
+
+    expect(refresh).not.toHaveBeenCalled();
+
+    changed({ path: '/git/alpha/worktrees/feature' });
+    vi.advanceTimersByTime(250);
+
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });
