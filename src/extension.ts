@@ -521,7 +521,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // markActiveTerminalRead no-ops while unfocused, so re-run it on refocus.
     vscode.window.onDidChangeWindowState((state) => {
       if (!state.focused) return;
-      refreshTree();
       void markActiveTerminalRead(agentStatuses);
     }),
     treeView.onDidChangeVisibility((event) => {

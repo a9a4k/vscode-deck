@@ -166,7 +166,7 @@ describe('TerminalPoll', () => {
     expect(scheduler.hasTick()).toBe(true);
   });
 
-  it('baselines session-set changes on refocus after the timer was paused', async () => {
+  it('detects session-set changes on refocus after the timer was paused', async () => {
     const scheduler = new ManualScheduler();
     let focused = true;
     let focusHandler: ((focused: boolean) => void) | undefined;
@@ -198,7 +198,7 @@ describe('TerminalPoll', () => {
     focusHandler?.(true);
     await flush();
 
-    expect(sessionSetChanges).not.toHaveBeenCalled();
+    expect(sessionSetChanges).toHaveBeenCalledOnce();
     expect(scheduler.hasTick()).toBe(true);
   });
 

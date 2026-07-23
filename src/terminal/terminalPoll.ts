@@ -69,7 +69,6 @@ export class TerminalPoll implements Disposable {
           this.start();
         } else {
           this.clearTimer();
-          this.hasSessionSetBaseline = false;
         }
       });
     }

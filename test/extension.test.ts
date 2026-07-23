@@ -1082,7 +1082,7 @@ describe('activate', () => {
     expect(poll.start).toHaveBeenCalledOnce();
   });
 
-  it('refreshes the tree when the window regains focus', async () => {
+  it('does not refresh the tree when the window regains focus', async () => {
     const context = createContext();
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
@@ -1094,8 +1094,8 @@ describe('activate', () => {
     if (!focusHandler) throw new Error('missing window-state listener');
     await focusHandler({ focused: true });
 
-    expect(tree.refresh).toHaveBeenCalledOnce();
-    expect(poll.start).toHaveBeenCalledOnce();
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(poll.start).not.toHaveBeenCalled();
   });
 
   it('shares pending WorktreeRemoval state between the command and tree', async () => {
