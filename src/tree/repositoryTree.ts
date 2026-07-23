@@ -10,8 +10,7 @@ import { terminalSessionPrefix } from '../terminal/tmuxSafe';
 import { resolveTerminalTooltip } from '../terminal/terminalLabelResolver';
 import { TerminalOrderStore } from '../terminal/terminalOrderStore';
 import type { TmuxSession } from '../terminal/tmuxCli';
-import type { CachedTerminalSession } from '../terminal/terminalSession';
-import { TerminalModel } from '../terminal/terminalModel';
+import { TerminalModel, type TerminalModelSession } from '../terminal/terminalModel';
 import type { AgentStatus } from '../agent/agentStatusStore';
 import {
   agentStatusDecorationResourceUri,
@@ -174,7 +173,6 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private readonly repositoryCommonDirs = new Map<string, string | null>();
   private readonly resolvingRepositoryPaths = new Set<string>();
   private readonly refreshingWorktrees = new Set<string>();
-  private readonly knownTerminals = new Map<string, AgentStatusDecorationTerminal>();
   private readonly renderedTerminals = new Map<string, TerminalNode>();
 
   constructor(
@@ -209,28 +207,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   }
 
   updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void {
-    const nextTerminals = new Map(terminals.map((terminal) => [terminal.sessionName, terminal]));
-    const changedSessionNames = new Set([
-      ...this.knownTerminals.keys(),
-      ...nextTerminals.keys(),
-    ].filter((sessionName) =>
-      !sameDecorationTerminal(
-        this.knownTerminals.get(sessionName),
-        nextTerminals.get(sessionName),
-      )));
-    if (changedSessionNames.size === 0) return;
-    const invalidations = [
-      ...this.agentStatusDecorationRollups.invalidationUrisForSessions(changedSessionNames),
-    ];
-    this.knownTerminals.clear();
-    for (const [sessionName, terminal] of nextTerminals) {
-      this.knownTerminals.set(sessionName, terminal);
-    }
-    this.agentStatusDecorationRollups.setTerminals(terminals);
-    invalidations.push(
-      ...this.agentStatusDecorationRollups.invalidationUrisForSessions(changedSessionNames),
-    );
-    this.fireDeckDecorations(uniqueDecorationUris(invalidations));
+    this.fireDeckDecorations(this.agentStatusDecorationRollups.setTerminals(terminals));
   }
 
   private refreshRenderedTerminals(): void {
@@ -533,7 +510,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return this.toTerminalNodes(element, terminals);
   }
 
-  private toTerminalNodes(element: WorktreeNode, terminals: readonly CachedTerminalSession[]): RepositoryTreeNode[] {
+  private toTerminalNodes(element: WorktreeNode, terminals: readonly TerminalModelSession[]): RepositoryTreeNode[] {
     const isActiveWorktree = this.isCurrentWorktree(element.worktree.path);
     const liveSessionNames = new Set(terminals.map((terminal) => terminal.sessionName));
     const nodes = terminals.map(
@@ -634,27 +611,6 @@ function toDecorationUri(
   id: string,
 ): vscode.Uri {
   return vscode.Uri.from(agentStatusDecorationResourceUri(kind, id));
-}
-
-function uniqueDecorationUris(
-  uris: readonly AgentStatusDecorationResourceUri[],
-): AgentStatusDecorationResourceUri[] {
-  return [...new Map(uris.map((uri) => [
-    `${uri.scheme}:${uri.authority}:${uri.path}:${uri.query}`,
-    uri,
-  ])).values()];
-}
-
-function sameDecorationTerminal(
-  left: AgentStatusDecorationTerminal | undefined,
-  right: AgentStatusDecorationTerminal | undefined,
-): boolean {
-  return (
-    left !== undefined
-    && right !== undefined
-    && left.repositoryPath === right.repositoryPath
-    && left.worktreePath === right.worktreePath
-  );
 }
 
 function sameWorktrees(left: readonly Worktree[], right: readonly Worktree[]): boolean {

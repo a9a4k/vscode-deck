@@ -84,12 +84,33 @@ function statusTooltip(label: string, message: string | undefined): string {
 
 export class AgentStatusDecorationRollups {
   private terminals: AgentStatusDecorationTerminal[] = [];
+  private readonly terminalsBySession = new Map<string, AgentStatusDecorationTerminal>();
   private readonly statuses = new Map<string, AgentStatus>();
   private readonly collapsedRepositories = new Set<string>();
   private readonly collapsedWorktrees = new Set<string>();
 
-  setTerminals(terminals: readonly AgentStatusDecorationTerminal[]): void {
+  setTerminals(terminals: readonly AgentStatusDecorationTerminal[]): AgentStatusDecorationResourceUri[] {
+    const nextTerminalsBySession = new Map(
+      terminals.map((terminal) => [terminal.sessionName, terminal]),
+    );
+    const changedSessionNames = new Set([
+      ...this.terminalsBySession.keys(),
+      ...nextTerminalsBySession.keys(),
+    ].filter((sessionName) =>
+      !sameTerminalLocation(
+        this.terminalsBySession.get(sessionName),
+        nextTerminalsBySession.get(sessionName),
+      )));
+    if (changedSessionNames.size === 0) return [];
+
+    const invalidations = this.invalidationUrisForSessions(changedSessionNames);
     this.terminals = [...terminals];
+    this.terminalsBySession.clear();
+    for (const [sessionName, terminal] of nextTerminalsBySession) {
+      this.terminalsBySession.set(sessionName, terminal);
+    }
+    invalidations.push(...this.invalidationUrisForSessions(changedSessionNames));
+    return uniqueResourceUris(invalidations);
   }
 
   setStatuses(statuses: Iterable<readonly [string, AgentStatus]>): void {
@@ -150,6 +171,27 @@ export class AgentStatusDecorationRollups {
     }
     return nodeKey('terminal', terminal.sessionName);
   }
+}
+
+function sameTerminalLocation(
+  left: AgentStatusDecorationTerminal | undefined,
+  right: AgentStatusDecorationTerminal | undefined,
+): boolean {
+  return (
+    left !== undefined
+    && right !== undefined
+    && left.repositoryPath === right.repositoryPath
+    && left.worktreePath === right.worktreePath
+  );
+}
+
+function uniqueResourceUris(
+  uris: readonly AgentStatusDecorationResourceUri[],
+): AgentStatusDecorationResourceUri[] {
+  return [...new Map(uris.map((uri) => [
+    `${uri.scheme}:${uri.authority}:${uri.path}:${uri.query}`,
+    uri,
+  ])).values()];
 }
 
 function nodeKey(kind: AgentStatusDecorationNodeKind, id: string): string {

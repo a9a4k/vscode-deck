@@ -19,12 +19,12 @@ describe('TerminalReconciler', () => {
     const fireTree = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
-      restore,
+      restoreTerminalSnapshot: restore,
       terminalOrders,
-      locations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
-      updateDecorations,
-      wakeExitSweep,
-      fireTree,
+      listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
+      updateTerminalDecorations: updateDecorations,
+      wakeAgentExitSweep: wakeExitSweep,
+      refreshTree: fireTree,
     });
 
     await reconciler.reconcile([]);
@@ -67,12 +67,12 @@ describe('TerminalReconciler', () => {
     });
     const reconciler = new TerminalReconciler({
       model,
-      restore,
+      restoreTerminalSnapshot: restore,
       terminalOrders,
-      locations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
-      updateDecorations,
-      wakeExitSweep,
-      fireTree,
+      listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
+      updateTerminalDecorations: updateDecorations,
+      wakeAgentExitSweep: wakeExitSweep,
+      refreshTree: fireTree,
     });
 
     await reconciler.reconcile([
@@ -115,12 +115,12 @@ describe('TerminalReconciler', () => {
     const fireTree = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
-      restore,
+      restoreTerminalSnapshot: restore,
       terminalOrders,
-      locations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
-      updateDecorations,
-      wakeExitSweep,
-      fireTree,
+      listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
+      updateTerminalDecorations: updateDecorations,
+      wakeAgentExitSweep: wakeExitSweep,
+      refreshTree: fireTree,
     });
 
     await reconciler.reconcile([
@@ -128,6 +128,9 @@ describe('TerminalReconciler', () => {
     ]);
 
     expect(restore).toHaveBeenCalledOnce();
+    expect(model.get('/work/alpha')).toEqual([
+      { sessionName: 'wt-_work_alpha__term-1', n: 1, windowName: 'one' },
+    ]);
     expect(terminalOrders.set).not.toHaveBeenCalled();
     expect(updateDecorations).not.toHaveBeenCalled();
     expect(wakeExitSweep).not.toHaveBeenCalled();
@@ -149,12 +152,12 @@ describe('TerminalReconciler', () => {
     const fireTree = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
-      restore: vi.fn(async () => undefined),
+      restoreTerminalSnapshot: vi.fn(async () => undefined),
       terminalOrders,
-      locations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
-      updateDecorations,
-      wakeExitSweep,
-      fireTree,
+      listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
+      updateTerminalDecorations: updateDecorations,
+      wakeAgentExitSweep: wakeExitSweep,
+      refreshTree: fireTree,
     });
 
     await reconciler.reconcile(sessions);

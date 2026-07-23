@@ -4,17 +4,17 @@ import type { TmuxSession } from '../src/terminal/tmuxCli';
 
 describe('TerminalPoll', () => {
   it('hands each observed Terminal set to reconciliation with resolved agent identities', async () => {
+    const reconcile = vi.fn(async () => undefined);
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => [
         { sessionName: 'wt-_work_alpha__term-1', windowName: '2.1.172', paneTitle: '✳ task' },
       ]),
+      reconcileObservation: reconcile,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler: new ManualScheduler(),
       resolveAgentName: vi.fn(async () => 'claude'),
     });
-    const reconcile = vi.fn(async () => undefined);
-    poll.onObservation(reconcile);
 
     poll.start();
     await flush();
@@ -34,6 +34,7 @@ describe('TerminalPoll', () => {
     const listSessions = vi.fn(async () => []);
     const poll = new TerminalPoll({
       listSessions,
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
@@ -61,6 +62,7 @@ describe('TerminalPoll', () => {
       .mockResolvedValue([]);
     const poll = new TerminalPoll({
       listSessions,
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler: new ManualScheduler(),
@@ -84,12 +86,13 @@ describe('TerminalPoll', () => {
     const listSessions = vi.fn(async () => sessions);
     const poll = new TerminalPoll({
       listSessions,
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
     });
     const changes = vi.fn();
-    poll.onChange(changes);
+    poll.onDidChangeLabels(changes);
 
     poll.start();
     await flush();
@@ -99,6 +102,7 @@ describe('TerminalPoll', () => {
       { sessionName: 'term-2', windowName: 'zsh', paneTitle: ':/work/beta' },
     ];
     await scheduler.runNext();
+    await flush();
 
     expect(changes).toHaveBeenCalledOnce();
     expect(changes).toHaveBeenCalledWith([
@@ -116,6 +120,7 @@ describe('TerminalPoll', () => {
     ];
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => sessions),
+      reconcileObservation: () => undefined,
       isFocused: () => focused,
       onDidChangeFocus: (handler) => {
         focusHandler = handler;
@@ -124,7 +129,7 @@ describe('TerminalPoll', () => {
       scheduler,
     });
     const changes = vi.fn();
-    poll.onChange(changes);
+    poll.onDidChangeLabels(changes);
     poll.start();
     await flush();
 
@@ -150,8 +155,10 @@ describe('TerminalPoll', () => {
     let sessions: TmuxSession[] = [
       { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
     ];
+    const observations = vi.fn(async () => undefined);
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => sessions),
+      reconcileObservation: observations,
       isFocused: () => focused,
       onDidChangeFocus: (handler) => {
         focusHandler = handler;
@@ -159,8 +166,6 @@ describe('TerminalPoll', () => {
       },
       scheduler,
     });
-    const observations = vi.fn(async () => undefined);
-    poll.onObservation(observations);
     poll.start();
     await flush();
 
@@ -188,12 +193,13 @@ describe('TerminalPoll', () => {
     ];
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => sessions),
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
     });
     const changes = vi.fn();
-    poll.onChange(changes);
+    poll.onDidChangeLabels(changes);
 
     poll.start();
     await flush();
@@ -217,6 +223,7 @@ describe('TerminalPoll', () => {
     ];
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => sessions),
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
@@ -225,7 +232,7 @@ describe('TerminalPoll', () => {
       ),
     });
     const changes = vi.fn();
-    poll.onChange(changes);
+    poll.onDidChangeLabels(changes);
 
     poll.start();
     await flush();
@@ -254,12 +261,13 @@ describe('TerminalPoll', () => {
     ];
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => sessions),
+      reconcileObservation: () => undefined,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
     });
     const changes = vi.fn();
-    poll.onChange(changes);
+    poll.onDidChangeLabels(changes);
 
     poll.start();
     await flush();
@@ -290,15 +298,15 @@ describe('TerminalPoll', () => {
         { sessionName: 'term-2', windowName: 'zsh', paneTitle: ':/work/beta' },
       ]);
     const onError = vi.fn();
+    const observations = vi.fn(async () => undefined);
     const poll = new TerminalPoll({
       listSessions,
+      reconcileObservation: observations,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
       onError,
     });
-    const observations = vi.fn(async () => undefined);
-    poll.onObservation(observations);
 
     poll.start();
     await flush();

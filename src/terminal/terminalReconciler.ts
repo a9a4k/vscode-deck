@@ -16,12 +16,12 @@ interface TerminalOrderWriter {
 
 interface TerminalReconcilerOptions {
   model: TerminalModel;
-  restore(): Promise<void>;
+  restoreTerminalSnapshot(): Promise<void>;
   terminalOrders: TerminalOrderWriter;
-  locations(): readonly TerminalLocation[];
-  updateDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void;
-  wakeExitSweep(): void;
-  fireTree(): void;
+  listTerminalLocations(): readonly TerminalLocation[];
+  updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void;
+  wakeAgentExitSweep(): void;
+  refreshTree(): void;
 }
 
 export class TerminalReconciler {
@@ -30,19 +30,19 @@ export class TerminalReconciler {
   async reconcile(sessions: readonly TmuxSession[]): Promise<void> {
     const trust = classifyObservation(sessions);
     if (trust !== 'restored') {
-      await this.options.restore();
+      await this.options.restoreTerminalSnapshot();
       return;
     }
 
     const diff = this.options.model.apply(sessions);
-    const locations = uniqueLocations(this.options.locations());
+    const locations = uniqueLocations(this.options.listTerminalLocations());
     await this.pruneTerminalOrders(locations);
-    this.options.updateDecorations(decorationTerminals(this.options.model, locations));
+    this.options.updateTerminalDecorations(decorationTerminals(this.options.model, locations));
 
     if (diff.some((worktree) => worktree.removed.length > 0)) {
-      this.options.wakeExitSweep();
+      this.options.wakeAgentExitSweep();
     }
-    if (diff.length > 0) this.options.fireTree();
+    if (diff.length > 0) this.options.refreshTree();
   }
 
   private async pruneTerminalOrders(locations: readonly TerminalLocation[]): Promise<void> {

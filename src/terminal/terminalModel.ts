@@ -1,17 +1,20 @@
 import type { TmuxSession } from './tmuxCli';
 import { terminalSessionPrefix } from './tmuxSafe';
-import type { CachedTerminalSession } from './terminalSession';
 import { agentNameFromWindowName, resolveTerminalLabel } from './terminalLabelResolver';
 
+export interface TerminalModelSession extends TmuxSession {
+  n: number;
+}
+
 export interface TerminalModelWorktreeDiff {
-  worktreePrefix: string;
-  added: readonly CachedTerminalSession[];
-  removed: readonly CachedTerminalSession[];
-  relabeled: readonly CachedTerminalSession[];
+  sessionPrefix: string;
+  added: readonly TerminalModelSession[];
+  removed: readonly TerminalModelSession[];
+  relabeled: readonly TerminalModelSession[];
 }
 
 export class TerminalModel {
-  private sessions = new Map<string, CachedTerminalSession>();
+  private sessions = new Map<string, TerminalModelSession>();
 
   apply(observed: readonly TmuxSession[]): TerminalModelWorktreeDiff[] {
     const next = observedTerminals(observed);
@@ -21,7 +24,7 @@ export class TerminalModel {
       const previous = this.sessions.get(sessionName);
       if (previous === undefined) {
         diffFor(diffs, sessionName).added.push(terminal);
-      } else if (!sameTerminal(previous, terminal)) {
+      } else if (!sameTerminalDisplay(previous, terminal)) {
         diffFor(diffs, sessionName).relabeled.push(terminal);
       }
     }
@@ -32,30 +35,30 @@ export class TerminalModel {
     this.sessions = next;
     return [...diffs.values()]
       .map(sortDiff)
-      .sort((left, right) => left.worktreePrefix.localeCompare(right.worktreePrefix));
+      .sort((left, right) => left.sessionPrefix.localeCompare(right.sessionPrefix));
   }
 
-  get(worktreePath: string): readonly CachedTerminalSession[] {
+  get(worktreePath: string): readonly TerminalModelSession[] {
     const prefix = terminalSessionPrefix(worktreePath);
     return [...this.sessions.values()]
       .filter((session) => session.sessionName.startsWith(prefix))
       .sort(compareTerminals);
   }
 
-  find(sessionName: string): CachedTerminalSession | undefined {
+  find(sessionName: string): TerminalModelSession | undefined {
     return this.sessions.get(sessionName);
   }
 }
 
 interface MutableWorktreeDiff {
-  worktreePrefix: string;
-  added: CachedTerminalSession[];
-  removed: CachedTerminalSession[];
-  relabeled: CachedTerminalSession[];
+  sessionPrefix: string;
+  added: TerminalModelSession[];
+  removed: TerminalModelSession[];
+  relabeled: TerminalModelSession[];
 }
 
-function observedTerminals(observed: readonly TmuxSession[]): Map<string, CachedTerminalSession> {
-  const terminals = new Map<string, CachedTerminalSession>();
+function observedTerminals(observed: readonly TmuxSession[]): Map<string, TerminalModelSession> {
+  const terminals = new Map<string, TerminalModelSession>();
   for (const session of observed) {
     const parsed = parseTerminalSessionName(session.sessionName);
     if (parsed === undefined) continue;
@@ -70,24 +73,24 @@ function observedTerminals(observed: readonly TmuxSession[]): Map<string, Cached
   return terminals;
 }
 
-function parseTerminalSessionName(sessionName: string): { worktreePrefix: string; n: number } | undefined {
+function parseTerminalSessionName(sessionName: string): { sessionPrefix: string; n: number } | undefined {
   const match = /^(wt-.+__term-)([1-9]\d*)$/.exec(sessionName);
   if (match === null) return undefined;
-  return { worktreePrefix: match[1], n: Number(match[2]) };
+  return { sessionPrefix: match[1], n: Number(match[2]) };
 }
 
 function diffFor(diffs: Map<string, MutableWorktreeDiff>, sessionName: string): MutableWorktreeDiff {
   const parsed = parseTerminalSessionName(sessionName);
   if (parsed === undefined) throw new Error(`invalid Terminal session name: ${sessionName}`);
-  let diff = diffs.get(parsed.worktreePrefix);
+  let diff = diffs.get(parsed.sessionPrefix);
   if (diff === undefined) {
     diff = {
-      worktreePrefix: parsed.worktreePrefix,
+      sessionPrefix: parsed.sessionPrefix,
       added: [],
       removed: [],
       relabeled: [],
     };
-    diffs.set(parsed.worktreePrefix, diff);
+    diffs.set(parsed.sessionPrefix, diff);
   }
   return diff;
 }
@@ -99,18 +102,16 @@ function sortDiff(diff: MutableWorktreeDiff): TerminalModelWorktreeDiff {
   return diff;
 }
 
-function compareTerminals(left: CachedTerminalSession, right: CachedTerminalSession): number {
+function compareTerminals(left: TerminalModelSession, right: TerminalModelSession): number {
   return left.n - right.n || left.sessionName.localeCompare(right.sessionName);
 }
 
-function sameTerminal(left: CachedTerminalSession, right: CachedTerminalSession): boolean {
-  return terminalDisplaySignature(left) === terminalDisplaySignature(right);
-}
-
-function terminalDisplaySignature(terminal: CachedTerminalSession): string {
-  const agentName = terminal.agentName ?? agentNameFromWindowName(terminal.windowName);
-  return JSON.stringify([
-    resolveTerminalLabel(terminal.windowName, terminal.paneTitle, agentName),
-    agentName,
-  ]);
+function sameTerminalDisplay(left: TerminalModelSession, right: TerminalModelSession): boolean {
+  const leftAgent = left.agentName ?? agentNameFromWindowName(left.windowName);
+  const rightAgent = right.agentName ?? agentNameFromWindowName(right.windowName);
+  return (
+    leftAgent === rightAgent
+    && resolveTerminalLabel(left.windowName, left.paneTitle, leftAgent)
+      === resolveTerminalLabel(right.windowName, right.paneTitle, rightAgent)
+  );
 }

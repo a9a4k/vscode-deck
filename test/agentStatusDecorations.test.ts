@@ -56,6 +56,32 @@ describe('provideAgentStatusDecoration', () => {
 });
 
 describe('AgentStatusDecorationRollups', () => {
+  it('invalidates both old and new rollup locations when Terminal locations change', () => {
+    const rollups = new AgentStatusDecorationRollups();
+    const sessionName = 'wt-_repo_main__term-1';
+    rollups.setTerminals([
+      {
+        repositoryPath: '/old-repo',
+        worktreePath: '/old-repo/main',
+        sessionName,
+      },
+    ]);
+
+    expect(rollups.setTerminals([
+      {
+        repositoryPath: '/new-repo',
+        worktreePath: '/new-repo/main',
+        sessionName,
+      },
+    ])).toEqual(expect.arrayContaining([
+      expect.objectContaining(agentStatusDecorationUri('terminal', sessionName)),
+      expect.objectContaining(agentStatusDecorationUri('worktree', '/old-repo/main')),
+      expect.objectContaining(agentStatusDecorationUri('repository', '/old-repo')),
+      expect.objectContaining(agentStatusDecorationUri('worktree', '/new-repo/main')),
+      expect.objectContaining(agentStatusDecorationUri('repository', '/new-repo')),
+    ]));
+  });
+
   it('decorates the closest collapsed ancestor for attention statuses', () => {
     const rollups = new AgentStatusDecorationRollups();
     rollups.setTerminals([

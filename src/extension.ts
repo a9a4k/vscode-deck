@@ -210,17 +210,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const terminalReconciler = new TerminalReconciler({
     model: terminalModel,
-    restore: ensureSnapshotRestored,
+    restoreTerminalSnapshot: ensureSnapshotRestored,
     terminalOrders,
-    locations: () => terminalLocations(
+    listTerminalLocations: () => terminalLocations(
       repositoryRegistry,
       repositoryCommonDirCache,
       worktreeListCache,
       pendingWorktreeRemovals,
     ),
-    updateDecorations: (terminals) => tree.updateTerminalDecorations(terminals),
-    wakeExitSweep: wakeAgentExitSweep,
-    fireTree: () => tree.refresh(),
+    updateTerminalDecorations: (terminals) => tree.updateTerminalDecorations(terminals),
+    wakeAgentExitSweep,
+    refreshTree: () => tree.refresh(),
   });
   agentExitSweep = tmuxAvailability.available
     ? new AgentExitSweep({
@@ -289,6 +289,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   terminalPoll = tmuxAvailability.available
     ? new TerminalPoll({
         listSessions: () => tmux.listSessions(),
+        reconcileObservation: (sessions) => terminalReconciler.reconcile(sessions),
         isFocused: () => vscode.window.state.focused,
         onDidChangeFocus: (listener) =>
           vscode.window.onDidChangeWindowState((state) => listener(state.focused)),
@@ -296,11 +297,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         resolveAgentName,
       })
     : undefined;
-  const terminalPollWatch = terminalPoll?.onChange((changedSessions) => {
+  const terminalLabelWatch = terminalPoll?.onDidChangeLabels((changedSessions) => {
     terminalEditorProvider.refreshTitles(changedSessions.map((session) => session.sessionName));
   });
-  const terminalReconcileWatch = terminalPoll?.onObservation((sessions) =>
-    terminalReconciler.reconcile(sessions));
   terminalPoll?.start();
   const openTerminal = new OpenTerminalCommand({
     terminalPanels: terminalEditorProvider,
@@ -454,8 +453,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentExitSweepWakeWatch,
     ...(agentExitSweep ? [agentExitSweep] : []),
     ...(terminalPoll ? [terminalPoll] : []),
-    ...(terminalPollWatch ? [terminalPollWatch] : []),
-    ...(terminalReconcileWatch ? [terminalReconcileWatch] : []),
+    ...(terminalLabelWatch ? [terminalLabelWatch] : []),
     deckDecorationProvider,
     deckDecorationWatch,
     disconnectedTabBadgeWatch,
@@ -773,8 +771,7 @@ async function revealActiveTerminalInTree(
 
   let terminalNode: RepositoryTreeNode | undefined;
   try {
-    // findTerminal walks getChildren (a git subprocess) and can fail on a hidden
-    // view; this should not surface as an unhandled rejection from a tab event.
+    // A tab event must not surface a lookup failure as an unhandled rejection.
     terminalNode = await tree.findTerminal(decoded.sessionName, decoded.worktreePath);
   } catch (error) {
     console.warn('Deck: finding the active terminal failed', error);

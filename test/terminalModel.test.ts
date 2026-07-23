@@ -18,13 +18,13 @@ describe('TerminalModel', () => {
     ]);
     expect(diff).toEqual([
       {
-        worktreePrefix: 'wt-_work_alpha__term-',
+        sessionPrefix: 'wt-_work_alpha__term-',
         added: model.get('/work/alpha'),
         removed: [],
         relabeled: [],
       },
       {
-        worktreePrefix: 'wt-_work_beta__term-',
+        sessionPrefix: 'wt-_work_beta__term-',
         added: model.get('/work/beta'),
         removed: [],
         relabeled: [],
@@ -59,6 +59,43 @@ describe('TerminalModel', () => {
     });
   });
 
+  it('reports an identity-only row change as a relabel', () => {
+    const model = new TerminalModel();
+    model.apply([
+      {
+        sessionName: 'wt-_work_alpha__term-1',
+        windowName: 'volatile',
+        paneTitle: '✳ same task',
+        agentName: 'claude',
+      },
+    ]);
+
+    const diff = model.apply([
+      {
+        sessionName: 'wt-_work_alpha__term-1',
+        windowName: 'volatile',
+        paneTitle: '✳ same task',
+        agentName: 'codex',
+      },
+    ]);
+
+    expect(diff[0].relabeled).toEqual([
+      expect.objectContaining({ agentName: 'codex' }),
+    ]);
+  });
+
+  it('ignores sessions outside the Terminal name grammar', () => {
+    const model = new TerminalModel();
+
+    expect(model.apply([
+      { sessionName: 'personal', windowName: 'zsh' },
+      { sessionName: 'wt-_work_alpha__term-0', windowName: 'zsh' },
+      { sessionName: 'wt-_work_alpha__term-01', windowName: 'zsh' },
+      { sessionName: '__deck_snapshot_anchor', windowName: 'anchor' },
+    ])).toEqual([]);
+    expect(model.find('personal')).toBeUndefined();
+  });
+
   it('reports additions, removals, and relabels per Worktree', () => {
     const model = new TerminalModel();
     model.apply([
@@ -75,7 +112,7 @@ describe('TerminalModel', () => {
 
     expect(diff).toEqual([
       {
-        worktreePrefix: 'wt-_work_alpha__term-',
+        sessionPrefix: 'wt-_work_alpha__term-',
         added: [
           expect.objectContaining({ sessionName: 'wt-_work_alpha__term-3' }),
         ],

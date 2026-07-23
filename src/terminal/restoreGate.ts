@@ -1,4 +1,5 @@
 import { TERMINAL_SNAPSHOT_ANCHOR_SESSION } from './terminalSnapshotRuntime';
+import { classifyObservation } from './observationTrust';
 
 export type DeckSocketState =
   | { kind: 'down' }
@@ -30,15 +31,14 @@ export function createRestoreCoordinator(deps: RestoreCoordinatorDeps): RestoreC
 
   const inspect = async (): Promise<DeckSocketState> => {
     const sessions = await deps.listSessions();
-    if (sessions.length === 0) return { kind: 'down' };
+    const trust = classifyObservation(sessions);
+    if (trust !== 'restored') return { kind: trust };
 
     const realSessions = new Set(
       sessions
         .map((session) => session.sessionName)
         .filter((sessionName) => sessionName !== TERMINAL_SNAPSHOT_ANCHOR_SESSION),
     );
-    if (realSessions.size === 0) return { kind: 'bare' };
-
     return { kind: 'restored', sessions: realSessions };
   };
 

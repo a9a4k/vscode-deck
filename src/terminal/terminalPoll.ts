@@ -10,6 +10,7 @@ export interface TerminalPollScheduler {
 
 interface TerminalPollOptions {
   listSessions(): Promise<TmuxSession[]>;
+  reconcileObservation(sessions: readonly TmuxSession[]): Promise<void> | void;
   isFocused(): boolean;
   onDidChangeFocus(listener: (focused: boolean) => void): Disposable;
   scheduler?: TerminalPollScheduler;
@@ -19,14 +20,12 @@ interface TerminalPollOptions {
 }
 
 type LabelChangeListener = (changedSessions: readonly TmuxSession[]) => void;
-type ObservationListener = (sessions: readonly TmuxSession[]) => Promise<void> | void;
 
 export class TerminalPoll implements Disposable {
   private readonly scheduler: TerminalPollScheduler;
   private readonly intervalMs: number;
   private readonly onError: (error: unknown) => void;
   private readonly labelListeners = new Set<LabelChangeListener>();
-  private readonly observationListeners = new Set<ObservationListener>();
   private readonly labels = new Map<string, string>();
   private focusSubscription: Disposable | undefined;
   private timer: unknown;
@@ -43,20 +42,11 @@ export class TerminalPoll implements Disposable {
     this.onError = options.onError ?? (() => undefined);
   }
 
-  onChange(listener: LabelChangeListener): Disposable {
+  onDidChangeLabels(listener: LabelChangeListener): Disposable {
     this.labelListeners.add(listener);
     return {
       dispose: () => {
         this.labelListeners.delete(listener);
-      },
-    };
-  }
-
-  onObservation(listener: ObservationListener): Disposable {
-    this.observationListeners.add(listener);
-    return {
-      dispose: () => {
-        this.observationListeners.delete(listener);
       },
     };
   }
@@ -73,9 +63,6 @@ export class TerminalPoll implements Disposable {
       });
     }
     if (!this.options.isFocused()) return;
-    // start() is also the re-arm path: refreshTree() calls it on every tree
-    // refresh, and a listener may call refreshTree() mid-tick. This guard
-    // keeps both cheap while a tick is in flight or scheduled.
     if (this.running || this.timer !== undefined) return;
     this.runAndSchedule();
   }
@@ -96,7 +83,6 @@ export class TerminalPoll implements Disposable {
     this.focusSubscription?.dispose();
     this.focusSubscription = undefined;
     this.labelListeners.clear();
-    this.observationListeners.clear();
   }
 
   private runAndSchedule(): void {
@@ -131,9 +117,7 @@ export class TerminalPoll implements Disposable {
         ? { ...session, agentName: identity.agentName }
         : session;
     });
-    if (this.observationListeners.size > 0) {
-      await Promise.all([...this.observationListeners].map((listener) => listener(observedSessions)));
-    }
+    await this.options.reconcileObservation(observedSessions);
     const nextLabels = new Map<string, string>();
     const changedSessions: TmuxSession[] = [];
 

@@ -45,9 +45,9 @@ const vscodeState = vi.hoisted(() => ({
     start: ReturnType<typeof vi.fn>;
     wake: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
-    onChange: ReturnType<typeof vi.fn>;
+    onDidChangeLabels: ReturnType<typeof vi.fn>;
     listener?: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void;
-    observationListener?: (
+    reconcileObservation: (
       sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
     ) => Promise<void> | void;
   }>,
@@ -465,25 +465,22 @@ vi.mock('../src/agent/agentStatusStore', () => ({
 vi.mock('../src/terminal/terminalPoll', () => ({
   TerminalPoll: class {
     listener?: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void;
-    observationListener?: (
+    reconcileObservation: (
       sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
-    ) => Promise<void> | void;
+    ) => Promise<void> | void = () => undefined;
     start = vi.fn();
     wake = vi.fn();
     dispose = vi.fn();
-    onChange = vi.fn((listener: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void) => {
+    onDidChangeLabels = vi.fn((listener: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void) => {
       this.listener = listener;
       return { dispose: vi.fn() };
     });
-    onObservation = vi.fn((listener: (
-      sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
-    ) => Promise<void> | void) => {
-      this.observationListener = listener;
-      return { dispose: vi.fn() };
-    });
-
     constructor(...args: unknown[]) {
       vscodeState.terminalPollArgs = args;
+      const options = args[0] as {
+        reconcileObservation: typeof this.reconcileObservation;
+      };
+      this.reconcileObservation = options.reconcileObservation;
       vscodeState.terminalPollInstances.push(this);
     }
   },
@@ -1087,7 +1084,7 @@ describe('activate', () => {
     tree.updateTerminalDecorations.mockClear();
     poll.start.mockClear();
 
-    await poll.observationListener?.([
+    await poll.reconcileObservation([
       { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
     ]);
 
@@ -1305,7 +1302,7 @@ describe('activate', () => {
       windowName: 'claude',
       paneTitle: '✳ fix issue 130',
     }];
-    await vscodeState.terminalPollInstances[0].observationListener?.(vscodeState.tmuxSessions);
+    await vscodeState.terminalPollInstances[0].reconcileObservation(vscodeState.tmuxSessions);
     vscodeState.agentStatusStoreEntries = [
       ['wt-_work_alpha-feature__term-1', {
         status: 'needsInput',
