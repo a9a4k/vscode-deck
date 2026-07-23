@@ -336,6 +336,10 @@ vi.mock('../src/tree/repositoryTree', () => ({
     findTerminalBySessionName = vi.fn();
     describeSession = vi.fn();
     refresh = vi.fn();
+    refreshRepository = vi.fn();
+    refreshRepositories = vi.fn();
+    refreshWorktree = vi.fn();
+    refreshWorkspaceFolders = vi.fn();
     updateTerminalDecorations = vi.fn();
     setCollapsed = vi.fn();
     isActiveRepositoryDecorationTarget = vi.fn();
@@ -1036,6 +1040,14 @@ describe('activate', () => {
 
     expect(vscodeState.watchGitCommonDir).toHaveBeenCalledOnce();
     expect(vscodeState.watchGitCommonDir).toHaveBeenCalledWith('/git/alpha', expect.any(Function));
+    const tree = vscodeState.repositoryTreeInstances[0];
+    tree.refresh.mockClear();
+    const commonDirChanged = vscodeState.watchGitCommonDir.mock.calls[0]?.[1];
+    if (!commonDirChanged) throw new Error('missing common-dir change listener');
+    commonDirChanged();
+
+    expect(tree.refreshRepositories).toHaveBeenCalledWith('/git/alpha');
+    expect(tree.refresh).not.toHaveBeenCalled();
 
     vi.mocked(resolveCommonDirSafe).mockImplementation(async (_cache, repositoryPath) =>
       repositoryPath === '/work/alpha-main' ? '/git/alpha' : '/git/beta',
@@ -1044,8 +1056,10 @@ describe('activate', () => {
       ([command]) => command === 'deck.refresh',
     );
     if (!refreshRegistration) throw new Error('missing deck.refresh registration');
+    tree.refresh.mockClear();
     refreshRegistration[1]();
 
+    expect(tree.refresh).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(vscodeState.watchGitCommonDir).toHaveBeenCalledTimes(2));
     expect(vscodeState.watchGitCommonDir).toHaveBeenLastCalledWith('/git/beta', expect.any(Function));
     expect(vscodeState.externalWatchDisposables[0].dispose).not.toHaveBeenCalled();
@@ -1076,11 +1090,26 @@ describe('activate', () => {
   });
 
   it('wires TerminalPoll observations through Terminal reconciliation', async () => {
-    const context = createContext();
+    const context = createContext(['/work/alpha-main']);
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
     const poll = vscodeState.terminalPollInstances[0];
+    const worktreeListCache = vscodeState.repositoryTreeArgs?.[3] as {
+      get: ReturnType<typeof vi.fn>;
+    };
+    const repositoryCommonDirCache = vscodeState.repositoryTreeArgs?.[4] as {
+      get: ReturnType<typeof vi.fn>;
+    };
+    worktreeListCache.get.mockReturnValue([{
+      path: '/work/alpha-main',
+      head: 'a',
+      bare: false,
+      detached: false,
+      branch: 'main',
+    }]);
+    repositoryCommonDirCache.get.mockReturnValue('/git/alpha');
     tree.refresh.mockClear();
+    tree.refreshWorktree.mockClear();
     tree.updateTerminalDecorations.mockClear();
     poll.start.mockClear();
 
@@ -1088,7 +1117,8 @@ describe('activate', () => {
       { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
     ]);
 
-    expect(tree.refresh).toHaveBeenCalledOnce();
+    expect(tree.refresh).not.toHaveBeenCalled();
+    expect(tree.refreshWorktree).toHaveBeenCalledWith('/work/alpha-main');
     expect(tree.updateTerminalDecorations).toHaveBeenCalledOnce();
     expect(poll.start).not.toHaveBeenCalled();
   });
@@ -1116,6 +1146,22 @@ describe('activate', () => {
 
     expect(vscodeState.repositoryTreeArgs?.[7]).toBeInstanceOf(Set);
     expect(vscodeState.removeWorktreeArgs?.[6]).toBe(vscodeState.repositoryTreeArgs?.[7]);
+  });
+
+  it('routes Worktree command refreshes to the cached Repository', async () => {
+    const context = createContext();
+    await activate(context as never);
+    const tree = vscodeState.repositoryTreeInstances[0];
+    const refreshAfterAdd = vscodeState.addWorktreeArgs?.[2] as
+      | ((repositoryPath: string) => void)
+      | undefined;
+    if (!refreshAfterAdd) throw new Error('missing AddWorktree refresh callback');
+    tree.refresh.mockClear();
+
+    refreshAfterAdd('/work/alpha-main');
+
+    expect(tree.refreshRepository).toHaveBeenCalledWith('/work/alpha-main');
+    expect(tree.refresh).not.toHaveBeenCalled();
   });
 
   it('consumes pending intents and registers no VS Code terminal listeners', async () => {
@@ -1264,7 +1310,7 @@ describe('activate', () => {
     expect(vscodeState.agentSetupPromptUninstall).toHaveBeenCalledOnce();
   });
 
-  it('registers deck.openTerminal and refreshes on workspace/view visibility events', async () => {
+  it('scopes workspace-folder changes while keeping visibility regain as a root refresh', async () => {
     const context = createContext();
 
     await activate(context as never);
@@ -1281,6 +1327,20 @@ describe('activate', () => {
     expect(vscodeState.createTreeView.mock.results[0].value.onDidChangeVisibility).toHaveBeenCalledWith(
       expect.any(Function),
     );
+
+    const tree = vscodeState.repositoryTreeInstances[0];
+    tree.refresh.mockClear();
+    const workspaceFoldersChanged = vscodeState.onDidChangeWorkspaceFolders.mock.calls[0]?.[0];
+    const visibilityChanged =
+      vscodeState.createTreeView.mock.results[0].value.onDidChangeVisibility.mock.calls[0]?.[0];
+    if (!workspaceFoldersChanged || !visibilityChanged) throw new Error('missing tree listeners');
+
+    workspaceFoldersChanged();
+    expect(tree.refreshWorkspaceFolders).toHaveBeenCalledOnce();
+    expect(tree.refresh).not.toHaveBeenCalled();
+
+    visibilityChanged({ visible: true });
+    expect(tree.refresh).toHaveBeenCalledOnce();
   });
 
   it('opens and reveals a Terminal from an agent status notification action', async () => {

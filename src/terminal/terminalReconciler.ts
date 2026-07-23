@@ -3,6 +3,7 @@ import { pruneOrder } from '../tree/pruneOrder';
 import { classifyObservation } from './observationTrust';
 import type { TerminalModel } from './terminalModel';
 import type { TmuxSession } from './tmuxCli';
+import { terminalSessionPrefix } from './tmuxSafe';
 
 export interface TerminalLocation {
   repositoryPath: string;
@@ -21,7 +22,7 @@ interface TerminalReconcilerOptions {
   listTerminalLocations(): readonly TerminalLocation[];
   updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void;
   wakeAgentExitSweep(): void;
-  refreshTree(): void;
+  refreshWorktree(worktreePath: string): void;
 }
 
 export class TerminalReconciler {
@@ -42,7 +43,13 @@ export class TerminalReconciler {
     if (diff.some((worktree) => worktree.removed.length > 0)) {
       this.options.wakeAgentExitSweep();
     }
-    if (diff.length > 0) this.options.refreshTree();
+    const worktreePaths = new Map(
+      locations.map((location) => [terminalSessionPrefix(location.worktreePath), location.worktreePath]),
+    );
+    for (const worktree of diff) {
+      const worktreePath = worktreePaths.get(worktree.sessionPrefix);
+      if (worktreePath !== undefined) this.options.refreshWorktree(worktreePath);
+    }
   }
 
   private async pruneTerminalOrders(locations: readonly TerminalLocation[]): Promise<void> {

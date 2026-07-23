@@ -132,7 +132,7 @@ describe('AddRepositoryCommand', () => {
 
     expect(registry.append).not.toHaveBeenCalled();
     expect(activeWorktrees.set).toHaveBeenCalledWith('/git/repo', '/repo/main');
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
     expect(reveal).toHaveBeenCalledWith('/repo/main');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       'Added repository main.',

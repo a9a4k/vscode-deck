@@ -59,7 +59,6 @@ export class AddRepositoryCommand {
     // no-op, but the explicit menu command should never feel like a dead click.
     if (result.kind === 'duplicate') {
       await this.activeWorktrees.set(result.commonDir, seedPath);
-      this.refresh();
       await this.reveal(seedPath);
     }
 

@@ -225,7 +225,7 @@ describe('DeckTreeDragAndDropController', () => {
       '/repo/a-main',
       '/repo/a-fix',
     ]);
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith({ repositoryPath: '/repo/a' });
   });
 
   it('reorders Worktrees from the reconciled stored order', async () => {
@@ -272,7 +272,7 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
     ]);
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
   });
 
   it('reorders an internal Terminal drag even when VS Code also adds a resourceUri uri-list', async () => {

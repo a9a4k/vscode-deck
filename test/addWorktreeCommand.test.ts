@@ -145,7 +145,7 @@ describe('AddWorktreeCommand', () => {
 
     await command.run({ repositoryPath: '/work/myrepo' });
 
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith('/work/myrepo');
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       'Created worktree feature/foo.',
       'Switch',

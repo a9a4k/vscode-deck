@@ -40,20 +40,23 @@ type DragPayload =
     };
 
 interface RepositoryNodeLike {
-  contextValue: 'deck.repository';
+  contextValue?: string;
   repositoryPath: string;
+  worktree?: never;
+  terminal?: never;
 }
 
 interface WorktreeNodeLike {
-  contextValue: string;
+  contextValue?: string;
   repositoryPath: string;
   worktree: {
     path: string;
   };
+  terminal?: never;
 }
 
 interface TerminalNodeLike {
-  contextValue: string;
+  contextValue?: string;
   repositoryPath: string;
   worktreePath: string;
   terminal: {
@@ -61,11 +64,28 @@ interface TerminalNodeLike {
   };
 }
 
+interface UnhandledNodeLike {
+  contextValue?: string;
+  worktreeNode: unknown;
+  repositoryPath?: never;
+  worktree?: never;
+  terminal?: never;
+}
+
 interface TerminalSessionLister {
   listSessions(prefix?: string): Promise<TmuxSession[]>;
 }
 
-type DeckNodeLike = RepositoryNodeLike | WorktreeNodeLike | TerminalNodeLike;
+type DeckNodeLike =
+  | RepositoryNodeLike
+  | WorktreeNodeLike
+  | TerminalNodeLike
+  | UnhandledNodeLike;
+
+interface TreeRefreshScope {
+  repositoryPath?: string;
+  worktreePath?: string;
+}
 
 export class DeckTreeDragAndDropController
   implements vscode.TreeDragAndDropController<DeckNodeLike>
@@ -74,7 +94,7 @@ export class DeckTreeDragAndDropController
   readonly dropMimeTypes = [DECK_TREE_MIME, URI_LIST_MIME];
 
   constructor(
-    private readonly refresh: () => void,
+    private readonly refresh: (scope?: TreeRefreshScope) => void,
     private readonly repositoryRegistry: Pick<RepositoryRegistryStore, 'list' | 'append' | 'replace'>,
     private readonly worktreeOrders: WorktreeOrderStore,
     private readonly terminalOrders?: Pick<TerminalOrderStore, 'get' | 'set'>,
@@ -202,7 +222,7 @@ export class DeckTreeDragAndDropController
     if (sameOrder(paths, reordered)) return;
 
     await this.worktreeOrders.set(commonDir, reordered);
-    this.refresh();
+    this.refresh({ repositoryPath: payload.repositoryPath });
   }
 
   private async dropTerminal(
@@ -229,7 +249,7 @@ export class DeckTreeDragAndDropController
     if (sameOrder(sessionNames, reordered)) return;
 
     await this.terminalOrders.set(payload.worktreePath, reordered);
-    this.refresh();
+    this.refresh({ worktreePath: payload.worktreePath });
   }
 }
 

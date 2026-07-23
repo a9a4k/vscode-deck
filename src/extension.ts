@@ -220,7 +220,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     updateTerminalDecorations: (terminals) => tree.updateTerminalDecorations(terminals),
     wakeAgentExitSweep,
-    refreshTree: () => tree.refresh(),
+    refreshWorktree: (worktreePath) => tree.refreshWorktree(worktreePath),
   });
   agentExitSweep = tmuxAvailability.available
     ? new AgentExitSweep({
@@ -233,11 +233,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onError: (error) => console.warn('Deck: agent exit sweep failed', error),
       })
     : undefined;
-  const externalGitWatch = new ExternalGitWatch(watchGitCommonDir, refreshTree);
+  const externalGitWatch = new ExternalGitWatch(
+    watchGitCommonDir,
+    (commonDir) => tree.refreshRepositories(commonDir),
+  );
   let externalGitSyncVersion = 0;
 
-  function refreshTree(): void {
-    tree.refresh();
+  function refreshTree(scope?: { repositoryPath?: string; worktreePath?: string }): void {
+    if (scope?.worktreePath !== undefined) {
+      tree.refreshWorktree(scope.worktreePath);
+    } else if (scope?.repositoryPath !== undefined) {
+      tree.refreshRepository(scope.repositoryPath);
+    } else {
+      tree.refresh();
+    }
     terminalPoll?.start();
     syncExternalGitWatches();
   }
@@ -317,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const addWorktree = new AddWorktreeCommand(
     switcher,
     detachedOpener,
-    refreshTree,
+    (repositoryPath) => refreshTree({ repositoryPath }),
     worktreeRoots,
     worktreeListCache,
     repositoryCommonDirCache,
@@ -351,7 +360,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const removeWorktree = new WorktreeRemovalCommand(
     activeWorktrees,
-    refreshTree,
+    (repositoryPath) => refreshTree({ repositoryPath }),
     branchDeletionPreferences,
     worktreeListCache,
     repositoryCommonDirCache,
@@ -500,9 +509,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     vscode.commands.registerCommand('deck.switchWorktree', async (node: { worktree: { path: string } }) => {
       await switcher.switchTo(node.worktree.path);
-      refreshTree();
+      tree.refreshWorkspaceFolders();
     }),
-    vscode.workspace.onDidChangeWorkspaceFolders(refreshTree),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refreshWorkspaceFolders()),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (!event.affectsConfiguration('deck.tmux')) return;
       const tmuxOptions = deckTmuxOptionsFromSettings();

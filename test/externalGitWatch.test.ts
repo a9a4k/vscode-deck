@@ -45,4 +45,21 @@ describe('ExternalGitWatch', () => {
 
     expect(watchCommonDir).not.toHaveBeenCalled();
   });
+
+  it('identifies the changed common dir', () => {
+    let change: (() => void) | undefined;
+    const onChange = vi.fn();
+    const externalGitWatch = new ExternalGitWatch(
+      vi.fn((_commonDir, listener) => {
+        change = listener;
+        return { dispose: vi.fn() };
+      }),
+      onChange,
+    );
+    externalGitWatch.sync(new Set(['/git/alpha']));
+
+    change?.();
+
+    expect(onChange).toHaveBeenCalledWith('/git/alpha');
+  });
 });

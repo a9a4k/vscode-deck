@@ -94,7 +94,7 @@ describe('WorktreeRemovalCommand', () => {
     });
     expect(deleteBranch).not.toHaveBeenCalled();
     expect(activeWorktrees.clear).not.toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledWith('/repo/main');
   });
 
   it('kills matching Deck terminal sessions before removing the worktree', async () => {

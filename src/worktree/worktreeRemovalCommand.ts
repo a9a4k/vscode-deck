@@ -51,7 +51,7 @@ interface RemovalActions {
 export class WorktreeRemovalCommand {
   constructor(
     private readonly activeWorktrees: ActiveWorktreeStoreLike,
-    private readonly refresh: () => void,
+    private readonly refresh: (repositoryPath: string) => void,
     private readonly branchDeletionPreferences: BranchDeletionPreferenceStoreLike = {
       get: () => false,
       set: async () => undefined,
@@ -123,7 +123,7 @@ export class WorktreeRemovalCommand {
     }
     this.pendingWorktreeRemovals.add(node.worktree.path);
     await this.worktreeListCache.remove(commonDir, node.worktree.path);
-    this.refresh();
+    this.refresh(node.repositoryPath);
 
     void vscode.window.withProgress(
       {
@@ -156,7 +156,7 @@ export class WorktreeRemovalCommand {
     } catch (error) {
       this.pendingWorktreeRemovals.delete(node.worktree.path);
       await this.worktreeListCache.add(commonDir, node.worktree);
-      this.refresh();
+      this.refresh(node.repositoryPath);
       vscode.window.showErrorMessage(`Cannot remove worktree: ${errorMessage(error)}`);
       return;
     }

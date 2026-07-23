@@ -21,6 +21,7 @@ import {
 } from '../agent/agentStatusDecorations';
 import { excludeBare } from './excludeBare';
 import { excludePending } from './excludePending';
+import { NodeRegistry } from './nodeRegistry';
 import { reconcileWorktreeOrder } from './reconcileWorktreeOrder';
 import { reconcileTerminalOrder } from './reconcileTerminalOrder';
 import { pruneOrder } from './pruneOrder';
@@ -65,30 +66,46 @@ class RepositoryNode extends vscode.TreeItem {
     public readonly repositoryPath: string,
     isActiveRepository: boolean,
   ) {
-    const item = describeRepositoryTreeItem(repositoryPath, isActiveRepository);
-    super(item.label, vscode.TreeItemCollapsibleState.Expanded);
+    super('', vscode.TreeItemCollapsibleState.Expanded);
     this.id = `repository::${repositoryPath}`;
     this.contextValue = 'deck.repository';
-    this.description = item.description;
     this.tooltip = repositoryPath;
     this.resourceUri = toDecorationUri('repository', repositoryPath);
+    this.update(isActiveRepository);
+  }
+
+  update(isActiveRepository: boolean): void {
+    const item = describeRepositoryTreeItem(this.repositoryPath, isActiveRepository);
+    this.label = item.label;
+    this.description = item.description;
   }
 }
 
 class WorktreeNode extends vscode.TreeItem {
   constructor(
     public readonly repositoryPath: string,
-    public readonly worktree: Worktree,
+    public worktree: Worktree,
     isActiveWorktree: boolean,
-    public readonly mainWorktreePath: string | undefined,
+    public mainWorktreePath: string | undefined,
   ) {
-    const item = describeWorktreeTreeItem(worktree, isActiveWorktree, mainWorktreePath);
-    super(item.label, vscode.TreeItemCollapsibleState.Expanded);
+    super('', vscode.TreeItemCollapsibleState.Expanded);
     this.id = `worktree::${worktree.path}`;
+    this.resourceUri = toDecorationUri('worktree', worktree.path);
+    this.update(worktree, isActiveWorktree, mainWorktreePath);
+  }
+
+  update(
+    worktree: Worktree,
+    isActiveWorktree: boolean,
+    mainWorktreePath: string | undefined,
+  ): void {
+    const item = describeWorktreeTreeItem(worktree, isActiveWorktree, mainWorktreePath);
+    this.worktree = worktree;
+    this.mainWorktreePath = mainWorktreePath;
+    this.label = item.label;
     this.contextValue = item.contextValue;
     this.description = item.description;
     this.tooltip = item.tooltip;
-    this.resourceUri = toDecorationUri('worktree', worktree.path);
   }
 }
 
@@ -173,6 +190,8 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private readonly repositoryCommonDirs = new Map<string, string | null>();
   private readonly resolvingRepositoryPaths = new Set<string>();
   private readonly refreshingWorktrees = new Set<string>();
+  private readonly renderedRepositories = new NodeRegistry<RepositoryNode>();
+  private readonly renderedWorktrees = new NodeRegistry<WorktreeNode>();
   private readonly renderedTerminals = new Map<string, TerminalNode>();
 
   constructor(
@@ -202,8 +221,47 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
 
   refresh(): void {
     this.fireDeckDecorations(this.updateActiveWorktreeDecorationTarget());
-    this.resolveActiveRepository();
+    this.resolveActiveRepository(false);
     this._onDidChangeTreeData.fire(undefined);
+    this.evictRemovedRepositories();
+  }
+
+  refreshWorktree(worktreePath: string): void {
+    const node = this.renderedWorktrees.get(worktreePath);
+    if (node !== undefined) this._onDidChangeTreeData.fire(node);
+  }
+
+  refreshRepository(repositoryPath: string): void {
+    if (this.renderedRepositories.get(repositoryPath) === undefined) return;
+    const node = this.toRepositoryNode(repositoryPath);
+    this._onDidChangeTreeData.fire(node);
+    this.evictRemovedWorktrees(repositoryPath);
+  }
+
+  refreshRepositories(commonDir: string): void {
+    for (const repositoryPath of this.repositoryRegistry.list()) {
+      const repositoryCommonDir =
+        this.repositoryCommonDirCache.get(repositoryPath)
+        ?? this.repositoryCommonDirs.get(repositoryPath);
+      if (repositoryCommonDir === commonDir) this.refreshRepository(repositoryPath);
+    }
+  }
+
+  refreshWorkspaceFolders(): void {
+    const previousWorktreePath = this.activeWorktreePath;
+    this.fireDeckDecorations(this.updateActiveWorktreeDecorationTarget());
+    const currentWorktreePath = this.activeWorktreePath;
+    for (const worktreePath of uniqueDefined([previousWorktreePath, currentWorktreePath])) {
+      const existing = this.findRenderedWorktree(worktreePath);
+      if (existing === undefined) continue;
+      const node = this.toWorktreeNode(
+        existing.repositoryPath,
+        existing.worktree,
+        existing.mainWorktreePath,
+      );
+      this._onDidChangeTreeData.fire(node);
+    }
+    this.resolveActiveRepository();
   }
 
   updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void {
@@ -258,16 +316,13 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
 
   getParent(element: RepositoryTreeNode): RepositoryTreeNode | undefined {
     if (element instanceof WorktreeNode) {
-      return new RepositoryNode(
-        element.repositoryPath,
-        this.isActiveRepository(element.repositoryPath),
-      );
+      return this.toRepositoryNode(element.repositoryPath);
     }
     if (element instanceof TerminalNode) {
-      return this.toParentWorktreeNode(element.worktreeNode);
+      return element.worktreeNode;
     }
     if (element instanceof TmuxUnavailableNode) {
-      return this.toParentWorktreeNode(element.worktreeNode);
+      return element.worktreeNode;
     }
     return undefined;
   }
@@ -277,10 +332,10 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       // Sync return: any `await` here would yield to the event loop and let
       // viewsWelcome ("No repositories yet") flash on every tree.refresh().
       const repositories = this.repositoryRegistry.list();
-      this.resolveActiveRepository();
+      this.resolveActiveRepository(false);
       const nodes = repositories.map((p) => {
         this.resolveRepositoryCommonDir(p);
-        return new RepositoryNode(p, this.isActiveRepository(p));
+        return this.toRepositoryNode(p);
       });
       return nodes;
     }
@@ -374,13 +429,15 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     );
   }
 
-  private toParentWorktreeNode(worktreeNode: WorktreeNode): WorktreeNode {
-    return new WorktreeNode(
-      worktreeNode.repositoryPath,
-      worktreeNode.worktree,
-      this.isCurrentWorktree(worktreeNode.worktree.path),
-      worktreeNode.mainWorktreePath,
-    );
+  private toRepositoryNode(repositoryPath: string): RepositoryNode {
+    const isActiveRepository = this.isActiveRepository(repositoryPath);
+    const item = describeRepositoryTreeItem(repositoryPath, isActiveRepository);
+    return this.renderedRepositories.upsert(
+      repositoryPath,
+      JSON.stringify([item.label, item.description]),
+      () => new RepositoryNode(repositoryPath, isActiveRepository),
+      (node) => node.update(isActiveRepository),
+    ).node;
   }
 
   private getWorktreeChildren(element: RepositoryNode): RepositoryTreeNode[] | Promise<RepositoryTreeNode[]> {
@@ -405,15 +462,18 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return this.loadWorktreeChildren(element.repositoryPath, commonDir);
   }
 
-  private resolveActiveRepository(): void {
+  private resolveActiveRepository(fire = true): void {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
-      this.setActiveRepositoryCommonDir(null);
+      this.setActiveRepositoryCommonDir(null, fire);
       return;
     }
 
     const cached = this.repositoryCommonDirCache.get(folder.uri.fsPath);
-    if (cached !== undefined) this.setActiveRepositoryCommonDir(cached, false);
+    if (cached !== undefined) {
+      this.setActiveRepositoryCommonDir(cached, fire);
+      return;
+    }
     if (this.resolvingActiveRepository) return;
 
     this.resolvingActiveRepository = true;
@@ -445,12 +505,12 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       .then(async (commonDir) => {
         await this.repositoryCommonDirCache.set(repositoryPath, commonDir);
         this.repositoryCommonDirs.set(repositoryPath, commonDir);
-        if (previous !== commonDir) this._onDidChangeTreeData.fire(undefined);
+        if (previous !== commonDir) this.refreshRepository(repositoryPath);
       })
       .catch(() => {
         if (previous === undefined) {
           this.repositoryCommonDirs.set(repositoryPath, null);
-          this._onDidChangeTreeData.fire(undefined);
+          this.refreshRepository(repositoryPath);
         }
       })
       .finally(() => {
@@ -460,9 +520,20 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
 
   private setActiveRepositoryCommonDir(commonDir: string | null, fire = true): void {
     if (this.activeRepositoryCommonDir === commonDir) return;
+    const previous = this.activeRepositoryCommonDir;
     this.activeRepositoryCommonDir = commonDir;
     this.fireDeckDecorations(this.activeRepositoryDecorationInvalidationUris());
-    if (fire) this._onDidChangeTreeData.fire(undefined);
+    if (!fire) return;
+
+    for (const affectedCommonDir of uniqueDefined([previous, commonDir])) {
+      for (const repositoryPath of this.repositoryRegistry.list()) {
+        if (this.repositoryCommonDirs.get(repositoryPath) !== affectedCommonDir) continue;
+        const node = this.renderedRepositories.get(repositoryPath);
+        if (node === undefined) continue;
+        this.toRepositoryNode(repositoryPath);
+        this._onDidChangeTreeData.fire(node);
+      }
+    }
   }
 
   private updateActiveWorktreeDecorationTarget(): AgentStatusDecorationResourceUri[] {
@@ -484,6 +555,48 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private fireDeckDecorations(uris: readonly AgentStatusDecorationResourceUri[]): void {
     if (uris.length === 0) return;
     this._onDidChangeDeckDecorations.fire([...uris]);
+  }
+
+  private findRenderedWorktree(worktreePath: string): WorktreeNode | undefined {
+    const exact = this.renderedWorktrees.get(worktreePath);
+    if (exact !== undefined) return exact;
+    return [...this.renderedWorktrees.values()].find(
+      (node) => path.resolve(node.worktree.path) === path.resolve(worktreePath),
+    );
+  }
+
+  private evictRemovedRepositories(): void {
+    const registered = new Set(this.repositoryRegistry.list());
+    for (const repositoryPath of [...this.renderedRepositories.keys()]) {
+      if (registered.has(repositoryPath)) continue;
+      this.renderedRepositories.evict(repositoryPath, () => undefined);
+      for (const worktree of [...this.renderedWorktrees.values()]) {
+        if (worktree.repositoryPath !== repositoryPath) continue;
+        this.evictWorktree(worktree.worktree.path);
+      }
+    }
+  }
+
+  private evictRemovedWorktrees(repositoryPath: string): void {
+    const commonDir =
+      this.repositoryCommonDirCache.get(repositoryPath)
+      ?? this.repositoryCommonDirs.get(repositoryPath)
+      ?? undefined;
+    if (commonDir === undefined) return;
+    const cached = this.worktreeListCache.get(commonDir);
+    if (cached === undefined) return;
+    const live = new Set(this.visibleWorktrees(cached).map((worktree) => worktree.path));
+    for (const worktree of [...this.renderedWorktrees.values()]) {
+      if (worktree.repositoryPath !== repositoryPath || live.has(worktree.worktree.path)) continue;
+      this.evictWorktree(worktree.worktree.path);
+    }
+  }
+
+  private evictWorktree(worktreePath: string): void {
+    this.renderedWorktrees.evict(worktreePath, () => undefined);
+    for (const [sessionName, terminal] of this.renderedTerminals) {
+      if (terminal.worktreePath === worktreePath) this.renderedTerminals.delete(sessionName);
+    }
   }
 
   private async loadWorktreeChildren(
@@ -548,12 +661,27 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
         await this.pruneWorktreeOrder(commonDir, worktrees);
         if (sameWorktrees(previous, visibleWorktrees)) return;
         await this.worktreeListCache.set(commonDir, visibleWorktrees);
-        this._onDidChangeTreeData.fire(undefined);
+        this.refreshRepository(repositoryPath);
       })
       .catch(() => undefined)
       .finally(() => {
         this.refreshingWorktrees.delete(commonDir);
       });
+  }
+
+  private toWorktreeNode(
+    repositoryPath: string,
+    worktree: Worktree,
+    mainWorktreePath: string | undefined,
+  ): WorktreeNode {
+    const isActiveWorktree = this.isCurrentWorktree(worktree.path);
+    const item = describeWorktreeTreeItem(worktree, isActiveWorktree, mainWorktreePath);
+    return this.renderedWorktrees.upsert(
+      worktree.path,
+      JSON.stringify([item.label, item.description, item.tooltip, item.contextValue]),
+      () => new WorktreeNode(repositoryPath, worktree, isActiveWorktree, mainWorktreePath),
+      (node) => node.update(worktree, isActiveWorktree, mainWorktreePath),
+    ).node;
   }
 
   private toWorktreeNodes(
@@ -568,15 +696,12 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       ),
     );
     const mainWorktreePath = gitWorktrees.find((w) => !w.bare)?.path;
-    const nodes = worktrees.map((w) => {
-      return new WorktreeNode(
+    return worktrees.map((worktree) =>
+      this.toWorktreeNode(
         repositoryPath,
-        w,
-        this.isCurrentWorktree(w.path),
+        worktree,
         mainWorktreePath,
-      );
-    });
-    return nodes;
+      ));
   }
 
   private async pruneWorktreeOrder(commonDir: string | undefined, gitWorktrees: readonly Worktree[]): Promise<void> {
@@ -611,6 +736,10 @@ function toDecorationUri(
   id: string,
 ): vscode.Uri {
   return vscode.Uri.from(agentStatusDecorationResourceUri(kind, id));
+}
+
+function uniqueDefined<T>(values: readonly (T | null | undefined)[]): T[] {
+  return [...new Set(values.filter((value): value is T => value !== null && value !== undefined))];
 }
 
 function sameWorktrees(left: readonly Worktree[], right: readonly Worktree[]): boolean {

@@ -10,7 +10,7 @@ export class ExternalGitWatch implements Disposable {
 
   constructor(
     private readonly watchCommonDir: WatchCommonDir,
-    private readonly onChange: () => void = () => undefined,
+    private readonly onChange: (commonDir: string) => void = () => undefined,
   ) {}
 
   sync(commonDirs: ReadonlySet<string>): void {
@@ -24,7 +24,10 @@ export class ExternalGitWatch implements Disposable {
 
     for (const commonDir of commonDirs) {
       if (this.watches.has(commonDir)) continue;
-      this.watches.set(commonDir, this.watchCommonDir(commonDir, this.onChange));
+      this.watches.set(
+        commonDir,
+        this.watchCommonDir(commonDir, () => this.onChange(commonDir)),
+      );
     }
   }
 

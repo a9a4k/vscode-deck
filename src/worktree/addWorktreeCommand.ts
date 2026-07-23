@@ -64,7 +64,7 @@ export class AddWorktreeCommand {
   constructor(
     private readonly switcher: SwitcherLike,
     private readonly detachedOpener: DetachedOpenerLike,
-    private readonly refresh: () => void,
+    private readonly refresh: (repositoryPath: string) => void,
     private readonly worktreeRoots: WorktreeRootStoreLike = {
       get: () => undefined,
       set: async () => undefined,
@@ -115,7 +115,7 @@ export class AddWorktreeCommand {
     };
     if (createdAt !== undefined) worktree.createdAt = createdAt;
     await this.worktreeListCache.add(commonDir, worktree);
-    this.refresh();
+    this.refresh(node.repositoryPath);
     try {
       await this.worktreeCreateLaunchers.run({ worktree: { path: request.path } });
     } catch (error) {

@@ -220,6 +220,55 @@ describe('RepositoryTreeProvider', () => {
     ]);
   });
 
+  it('fires only the old and new active Repository and Worktree rows when the workspace folder changes', () => {
+    const provider = new RepositoryTreeProvider(
+      registry(),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn((commonDir: string) =>
+          commonDir === '/git/alpha'
+            ? [alphaMainWorktree, alphaFeatureWorktree]
+            : [{
+                path: '/work/beta-main',
+                head: 'b',
+                bare: false,
+                detached: false,
+                branch: 'main',
+              }]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn((repositoryPath: string) =>
+          repositoryPath.startsWith('/work/alpha') ? '/git/alpha' : '/git/beta'),
+        set: vi.fn(async () => undefined),
+      } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const alphaWorktrees = provider.getChildren(repositories[0]);
+    const betaWorktrees = provider.getChildren(repositories[1]);
+    if (!Array.isArray(alphaWorktrees) || !Array.isArray(betaWorktrees)) {
+      throw new Error('expected sync cached worktrees');
+    }
+    vscodeState.emitters[0].fire.mockClear();
+
+    vscodeState.workspaceFolders = [{ uri: { fsPath: '/work/alpha-main' } }];
+    provider.refreshWorkspaceFolders();
+
+    expect(vscodeState.emitters[0].fire.mock.calls).toEqual([
+      [betaWorktrees[0]],
+      [alphaWorktrees[0]],
+      [repositories[1]],
+      [repositories[0]],
+    ]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
+    expect(betaWorktrees[0].description).toBe('');
+    expect(alphaWorktrees[0].description).toBe('active');
+    expect(repositories[1].description).toBe('');
+    expect(repositories[0].description).toBe('active');
+  });
+
   it('renders worktrees in stored order with unknown worktrees appended', async () => {
     const activeWorktrees = {
       get: vi.fn(),
@@ -386,6 +435,53 @@ describe('RepositoryTreeProvider', () => {
         branch: 'feature',
       },
     ]);
+  });
+
+  it('fires the cached Repository when its background Worktree list changes', async () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    provider.getChildren(repositories[0]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledOnce();
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(repositories[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
+  });
+
+  it('fires only cached Repositories for a changed common dir', () => {
+    const provider = new RepositoryTreeProvider(
+      registry(),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn((repositoryPath: string) =>
+          repositoryPath.startsWith('/work/alpha') ? '/git/alpha' : '/git/beta'),
+        set: vi.fn(async () => undefined),
+      } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    provider.refreshRepositories('/git/alpha');
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledOnce();
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(repositories[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(repositories[1]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
   });
 
   it('keeps warm cached worktrees when the background refresh has no logical diff', async () => {
@@ -679,6 +775,43 @@ describe('RepositoryTreeProvider', () => {
       '/work/beta-main',
     ]);
     expect(vscode.workspace.getConfiguration).not.toHaveBeenCalled();
+  });
+
+  it('fires the cached Repository when its common-dir resolution changes', async () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(repositories[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
+  });
+
+  it('updates and fires the cached Repository when active-repository resolution completes', async () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/beta-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(repositories[0].description).toBe('active');
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(repositories[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
   });
 
   it('renders existing Worktree terminals expanded without the add row when tmux is available', async () => {
@@ -1021,7 +1154,7 @@ describe('RepositoryTreeProvider', () => {
     ).toBe('needsInput');
   });
 
-  it('returns parent rows for Worktree and Terminal rows', async () => {
+  it('returns the registered parent instances for Worktree and Terminal rows', async () => {
     const model = observedModel([
       { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
     ]);
@@ -1041,15 +1174,156 @@ describe('RepositoryTreeProvider', () => {
     const terminals = await provider.getChildren(worktrees[0]);
     if (!Array.isArray(terminals)) throw new Error('expected terminal children');
 
-    expect(provider.getParent(worktrees[0])).toMatchObject({
-      id: 'repository::/work/alpha-main',
-      repositoryPath: '/work/alpha-main',
-    });
-    expect(provider.getParent(terminals[0])).toMatchObject({
-      id: 'worktree::/work/alpha-main',
-      repositoryPath: '/work/alpha-main',
-      worktree: { path: '/work/alpha-main' },
-    });
+    expect(provider.getParent(worktrees[0])).toBe(repositories[0]);
+    expect(provider.getParent(terminals[0])).toBe(worktrees[0]);
+  });
+
+  it('keeps Repository and Worktree node identity across child reads', () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+    );
+
+    const firstRepositories = provider.getChildren();
+    const secondRepositories = provider.getChildren();
+    if (!Array.isArray(firstRepositories) || !Array.isArray(secondRepositories)) {
+      throw new Error('expected sync repository roots');
+    }
+    const firstWorktrees = provider.getChildren(firstRepositories[0]);
+    const secondWorktrees = provider.getChildren(secondRepositories[0]);
+    if (!Array.isArray(firstWorktrees) || !Array.isArray(secondWorktrees)) {
+      throw new Error('expected sync cached worktrees');
+    }
+
+    expect(secondRepositories[0]).toBe(firstRepositories[0]);
+    expect(secondWorktrees[0]).toBe(firstWorktrees[0]);
+    expect(secondWorktrees[1]).toBe(firstWorktrees[1]);
+  });
+
+  it('evicts a removed Repository after firing the root', () => {
+    let repositoryPaths = ['/work/alpha-main', '/work/beta-main'];
+    const provider = new RepositoryTreeProvider(
+      {
+        list: vi.fn(() => repositoryPaths),
+      } as unknown as RepositoryRegistryStore,
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+    );
+    const first = provider.getChildren();
+    if (!Array.isArray(first)) throw new Error('expected sync repository roots');
+
+    repositoryPaths = ['/work/alpha-main'];
+    provider.refresh();
+    provider.getChildren();
+    repositoryPaths = ['/work/alpha-main', '/work/beta-main'];
+    provider.refresh();
+    const readded = provider.getChildren();
+    if (!Array.isArray(readded)) throw new Error('expected sync repository roots');
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(undefined);
+    expect(readded[1]).not.toBe(first[1]);
+  });
+
+  it('evicts a removed Worktree after firing its Repository', () => {
+    let cachedWorktrees = [alphaMainWorktree, alphaFeatureWorktree];
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => cachedWorktrees),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const first = provider.getChildren(repositories[0]);
+    if (!Array.isArray(first)) throw new Error('expected sync cached worktrees');
+
+    cachedWorktrees = [alphaMainWorktree];
+    provider.refreshRepository('/work/alpha-main');
+    provider.getChildren(repositories[0]);
+    cachedWorktrees = [alphaMainWorktree, alphaFeatureWorktree];
+    provider.refreshRepository('/work/alpha-main');
+    const readded = provider.getChildren(repositories[0]);
+    if (!Array.isArray(readded)) throw new Error('expected sync cached worktrees');
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(repositories[0]);
+    expect(readded[1]).not.toBe(first[1]);
+  });
+
+  it('fires exactly the cached Worktree whose TerminalModel entry changed', () => {
+    const model = observedModel();
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      model,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync cached worktrees');
+    vscodeState.emitters[0].fire.mockClear();
+
+    model.apply([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
+    provider.refreshWorktree('/work/alpha-main');
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledOnce();
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(worktrees[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(worktrees[1]);
+  });
+
+  it('no-ops a fire for an unfetched Worktree and renders current model state on expand', () => {
+    const model = observedModel();
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      model,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    model.apply([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
+    ]);
+    provider.refreshWorktree('/work/alpha-feature');
+
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalled();
+
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync cached worktrees');
+    const terminals = provider.getChildren(worktrees[1]);
+
+    expect(terminals).toEqual([
+      expect.objectContaining({
+        label: 'claude',
+        terminal: expect.objectContaining({
+          sessionName: 'wt-_work_alpha-feature__term-1',
+        }),
+      }),
+    ]);
   });
 
   it('finds a Terminal row outside the mounted Worktree', async () => {

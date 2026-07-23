@@ -24,7 +24,7 @@ describe('TerminalReconciler', () => {
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
-      refreshTree: fireTree,
+      refreshWorktree: fireTree,
     });
 
     await reconciler.reconcile([]);
@@ -72,7 +72,7 @@ describe('TerminalReconciler', () => {
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
-      refreshTree: fireTree,
+      refreshWorktree: fireTree,
     });
 
     await reconciler.reconcile([
@@ -103,6 +103,40 @@ describe('TerminalReconciler', () => {
     expect(effects).toEqual(['order', 'decorations', 'wake', 'fire']);
   });
 
+  it('fires each Worktree whose TerminalModel entry changed', async () => {
+    const model = new TerminalModel();
+    model.apply([
+      { sessionName: 'wt-_work_alpha__term-1', windowName: 'one' },
+      { sessionName: 'wt-_work_beta__term-1', windowName: 'one' },
+    ]);
+    const refreshWorktree = vi.fn();
+    const reconciler = new TerminalReconciler({
+      model,
+      restoreTerminalSnapshot: vi.fn(async () => undefined),
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [
+        { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
+        { repositoryPath: '/work/beta', worktreePath: '/work/beta' },
+      ],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree,
+    });
+
+    await reconciler.reconcile([
+      { sessionName: 'wt-_work_alpha__term-1', windowName: 'renamed' },
+      { sessionName: 'wt-_work_beta__term-2', windowName: 'two' },
+    ]);
+
+    expect(refreshWorktree.mock.calls).toEqual([
+      ['/work/alpha'],
+      ['/work/beta'],
+    ]);
+  });
+
   it('restores an anchor-only DeckSocket without pruning or firing', async () => {
     const model = observedModel();
     const restore = vi.fn(async () => undefined);
@@ -120,7 +154,7 @@ describe('TerminalReconciler', () => {
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
-      refreshTree: fireTree,
+      refreshWorktree: fireTree,
     });
 
     await reconciler.reconcile([
@@ -157,7 +191,7 @@ describe('TerminalReconciler', () => {
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
-      refreshTree: fireTree,
+      refreshWorktree: fireTree,
     });
 
     await reconciler.reconcile(sessions);
