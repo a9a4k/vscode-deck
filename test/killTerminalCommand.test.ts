@@ -42,18 +42,18 @@ describe('TerminalRemovalCommand', () => {
     vscodeState.tabGroups = [];
   });
 
-  it('kills the selected terminal session and refreshes the tree', async () => {
+  it('kills the selected Terminal and wakes the TerminalPoll', async () => {
     const tmux = {
       killSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
     await new TerminalRemovalCommand(
       tmux,
-      refresh,
+      wakePoll,
     ).run({ terminal: { sessionName: 'wt-_work_repo__term-1' } });
 
     expect(tmux.killSession).toHaveBeenCalledWith('wt-_work_repo__term-1');
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 
   it('discards the agent status for the killed Terminal', async () => {
@@ -74,16 +74,16 @@ describe('TerminalRemovalCommand', () => {
     const tmux = {
       killSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
     const confirm = vi.fn(async () => false);
 
-    await new TerminalRemovalCommand(tmux, refresh, confirm).run({
+    await new TerminalRemovalCommand(tmux, wakePoll, confirm).run({
       terminal: { sessionName: 'wt-_work_repo__term-1', windowName: 'zsh' },
     });
 
     expect(confirm).toHaveBeenCalledWith('zsh');
     expect(tmux.killSession).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
+    expect(wakePoll).not.toHaveBeenCalled();
   });
 
   it('kills the session once the confirmation is accepted', async () => {
@@ -104,29 +104,29 @@ describe('TerminalRemovalCommand', () => {
     const tmux = {
       killSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
 
-    await new TerminalRemovalCommand(tmux, refresh).run(
+    await new TerminalRemovalCommand(tmux, wakePoll).run(
       { worktree: { path: '/work/repo' } } as never,
     );
 
     expect(tmux.killSession).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
+    expect(wakePoll).not.toHaveBeenCalled();
   });
 
   it('is idempotent when closing the same stale row twice', async () => {
     const tmux = {
       killSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
-    const command = new TerminalRemovalCommand(tmux, refresh);
+    const wakePoll = vi.fn();
+    const command = new TerminalRemovalCommand(tmux, wakePoll);
     const node = { terminal: { sessionName: 'wt-_work_repo__term-1' } };
 
     await command.run(node);
     await command.run(node);
 
     expect(tmux.killSession).toHaveBeenCalledTimes(2);
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(wakePoll).toHaveBeenCalledTimes(2);
   });
 
   it('closes the matching Deck custom-editor tab after killing the session', async () => {
@@ -160,17 +160,17 @@ describe('TerminalRemovalCommand', () => {
       '/ext/resources/deck.conf',
       new MockRunner({ code: 1, stdout: '', stderr: 'no server running on /tmp/tmux-1000/deck' }),
     );
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
 
     await expect(
       new TerminalRemovalCommand(
         tmux,
-        refresh,
+        wakePoll,
       ).run({
         terminal: { sessionName: 'wt-_work_repo__term-1' },
       }),
     ).resolves.toBeUndefined();
 
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 });

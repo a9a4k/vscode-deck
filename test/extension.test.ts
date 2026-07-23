@@ -43,9 +43,13 @@ const vscodeState = vi.hoisted(() => ({
   terminalPollArgs: undefined as unknown[] | undefined,
   terminalPollInstances: [] as Array<{
     start: ReturnType<typeof vi.fn>;
+    wake: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     onChange: ReturnType<typeof vi.fn>;
     listener?: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void;
+    observationListener?: (
+      sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
+    ) => Promise<void> | void;
   }>,
   restoreOnActivationImpl: (async () => undefined) as () => Promise<unknown>,
   agentStatusStoreStart: vi.fn(async () => ({ dispose: vi.fn() })),
@@ -91,7 +95,7 @@ const vscodeState = vi.hoisted(() => ({
     findTerminalBySessionName: ReturnType<typeof vi.fn>;
     describeSession: ReturnType<typeof vi.fn>;
     refresh: ReturnType<typeof vi.fn>;
-    refreshTerminalDisplays: ReturnType<typeof vi.fn>;
+    updateTerminalDecorations: ReturnType<typeof vi.fn>;
     getChildren: ReturnType<typeof vi.fn>;
   }>,
   registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
@@ -267,11 +271,15 @@ vi.mock('../src/worktree/branchDeletionPreferenceStore', () => ({
 }));
 
 vi.mock('../src/worktree/worktreeListCacheStore', () => ({
-  WorktreeListCacheStore: class {},
+  WorktreeListCacheStore: class {
+    get = vi.fn();
+  },
 }));
 
 vi.mock('../src/repository/repositoryCommonDirCache', () => ({
-  RepositoryCommonDirCache: class {},
+  RepositoryCommonDirCache: class {
+    get = vi.fn();
+  },
   resolveCommonDirSafe: vi.fn(async () => null),
 }));
 
@@ -328,7 +336,7 @@ vi.mock('../src/tree/repositoryTree', () => ({
     findTerminalBySessionName = vi.fn();
     describeSession = vi.fn();
     refresh = vi.fn();
-    refreshTerminalDisplays = vi.fn();
+    updateTerminalDecorations = vi.fn();
     setCollapsed = vi.fn();
     isActiveRepositoryDecorationTarget = vi.fn();
     isActiveWorktreeDecorationTarget = vi.fn();
@@ -457,15 +465,20 @@ vi.mock('../src/agent/agentStatusStore', () => ({
 vi.mock('../src/terminal/terminalPoll', () => ({
   TerminalPoll: class {
     listener?: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void;
-    sessionSetListener?: () => void;
+    observationListener?: (
+      sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
+    ) => Promise<void> | void;
     start = vi.fn();
+    wake = vi.fn();
     dispose = vi.fn();
     onChange = vi.fn((listener: (changedSessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>) => void) => {
       this.listener = listener;
       return { dispose: vi.fn() };
     });
-    onDidChangeSessionSet = vi.fn((listener: () => void) => {
-      this.sessionSetListener = listener;
+    onObservation = vi.fn((listener: (
+      sessions: ReadonlyArray<{ sessionName: string; windowName: string; paneTitle?: string }>,
+    ) => Promise<void> | void) => {
+      this.observationListener = listener;
       return { dispose: vi.fn() };
     });
 
@@ -954,13 +967,14 @@ describe('activate', () => {
     expect(vscodeState.agentSidecarStoreReadAll).toHaveBeenCalled();
   });
 
-  it('refreshes the tree after the activation TerminalSnapshot restore completes', async () => {
+  it('wakes Terminal reconciliation after the activation TerminalSnapshot restore completes', async () => {
     const context = createContext();
 
     await activate(context as never);
     await Promise.resolve();
 
-    expect(vscodeState.repositoryTreeInstances[0].refresh).toHaveBeenCalledOnce();
+    expect(vscodeState.repositoryTreeInstances[0].refresh).not.toHaveBeenCalled();
+    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalledOnce();
   });
 
   it('passes restore feedback that shows progress and a sidebar banner', async () => {
@@ -1040,7 +1054,7 @@ describe('activate', () => {
     expect(vscodeState.externalWatchDisposables[0].dispose).not.toHaveBeenCalled();
   });
 
-  it('wires TerminalPoll label changes to row and tab title refresh', async () => {
+  it('wires TerminalPoll label changes to tab title refresh', async () => {
     const context = createContext();
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
@@ -1050,7 +1064,6 @@ describe('activate', () => {
     };
     const refreshTitles = vi.spyOn(provider, 'refreshTitles');
     tree.refresh.mockClear();
-    tree.refreshTerminalDisplays.mockClear();
     poll.start.mockClear();
 
     const changedSessions = [{
@@ -1061,25 +1074,26 @@ describe('activate', () => {
     poll.listener?.(changedSessions);
 
     expect(tree.refresh).not.toHaveBeenCalled();
-    expect(tree.refreshTerminalDisplays).toHaveBeenCalledWith(changedSessions);
     expect(refreshTitles).toHaveBeenCalledWith(['wt-_work_alpha-main__term-1']);
     expect(poll.start).not.toHaveBeenCalled();
   });
 
-  it('wires TerminalPoll session-set changes to a tree refresh', async () => {
+  it('wires TerminalPoll observations through Terminal reconciliation', async () => {
     const context = createContext();
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
     const poll = vscodeState.terminalPollInstances[0];
     tree.refresh.mockClear();
-    tree.refreshTerminalDisplays.mockClear();
+    tree.updateTerminalDecorations.mockClear();
     poll.start.mockClear();
 
-    poll.sessionSetListener?.();
+    await poll.observationListener?.([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
 
     expect(tree.refresh).toHaveBeenCalledOnce();
-    expect(tree.refreshTerminalDisplays).not.toHaveBeenCalled();
-    expect(poll.start).toHaveBeenCalledOnce();
+    expect(tree.updateTerminalDecorations).toHaveBeenCalledOnce();
+    expect(poll.start).not.toHaveBeenCalled();
   });
 
   it('does not refresh the tree when the window regains focus', async () => {
@@ -1145,6 +1159,8 @@ describe('activate', () => {
     await addTerminalRegistration[1]({ worktree: { path: '/work/repo' } });
 
     expect(vscodeState.addTerminalRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
+    (vscodeState.addTerminalArgs?.[1] as (() => void) | undefined)?.();
+    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
   it('registers deck.runLauncher through RunLauncherCommand', async () => {
@@ -1159,6 +1175,9 @@ describe('activate', () => {
 
     expect(vscodeState.runLauncherArgs?.[0]).toBe(vscodeState.tmuxInstances[0]);
     expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
+    const options = vscodeState.runLauncherArgs?.[1] as { wakePoll?(): void } | undefined;
+    options?.wakePoll?.();
+    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
   it('injects run-on-worktree-create launchers into AddWorktreeCommand', async () => {
@@ -1286,6 +1305,7 @@ describe('activate', () => {
       windowName: 'claude',
       paneTitle: '✳ fix issue 130',
     }];
+    await vscodeState.terminalPollInstances[0].observationListener?.(vscodeState.tmuxSessions);
     vscodeState.agentStatusStoreEntries = [
       ['wt-_work_alpha-feature__term-1', {
         status: 'needsInput',
@@ -1513,6 +1533,8 @@ describe('activate', () => {
     expect(vscodeState.terminalRemovalRun).toHaveBeenCalledWith({
       terminal: { sessionName: 's', windowName: 'zsh' },
     });
+    (vscodeState.terminalRemovalArgs?.[1] as (() => void) | undefined)?.();
+    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
   it('deletes the selected Terminal when deck.killTerminal is invoked from a keybinding', async () => {
@@ -1541,7 +1563,7 @@ describe('activate', () => {
     );
   });
 
-  it('refreshes without killing tmux when a Deck custom-editor tab is disposed', async () => {
+  it('wakes Terminal reconciliation without killing tmux when a Deck custom-editor tab is disposed', async () => {
     const context = createContext();
     let disposePanel: (() => void) | undefined;
     const panel = {
@@ -1563,6 +1585,7 @@ describe('activate', () => {
 
     await activate(context as never);
     vscodeState.repositoryTreeInstances[0].refresh.mockClear();
+    vscodeState.terminalPollInstances[0].wake.mockClear();
     const provider = vscodeState.registerCustomEditorProvider.mock.calls[0][1] as {
       openCustomDocument(uri: unknown): unknown;
       resolveCustomEditor(document: unknown, panel: unknown): void;
@@ -1577,7 +1600,8 @@ describe('activate', () => {
     await Promise.resolve();
 
     expect(vscodeState.tmuxInstances[0].killSession).not.toHaveBeenCalled();
-    expect(vscodeState.repositoryTreeInstances[0].refresh).toHaveBeenCalledOnce();
+    expect(vscodeState.repositoryTreeInstances[0].refresh).not.toHaveBeenCalled();
+    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalledOnce();
   });
 
   it('registers deck.openTerminalInNewWindow through OpenTerminalInNewWindowCommand', async () => {

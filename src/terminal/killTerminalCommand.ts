@@ -18,7 +18,7 @@ export type ConfirmTerminalRemoval = (label: string) => Promise<boolean>;
 export class TerminalRemovalCommand {
   constructor(
     private readonly tmux: TerminalRemovalTmuxCli,
-    private readonly refresh: () => void = () => undefined,
+    private readonly wakePoll: () => void = () => undefined,
     private readonly confirm: ConfirmTerminalRemoval = async () => true,
     private readonly sessionUriCodec: SessionUriCodec = new SessionUriCodec(),
     private readonly onSessionKilled: (sessionName: string) => Promise<void> = async () => undefined,
@@ -35,7 +35,7 @@ export class TerminalRemovalCommand {
     await this.tmux.killSession(session);
     await this.onSessionKilled(session);
     await this.closeMatchingEditorTab(session);
-    this.refresh();
+    this.wakePoll();
   }
 
   private async closeMatchingEditorTab(session: string): Promise<void> {

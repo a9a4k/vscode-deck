@@ -15,7 +15,7 @@ interface WorktreeCreateLauncherTmuxCli extends AddTerminalTmuxCli {
 }
 
 interface WorktreeCreateLauncherRunnerOptions {
-  refresh?: () => void;
+  wakePoll?: () => void;
   resolveLaunchers?: (
     worktreePath: string,
     userLauncherConfig: unknown,
@@ -26,7 +26,7 @@ interface WorktreeCreateLauncherRunnerOptions {
 }
 
 export class WorktreeCreateLauncherRunner {
-  private readonly refresh: () => void;
+  private readonly wakePoll: () => void;
   private readonly resolveLaunchers: (
     worktreePath: string,
     userLauncherConfig: unknown,
@@ -38,7 +38,7 @@ export class WorktreeCreateLauncherRunner {
     private readonly tmux: WorktreeCreateLauncherTmuxCli,
     options: WorktreeCreateLauncherRunnerOptions = {},
   ) {
-    this.refresh = options.refresh ?? (() => undefined);
+    this.wakePoll = options.wakePoll ?? (() => undefined);
     this.resolveLaunchers = options.resolveLaunchers ?? ((worktreePath, userLaunchers, repositoryLaunchers) =>
       resolveLauncherGroups(worktreePath, userLaunchers, repositoryLaunchers, {
         resolveCommonDir: options.resolveCommonDir,
@@ -60,6 +60,6 @@ export class WorktreeCreateLauncherRunner {
       const { session } = await createHeadlessTerminal(this.tmux, node);
       await this.tmux.sendCommandLine(session, launcher.command);
     }
-    this.refresh();
+    this.wakePoll();
   }
 }

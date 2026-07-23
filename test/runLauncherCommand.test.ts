@@ -47,7 +47,7 @@ describe('RunLauncherCommand', () => {
       ensureSession: vi.fn(async () => undefined),
       sendCommandLine: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
     const resolveLaunchers = vi.fn(async () => ({
       repo: [{ label: 'Repo Dev', command: 'npm run dev' }],
       repositoryLocal: [{ label: 'Local Bootstrap', command: 'pnpm bootstrap' }],
@@ -61,7 +61,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'User Watch'),
     );
 
-    await new RunLauncherCommand(tmux, { refresh, resolveLaunchers }).run({
+    await new RunLauncherCommand(tmux, { wakePoll, resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
@@ -95,7 +95,7 @@ describe('RunLauncherCommand', () => {
       'wt-_work_repo__term-1',
       'npm test -- --watch',
     );
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 
   it('opens launcher settings from the empty-state item', async () => {
@@ -107,7 +107,7 @@ describe('RunLauncherCommand', () => {
     const resolveLaunchers = vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] }));
     vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[0]);
 
-    await new RunLauncherCommand(tmux, { refresh: vi.fn(), resolveLaunchers }).run({
+    await new RunLauncherCommand(tmux, { wakePoll: vi.fn(), resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 

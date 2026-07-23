@@ -50,7 +50,7 @@ export async function createHeadlessTerminal(
 export class AddTerminalCommand {
   constructor(
     private readonly tmux: AddTerminalTmuxCli,
-    private readonly refresh: () => void = () => undefined,
+    private readonly wakePoll: () => void = () => undefined,
     private readonly sessionUriCodec: SessionUriCodec = new SessionUriCodec(),
     // Awaited before creating a terminal. If the DeckSocket died, this restores
     // the existing TerminalSnapshot first, so a `+` right after a server death
@@ -64,6 +64,6 @@ export class AddTerminalCommand {
 
     await this.beforeCreate();
     await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec);
-    this.refresh();
+    this.wakePoll();
   }
 }

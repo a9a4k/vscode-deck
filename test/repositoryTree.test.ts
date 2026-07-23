@@ -107,6 +107,7 @@ import { WorktreeOrderStore } from '../src/worktree/worktreeOrderStore';
 import { RepositoryCommonDirCache } from '../src/repository/repositoryCommonDirCache';
 import { RepositoryRegistryStore } from '../src/repository/repositoryRegistryStore';
 import { listWorktrees, type Worktree } from '../src/git/worktrees';
+import { TerminalModel } from '../src/terminal/terminalModel';
 
 function registry(repositories = ['/work/alpha-main', '/work/beta-main']) {
   return {
@@ -129,6 +130,12 @@ const alphaFeatureWorktree: Worktree = {
   detached: false,
   branch: 'feature',
 };
+
+function observedModel(sessions: Parameters<TerminalModel['apply']>[0] = []): TerminalModel {
+  const model = new TerminalModel();
+  model.apply(sessions);
+  return model;
+}
 
 describe('RepositoryTreeProvider', () => {
   beforeEach(() => {
@@ -675,19 +682,17 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('renders existing Worktree terminals expanded without the add row when tmux is available', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'claude' },
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'claude' },
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
     const repositories = provider.getChildren();
@@ -719,17 +724,14 @@ describe('RepositoryTreeProvider', () => {
         contextValue: 'deck.terminal.foreign',
       }),
     ]);
-    expect(tmux.listSessions).toHaveBeenCalledWith('wt-_work_alpha-main__term-');
   });
 
   it('renders Terminals in stored order with unknown live Terminals appended by term-N', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-3', windowName: 'three' },
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
-        { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-3', windowName: 'three' },
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
+    ]);
     const terminalOrders = {
       get: vi.fn(() => ['wt-_work_alpha-main__term-2']),
     } as unknown as TerminalOrderStore;
@@ -739,7 +741,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
       new Set(),
       undefined,
@@ -760,145 +762,14 @@ describe('RepositoryTreeProvider', () => {
     expect(terminalOrders.get).toHaveBeenCalledWith('/work/alpha-main');
   });
 
-  it('prunes stale TerminalOrder entries while rendering live Terminals', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
-        { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
-      ]),
-    };
-    const terminalOrders = {
-      get: vi.fn(() => [
-        'wt-_work_alpha-main__term-3',
-        'wt-_work_alpha-main__term-1',
-        'wt-_work_alpha-main__term-2',
-      ]),
-      set: vi.fn(async () => undefined),
-    } as unknown as TerminalOrderStore;
-    const provider = new RepositoryTreeProvider(
-      registry(['/work/alpha-main']),
-      { get: vi.fn() } as unknown as ActiveWorktreeStore,
-      { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
-      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
-      true,
-      new Set(),
-      undefined,
-      terminalOrders,
-    );
-    const repositories = provider.getChildren();
-    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
-    const worktrees = await provider.getChildren(repositories[0]);
-    if (!Array.isArray(worktrees)) throw new Error('expected worktree children');
-
-    await provider.getChildren(worktrees[0]);
-
-    expect(terminalOrders.set).toHaveBeenCalledWith('/work/alpha-main', [
-      'wt-_work_alpha-main__term-1',
-      'wt-_work_alpha-main__term-2',
-    ]);
-  });
-
-  it('does not rewrite TerminalOrder when every stored Terminal is live', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
-        { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
-      ]),
-    };
-    const terminalOrders = {
-      get: vi.fn(() => [
-        'wt-_work_alpha-main__term-2',
-        'wt-_work_alpha-main__term-1',
-      ]),
-      set: vi.fn(async () => undefined),
-    } as unknown as TerminalOrderStore;
-    const provider = new RepositoryTreeProvider(
-      registry(['/work/alpha-main']),
-      { get: vi.fn() } as unknown as ActiveWorktreeStore,
-      { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
-      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
-      true,
-      new Set(),
-      undefined,
-      terminalOrders,
-    );
-    const repositories = provider.getChildren();
-    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
-    const worktrees = await provider.getChildren(repositories[0]);
-    if (!Array.isArray(worktrees)) throw new Error('expected worktree children');
-
-    await provider.getChildren(worktrees[0]);
-
-    expect(terminalOrders.set).not.toHaveBeenCalled();
-  });
-
-  it('awaits snapshot restore before listing so a pre-restore empty list cannot wipe TerminalOrder', async () => {
-    // Models reopen-after-kill: the DeckSocket is empty until restore completes.
-    // listSessions returns the restored set only once the gate has been awaited.
-    let restored = false;
-    const ensureSnapshotRestored = vi.fn(async () => {
-      restored = true;
-    });
-    const tmux = {
-      listSessions: vi.fn(async () =>
-        restored
-          ? [
-              { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
-              { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
-            ]
-          : [],
-      ),
-    };
-    const terminalOrders = {
-      get: vi.fn(() => [
-        'wt-_work_alpha-main__term-2',
-        'wt-_work_alpha-main__term-1',
-      ]),
-      set: vi.fn(async () => undefined),
-    } as unknown as TerminalOrderStore;
-    const provider = new RepositoryTreeProvider(
-      registry(['/work/alpha-main']),
-      { get: vi.fn() } as unknown as ActiveWorktreeStore,
-      { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
-      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
-      true,
-      new Set(),
-      undefined,
-      terminalOrders,
-      ensureSnapshotRestored,
-    );
-    const repositories = provider.getChildren();
-    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
-    const worktrees = await provider.getChildren(repositories[0]);
-    if (!Array.isArray(worktrees)) throw new Error('expected worktree children');
-
-    const terminalRows = await provider.getChildren(worktrees[0]);
-
-    expect(ensureSnapshotRestored).toHaveBeenCalled();
-    // The stored order survives — never pruned against the pre-restore empty list.
-    expect(terminalOrders.set).not.toHaveBeenCalled();
-    expect((terminalRows as Array<{ label: string }>).map((row) => row.label)).toEqual([
-      'two',
-      'one',
-    ]);
-  });
-
   it('relabels only the rendered Terminal row when its working status changes', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        {
-          sessionName: 'wt-_work_alpha-main__term-1',
-          windowName: 'claude',
-          paneTitle: '✳ reconcile checkout state',
-        },
-      ]),
-    };
+    const model = observedModel([
+      {
+        sessionName: 'wt-_work_alpha-main__term-1',
+        windowName: 'claude',
+        paneTitle: '✳ reconcile checkout state',
+      },
+    ]);
     let statusChange: (() => void) | undefined;
     let status = { status: 'completed' as const, statusAt: 1710000000 };
     const agentStatuses = {
@@ -919,7 +790,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
       new Set(),
       agentStatuses,
@@ -943,15 +814,13 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('does not repaint Terminal rows when only the status message changes', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        {
-          sessionName: 'wt-_work_alpha-main__term-1',
-          windowName: 'claude',
-          paneTitle: '✳ reconcile checkout state',
-        },
-      ]),
-    };
+    const model = observedModel([
+      {
+        sessionName: 'wt-_work_alpha-main__term-1',
+        windowName: 'claude',
+        paneTitle: '✳ reconcile checkout state',
+      },
+    ]);
     let status = {
       status: 'inProgress' as const,
       statusAt: 1710000000,
@@ -974,7 +843,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
       new Set(),
       agentStatuses,
@@ -997,11 +866,9 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('renders a Codex identity icon for a codex window before status exists', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'codex' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'codex' },
+    ]);
     const agentStatuses = {
       get: vi.fn(() => undefined),
       entries: vi.fn(() => new Map().entries()),
@@ -1013,7 +880,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
       new Set(),
       agentStatuses,
@@ -1030,11 +897,9 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('sets deck-status resource URIs without inline status descriptions on Terminal rows', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'claude' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'claude' },
+    ]);
     const agentStatuses = {
       get: vi.fn(() => ({ status: 'needsInput' as const, statusAt: 1710000000 })),
       entries: vi.fn(() => new Map().entries()),
@@ -1046,7 +911,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
       new Set(),
       agentStatuses,
@@ -1096,7 +961,7 @@ describe('RepositoryTreeProvider', () => {
         get: vi.fn((path: string) => (path === '/work/alpha-main' ? '/git/alpha' : '/git/beta')),
         set: vi.fn(async () => undefined),
       } as unknown as RepositoryCommonDirCache,
-      { listSessions: vi.fn(async () => []) },
+      observedModel(),
       true,
       new Set(),
       agentStatuses,
@@ -1118,19 +983,55 @@ describe('RepositoryTreeProvider', () => {
     ]);
   });
 
-  it('returns parent rows for Worktree and Terminal rows', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
-      ]),
-    };
+  it('rolls agent status up to a collapsed Repository before its Worktrees render', () => {
+    const sessionName = 'wt-_work_alpha-main__term-1';
+    const statuses = new Map([
+      [sessionName, { status: 'needsInput' as const, statusAt: 1710000000 }],
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      observedModel(),
+      true,
+      new Set(),
+      {
+        get: vi.fn((name: string) => statuses.get(name)),
+        entries: vi.fn(() => statuses.entries()),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+
+    provider.updateTerminalDecorations([
+      {
+        repositoryPath: '/work/alpha-main',
+        worktreePath: '/work/alpha-main',
+        sessionName,
+      },
+    ]);
+    provider.setCollapsed(repositories[0], true);
+
+    expect(
+      provider.agentStatusDecorationRollups
+        .getDecorationStatus('repository', '/work/alpha-main')?.status,
+    ).toBe('needsInput');
+  });
+
+  it('returns parent rows for Worktree and Terminal rows', async () => {
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      model,
       true,
     );
     const repositories = provider.getChildren();
@@ -1152,18 +1053,19 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('finds a Terminal row outside the mounted Worktree', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
 
@@ -1183,23 +1085,23 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('finds a Terminal row by session name for notification actions', async () => {
-    const tmux = {
-      listSessions: vi.fn(async (prefix?: string) =>
-        prefix === 'wt-_work_alpha-feature__term-'
-          ? [{ sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' }]
-          : [],
-      ),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
 
+    vi.mocked(listWorktrees).mockClear();
     const terminal = await provider.findTerminalBySessionName('wt-_work_alpha-feature__term-1');
 
     expect(terminal).toMatchObject({
@@ -1207,58 +1109,52 @@ describe('RepositoryTreeProvider', () => {
       worktreePath: '/work/alpha-feature',
       terminal: { windowName: 'claude' },
     });
-    // Worktrees that cannot own the session are skipped before the tmux query.
-    expect(tmux.listSessions).toHaveBeenCalledTimes(1);
-    expect(tmux.listSessions).toHaveBeenCalledWith('wt-_work_alpha-feature__term-');
+    expect(listWorktrees).not.toHaveBeenCalled();
   });
 
-  it('describes a session from its matched Worktree without waiting for terminal restore', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => {
-        throw new Error('should not list terminals');
-      }),
-    };
-    const ensureSnapshotRestored = vi.fn(async () => {
-      throw new Error('should not wait for restore');
-    });
-    const provider = new RepositoryTreeProvider(
-      registry(['/work/alpha-main']),
-      { get: vi.fn() } as unknown as ActiveWorktreeStore,
-      { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
-      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
-      true,
-      new Set(),
-      undefined,
-      undefined,
-      ensureSnapshotRestored,
-    );
-
-    const description = await provider.describeSession('wt-_work_alpha-feature__term-1');
-
-    expect(description).toEqual({ repo: 'alpha-main', branch: 'feature' });
-    expect(tmux.listSessions).not.toHaveBeenCalled();
-    expect(ensureSnapshotRestored).not.toHaveBeenCalled();
-  });
-
-  it('describes a detached session by folder name, matching its tree label', async () => {
-    vi.mocked(listWorktrees).mockResolvedValueOnce([
-      alphaMainWorktree,
-      {
-        path: '/work/alpha-origin-fix',
-        head: 'abcdef1234567890',
-        bare: false,
-        detached: true,
-      },
+  it('describes a session from the TerminalModel and cached Worktree', async () => {
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
     ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      { listSessions: vi.fn(async () => []) },
+      model,
+      true,
+    );
+
+    vi.mocked(listWorktrees).mockClear();
+    const description = await provider.describeSession('wt-_work_alpha-feature__term-1');
+
+    expect(description).toEqual({ repo: 'alpha-main', branch: 'feature' });
+    expect(listWorktrees).not.toHaveBeenCalled();
+  });
+
+  it('describes a detached session by folder name, matching its tree label', async () => {
+    const detached: Worktree = {
+      path: '/work/alpha-origin-fix',
+      head: 'abcdef1234567890',
+      bare: false,
+      detached: true,
+    };
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, detached]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      observedModel([
+        { sessionName: 'wt-_work_alpha-origin-fix__term-1', windowName: 'codex' },
+      ]),
       true,
     );
 
@@ -1272,9 +1168,14 @@ describe('RepositoryTreeProvider', () => {
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      { listSessions: vi.fn(async () => []) },
+      observedModel([
+        { sessionName: 'wt-_elsewhere_repo__term-1', windowName: 'zsh' },
+      ]),
       true,
     );
 
@@ -1282,18 +1183,16 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('marks terminals in the current workspace folder as active', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        { sessionName: 'wt-_work_beta-main__term-1', windowName: 'zsh' },
-      ]),
-    };
+    const model = observedModel([
+      { sessionName: 'wt-_work_beta-main__term-1', windowName: 'zsh' },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/beta-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/beta'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
     const repositories = provider.getChildren();
@@ -1308,14 +1207,13 @@ describe('RepositoryTreeProvider', () => {
   });
 
   it('renders an empty Worktree as an expanded empty folder with no rows when no terminals exist', async () => {
-    const tmux = { listSessions: vi.fn(async () => []) };
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      observedModel(),
       true,
     );
     const repositories = provider.getChildren();
@@ -1328,24 +1226,17 @@ describe('RepositoryTreeProvider', () => {
     expect(terminalRows).toEqual([]);
   });
 
-  it('resolves terminal rows from live tmux and re-lists after refresh', async () => {
-    const tmux = {
-      listSessions: vi
-        .fn()
-        .mockResolvedValueOnce([
-          { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
-        ])
-        .mockResolvedValueOnce([
-          { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'claude' },
-        ]),
-    };
+  it('re-reads terminal rows from the model after reconciliation', async () => {
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
     const repositories = provider.getChildren();
@@ -1355,32 +1246,32 @@ describe('RepositoryTreeProvider', () => {
 
     const firstRows = await provider.getChildren(worktrees[0]);
     expect((firstRows as Array<{ label: string }>).map((row) => row.label)).toEqual(['zsh']);
+    model.apply([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'claude' },
+    ]);
     provider.refresh();
     const secondRows = await provider.getChildren(worktrees[0]);
 
-    expect(tmux.listSessions).toHaveBeenCalledTimes(2);
     expect((secondRows as Array<unknown>)[0]).toBe((firstRows as Array<unknown>)[0]);
     expect((secondRows as Array<{ label: string }>).map((row) => row.label)).toEqual(['claude']);
   });
 
   it('renders an agent row from explicit session identity when the window name is volatile', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        {
-          sessionName: 'wt-_work_alpha-main__term-1',
-          windowName: '2.1.172',
-          paneTitle: '✳ tracking-service-grpc-gateway-pivot',
-          agentName: 'claude' as const,
-        },
-      ]),
-    };
+    const model = observedModel([
+      {
+        sessionName: 'wt-_work_alpha-main__term-1',
+        windowName: '2.1.172',
+        paneTitle: '✳ tracking-service-grpc-gateway-pivot',
+        agentName: 'claude' as const,
+      },
+    ]);
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
+      model,
       true,
     );
     const repositories = provider.getChildren();
@@ -1400,53 +1291,6 @@ describe('RepositoryTreeProvider', () => {
       .toMatch(/resources\/claude-code-padded\.png$/);
   });
 
-  it('relabels only the rendered Terminal row when its display changes', async () => {
-    const tmux = {
-      listSessions: vi.fn(async () => [
-        {
-          sessionName: 'wt-_work_alpha-main__term-1',
-          windowName: 'claude',
-          paneTitle: '✳ first task',
-        },
-        {
-          sessionName: 'wt-_work_alpha-main__term-2',
-          windowName: 'zsh',
-        },
-      ]),
-    };
-    const provider = new RepositoryTreeProvider(
-      registry(['/work/alpha-main']),
-      { get: vi.fn() } as unknown as ActiveWorktreeStore,
-      { get: vi.fn() } as unknown as WorktreeOrderStore,
-      { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
-      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
-      tmux,
-      true,
-    );
-    const repositories = provider.getChildren();
-    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
-    const worktrees = await provider.getChildren(repositories[0]);
-    if (!Array.isArray(worktrees)) throw new Error('expected worktree children');
-    const terminalRows = await provider.getChildren(worktrees[0]);
-    if (!Array.isArray(terminalRows)) throw new Error('expected terminal children');
-    vscodeState.emitters[0].fire.mockClear();
-
-    provider.refreshTerminalDisplays([
-      {
-        sessionName: 'wt-_work_alpha-main__term-1',
-        windowName: 'claude',
-        paneTitle: '✳ renamed task',
-      },
-    ]);
-
-    expect((terminalRows[0] as { label: string }).label).toBe('renamed task');
-    expect((terminalRows[1] as { label: string }).label).toBe('zsh');
-    expect(vscodeState.emitters[0].fire).toHaveBeenCalledOnce();
-    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(terminalRows[0]);
-    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(undefined);
-    expect(tmux.listSessions).toHaveBeenCalledTimes(1);
-  });
-
   it('renders tmux install placeholder when tmux is unavailable', async () => {
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
@@ -1454,6 +1298,7 @@ describe('RepositoryTreeProvider', () => {
       { get: vi.fn() } as unknown as WorktreeOrderStore,
       { get: vi.fn(), set: vi.fn(async () => undefined) } as unknown as WorktreeListCacheStore,
       { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      observedModel(),
       false,
     );
     const repositories = provider.getChildren();
@@ -1468,6 +1313,43 @@ describe('RepositoryTreeProvider', () => {
       expect.objectContaining({
         label: 'tmux ≥3.1 not found · install ↗',
         command: undefined,
+      }),
+    ]);
+  });
+
+  it('returns Terminal children synchronously from the TerminalModel', async () => {
+    const model = new TerminalModel();
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [alphaMainWorktree, alphaFeatureWorktree]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      { get: vi.fn(() => '/git/alpha'), set: vi.fn(async () => undefined) } as unknown as RepositoryCommonDirCache,
+      model,
+      true,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected cached worktree children');
+
+    expect(provider.getChildren(worktrees[0])).toEqual([]);
+
+    model.apply([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+    ]);
+    const terminals = provider.getChildren(worktrees[0]);
+
+    expect(Array.isArray(terminals)).toBe(true);
+    expect(terminals).toEqual([
+      expect.objectContaining({
+        label: 'zsh',
+        terminal: expect.objectContaining({
+          sessionName: 'wt-_work_alpha-main__term-1',
+        }),
       }),
     ]);
   });

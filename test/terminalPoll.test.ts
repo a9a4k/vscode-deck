@@ -3,6 +3,78 @@ import { TerminalPoll, type TerminalPollScheduler } from '../src/terminal/termin
 import type { TmuxSession } from '../src/terminal/tmuxCli';
 
 describe('TerminalPoll', () => {
+  it('hands each observed Terminal set to reconciliation with resolved agent identities', async () => {
+    const poll = new TerminalPoll({
+      listSessions: vi.fn(async () => [
+        { sessionName: 'wt-_work_alpha__term-1', windowName: '2.1.172', paneTitle: '✳ task' },
+      ]),
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler: new ManualScheduler(),
+      resolveAgentName: vi.fn(async () => 'claude'),
+    });
+    const reconcile = vi.fn(async () => undefined);
+    poll.onObservation(reconcile);
+
+    poll.start();
+    await flush();
+
+    expect(reconcile).toHaveBeenCalledWith([
+      {
+        sessionName: 'wt-_work_alpha__term-1',
+        windowName: '2.1.172',
+        paneTitle: '✳ task',
+        agentName: 'claude',
+      },
+    ]);
+  });
+
+  it('wakes for an immediate extra observation while focused', async () => {
+    const scheduler = new ManualScheduler();
+    const listSessions = vi.fn(async () => []);
+    const poll = new TerminalPoll({
+      listSessions,
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler,
+    });
+    poll.start();
+    await flush();
+
+    poll.wake();
+    await flush();
+
+    expect(listSessions).toHaveBeenCalledTimes(2);
+    expect(scheduler.hasTick()).toBe(true);
+  });
+
+  it('runs a requested wake immediately after an in-flight observation', async () => {
+    let releaseFirst: (() => void) | undefined;
+    const first = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const listSessions = vi.fn()
+      .mockImplementationOnce(async () => {
+        await first;
+        return [];
+      })
+      .mockResolvedValue([]);
+    const poll = new TerminalPoll({
+      listSessions,
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler: new ManualScheduler(),
+    });
+    poll.start();
+    await Promise.resolve();
+
+    poll.wake();
+    releaseFirst?.();
+    await flush();
+
+    expect(listSessions).toHaveBeenCalledTimes(2);
+  });
+
   it('emits changed agent sessions when resolved labels change', async () => {
     const scheduler = new ManualScheduler();
     let sessions: TmuxSession[] = [
@@ -33,101 +105,6 @@ describe('TerminalPoll', () => {
       { sessionName: 'term-1', windowName: 'claude', paneTitle: '✳ renamed task' },
     ]);
     expect(listSessions).toHaveBeenCalledTimes(2);
-  });
-
-  it('emits a session-set change when a new session appears after the baseline', async () => {
-    const scheduler = new ManualScheduler();
-    let sessions: TmuxSession[] = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-    ];
-    const poll = new TerminalPoll({
-      listSessions: vi.fn(async () => sessions),
-      isFocused: () => true,
-      onDidChangeFocus: () => ({ dispose: vi.fn() }),
-      scheduler,
-    });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
-
-    poll.start();
-    await flush();
-
-    sessions = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-      { sessionName: 'term-2', windowName: 'zsh', paneTitle: ':/work/beta' },
-    ];
-    await scheduler.runNext();
-
-    expect(sessionSetChanges).toHaveBeenCalledOnce();
-  });
-
-  it('emits a session-set change when a session disappears after the baseline', async () => {
-    const scheduler = new ManualScheduler();
-    let sessions: TmuxSession[] = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-      { sessionName: 'term-2', windowName: 'zsh', paneTitle: ':/work/beta' },
-    ];
-    const poll = new TerminalPoll({
-      listSessions: vi.fn(async () => sessions),
-      isFocused: () => true,
-      onDidChangeFocus: () => ({ dispose: vi.fn() }),
-      scheduler,
-    });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
-
-    poll.start();
-    await flush();
-
-    sessions = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-    ];
-    await scheduler.runNext();
-
-    expect(sessionSetChanges).toHaveBeenCalledOnce();
-  });
-
-  it('does not emit a session-set change on the first tick', async () => {
-    const poll = new TerminalPoll({
-      listSessions: vi.fn(async () => [
-        { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-      ]),
-      isFocused: () => true,
-      onDidChangeFocus: () => ({ dispose: vi.fn() }),
-      scheduler: new ManualScheduler(),
-    });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
-
-    poll.start();
-    await flush();
-
-    expect(sessionSetChanges).not.toHaveBeenCalled();
-  });
-
-  it('does not emit a session-set change when the session names are unchanged', async () => {
-    const scheduler = new ManualScheduler();
-    let sessions: TmuxSession[] = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
-    ];
-    const poll = new TerminalPoll({
-      listSessions: vi.fn(async () => sessions),
-      isFocused: () => true,
-      onDidChangeFocus: () => ({ dispose: vi.fn() }),
-      scheduler,
-    });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
-
-    poll.start();
-    await flush();
-
-    sessions = [
-      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/beta' },
-    ];
-    await scheduler.runNext();
-
-    expect(sessionSetChanges).not.toHaveBeenCalled();
   });
 
   it('pauses while unfocused and catches up on refocus', async () => {
@@ -166,7 +143,7 @@ describe('TerminalPoll', () => {
     expect(scheduler.hasTick()).toBe(true);
   });
 
-  it('detects session-set changes on refocus after the timer was paused', async () => {
+  it('reconciles sessions on refocus after the timer was paused', async () => {
     const scheduler = new ManualScheduler();
     let focused = true;
     let focusHandler: ((focused: boolean) => void) | undefined;
@@ -182,8 +159,8 @@ describe('TerminalPoll', () => {
       },
       scheduler,
     });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
+    const observations = vi.fn(async () => undefined);
+    poll.onObservation(observations);
     poll.start();
     await flush();
 
@@ -198,7 +175,8 @@ describe('TerminalPoll', () => {
     focusHandler?.(true);
     await flush();
 
-    expect(sessionSetChanges).toHaveBeenCalledOnce();
+    expect(observations).toHaveBeenLastCalledWith(sessions);
+    expect(observations).toHaveBeenCalledTimes(2);
     expect(scheduler.hasTick()).toBe(true);
   });
 
@@ -319,8 +297,8 @@ describe('TerminalPoll', () => {
       scheduler,
       onError,
     });
-    const sessionSetChanges = vi.fn();
-    poll.onDidChangeSessionSet(sessionSetChanges);
+    const observations = vi.fn(async () => undefined);
+    poll.onObservation(observations);
 
     poll.start();
     await flush();
@@ -334,7 +312,11 @@ describe('TerminalPoll', () => {
     await scheduler.runNext();
     await flush();
 
-    expect(sessionSetChanges).toHaveBeenCalledOnce();
+    expect(observations).toHaveBeenCalledTimes(2);
+    expect(observations).toHaveBeenLastCalledWith([
+      { sessionName: 'term-1', windowName: 'zsh', paneTitle: ':/work/alpha' },
+      { sessionName: 'term-2', windowName: 'zsh', paneTitle: ':/work/beta' },
+    ]);
   });
 });
 

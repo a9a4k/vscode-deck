@@ -46,11 +46,11 @@ describe('AddTerminalCommand', () => {
       listSessions: vi.fn().mockResolvedValueOnce(existing),
       ensureSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
 
     await new AddTerminalCommand(
       tmux,
-      refresh,
+      wakePoll,
     ).run({ worktree: { path: '/work/repo' } });
 
     expect(tmux.ensureSession).toHaveBeenCalledWith(
@@ -67,7 +67,7 @@ describe('AddTerminalCommand', () => {
       { viewColumn: -1 },
     );
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 
   it('restores the TerminalSnapshot before creating, so a + right after a server death does not clobber it', async () => {
@@ -99,11 +99,11 @@ describe('AddTerminalCommand', () => {
       listSessions: vi.fn().mockResolvedValueOnce([]),
       ensureSession: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
 
     await new AddTerminalCommand(
       tmux,
-      refresh,
+      wakePoll,
     ).run({ worktree: { path: '/work/beta-main' } });
 
     expect(tmux.ensureSession).toHaveBeenCalledWith(
@@ -121,7 +121,7 @@ describe('AddTerminalCommand', () => {
     );
     expect(vscodeState.executeCommand).toHaveBeenCalledOnce();
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 
   it('creates a headless terminal without opening a custom editor', async () => {

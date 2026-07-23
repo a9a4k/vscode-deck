@@ -60,6 +60,8 @@ import { DeckDecorationProvider } from './tree/deckDecorationProvider';
 import { AgentStatusNotifier } from './agent/agentStatusNotifier';
 import { AgentStatusStore } from './agent/agentStatusStore';
 import { TerminalPoll } from './terminal/terminalPoll';
+import { TerminalModel } from './terminal/terminalModel';
+import { TerminalReconciler, type TerminalLocation } from './terminal/terminalReconciler';
 import type { AgentName } from './agent/agentTypes';
 import { AgentDetection } from './agent/agentDetection';
 import { AgentSetupPrompt, type AgentConfigChange } from './agent/agentSetupPrompt';
@@ -92,16 +94,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     } catch {
       return undefined;
     }
-  };
-  const tmuxSessionsWithAgentNames = {
-    listSessions: async (prefix?: string): Promise<TmuxSession[]> => {
-      const sessions = await tmux.listSessions(prefix);
-      return Promise.all(sessions.map(async (session) => {
-        const agentName = session.agentName ?? await resolveAgentName(session.sessionName);
-        if (agentName === undefined) return session;
-        return { ...session, agentName };
-      }));
-    },
   };
   let agentExitSweep: AgentExitSweep | undefined;
   let terminalPoll: TerminalPoll | undefined;
@@ -196,6 +188,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const worktreeRoots = new WorktreeRootStore(context.globalState);
   const worktreeOrders = new WorktreeOrderStore(context.globalState);
   const terminalOrders = new TerminalOrderStore(context.globalState);
+  const terminalModel = new TerminalModel();
   const worktreeListCache = new WorktreeListCacheStore(context.globalState);
   const pendingTerminalOpens = new PendingTerminalOpenStore(context.globalState);
   const pendingWorktreeRemovals = new Set<string>();
@@ -209,13 +202,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     worktreeOrders,
     worktreeListCache,
     repositoryCommonDirCache,
-    tmuxSessionsWithAgentNames,
+    terminalModel,
     tmuxAvailability.available,
     pendingWorktreeRemovals,
     agentStatuses,
     terminalOrders,
-    ensureSnapshotRestored,
   );
+  const terminalReconciler = new TerminalReconciler({
+    model: terminalModel,
+    restore: ensureSnapshotRestored,
+    terminalOrders,
+    locations: () => terminalLocations(
+      repositoryRegistry,
+      repositoryCommonDirCache,
+      worktreeListCache,
+      pendingWorktreeRemovals,
+    ),
+    updateDecorations: (terminals) => tree.updateTerminalDecorations(terminals),
+    wakeExitSweep: wakeAgentExitSweep,
+    fireTree: () => tree.refresh(),
+  });
   agentExitSweep = tmuxAvailability.available
     ? new AgentExitSweep({
         sidecars: agentSidecars,
@@ -233,7 +239,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   function refreshTree(): void {
     tree.refresh();
     terminalPoll?.start();
-    wakeAgentExitSweep();
     syncExternalGitWatches();
   }
 
@@ -249,18 +254,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const addTerminal = new AddTerminalCommand(
     tmux,
-    refreshTree,
+    () => terminalPoll?.wake(),
     undefined,
     ensureSnapshotRestored,
   );
   const runLauncher = new RunLauncherCommand(tmux, {
-    refresh: refreshTree,
+    wakePoll: () => terminalPoll?.wake(),
     beforeCreate: ensureSnapshotRestored,
     resolveCommonDir: (repositoryPath) =>
       resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
   });
   const worktreeCreateLaunchers = new WorktreeCreateLauncherRunner(tmux, {
-    refresh: refreshTree,
+    wakePoll: () => terminalPoll?.wake(),
     beforeCreate: ensureSnapshotRestored,
     resolveCommonDir: (repositoryPath) =>
       resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
@@ -270,13 +275,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tmuxConfigPath,
     undefined,
     undefined,
-    refreshTree,
-    // %window-renamed from any open terminal's control client → relabel the row
-    // live (automatic-rename tracks the foreground command); event-driven, no poll.
-    async (sessionName) => {
-      const session = await tmux.terminalSession(sessionName);
-      if (session) tree.refreshTerminalDisplays([session]);
-    },
+    () => terminalPoll?.wake(),
+    // A control-client rename requests an immediate observation so the
+    // TerminalPoll remains the TerminalModel's only writer.
+    () => terminalPoll?.wake(),
     (sessionName) => tmux.terminalSession(sessionName),
     ensureSnapshotRestored,
     resolveAgentName,
@@ -295,10 +297,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       })
     : undefined;
   const terminalPollWatch = terminalPoll?.onChange((changedSessions) => {
-    tree.refreshTerminalDisplays(changedSessions);
     terminalEditorProvider.refreshTitles(changedSessions.map((session) => session.sessionName));
   });
-  const terminalPollSessionSetWatch = terminalPoll?.onDidChangeSessionSet(refreshTree);
+  const terminalReconcileWatch = terminalPoll?.onObservation((sessions) =>
+    terminalReconciler.reconcile(sessions));
   terminalPoll?.start();
   const openTerminal = new OpenTerminalCommand({
     terminalPanels: terminalEditorProvider,
@@ -307,7 +309,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const removeAgentStatus = (sessionName: string) => agentStatuses.remove(sessionName);
   const terminalRemoval = new TerminalRemovalCommand(
     tmux,
-    refreshTree,
+    () => terminalPoll?.wake(),
     confirmTerminalRemoval,
     undefined,
     removeAgentStatus,
@@ -397,9 +399,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const activationRestore = restoreCoordinator?.ensureRestored();
   if (activationRestore) {
     void activationRestore
-      .then(refreshTree)
+      .then(() => terminalPoll?.wake())
       .catch((error) => {
-        console.warn('Deck: refreshing tree after TerminalSnapshot restore failed', error);
+        console.warn('Deck: restoring TerminalSnapshot during activation failed', error);
       })
       .finally(startAgentExitSweep);
   } else {
@@ -420,7 +422,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       showInformationMessage: (message, ...items) => vscode.window.showInformationMessage(message, ...items),
     },
     openTerminal: (sessionName) => openAgentStatusTerminal(tree, treeView, openTerminal, sessionName),
-    resolveTerminalSession: (sessionName) => tmux.terminalSession(sessionName),
+    resolveTerminalSession: async (sessionName) => terminalModel.find(sessionName),
     describeSession: (sessionName) => tree.describeSession(sessionName),
   }).start();
   const addRepository = new AddRepositoryCommand(
@@ -453,7 +455,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ...(agentExitSweep ? [agentExitSweep] : []),
     ...(terminalPoll ? [terminalPoll] : []),
     ...(terminalPollWatch ? [terminalPollWatch] : []),
-    ...(terminalPollSessionSetWatch ? [terminalPollSessionSetWatch] : []),
+    ...(terminalReconcileWatch ? [terminalReconcileWatch] : []),
     deckDecorationProvider,
     deckDecorationWatch,
     disconnectedTabBadgeWatch,
@@ -471,6 +473,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     disconnectedTabs,
     vscode.commands.registerCommand('deck.refresh', () => {
       refreshTree();
+      terminalPoll?.wake();
     }),
     vscode.commands.registerCommand('deck.addRepository', () => addRepository.run()),
     vscode.commands.registerCommand('deck.addWorktree', (node) => addWorktree.run(node)),
@@ -678,6 +681,26 @@ function agentStatusNotificationEnabled(key: 'notifyOnNeedsInput' | 'notifyOnCom
 
 interface RepositoryRegistryReader {
   list(): readonly string[];
+}
+
+function terminalLocations(
+  repositoryRegistry: RepositoryRegistryReader,
+  repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
+  worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
+  pendingWorktreeRemovals: ReadonlySet<string>,
+): TerminalLocation[] {
+  const locations: TerminalLocation[] = [];
+  for (const repositoryPath of repositoryRegistry.list()) {
+    const commonDir = repositoryCommonDirCache.get(repositoryPath);
+    if (commonDir === undefined) continue;
+    const worktrees = worktreeListCache.get(commonDir);
+    if (worktrees === undefined) continue;
+    for (const worktree of worktrees) {
+      if (worktree.bare || pendingWorktreeRemovals.has(worktree.path)) continue;
+      locations.push({ repositoryPath, worktreePath: worktree.path });
+    }
+  }
+  return locations;
 }
 
 async function registeredCommonDirs(

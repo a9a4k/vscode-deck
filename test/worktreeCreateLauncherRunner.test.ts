@@ -41,7 +41,7 @@ describe('WorktreeCreateLauncherRunner', () => {
       }),
       sendCommandLine: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
     const resolveLaunchers = vi.fn(async () => ({
       repo: [
         { label: 'Dev', command: 'npm run dev' },
@@ -61,7 +61,7 @@ describe('WorktreeCreateLauncherRunner', () => {
       { label: 'User Watch', command: 'npm test -- --watch', runOnWorktreeCreate: true },
     ];
 
-    await new WorktreeCreateLauncherRunner(tmux, { refresh, resolveLaunchers }).run({
+    await new WorktreeCreateLauncherRunner(tmux, { wakePoll, resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
@@ -85,7 +85,7 @@ describe('WorktreeCreateLauncherRunner', () => {
       'npm test -- --watch',
     );
     expect(vscodeState.executeCommand).not.toHaveBeenCalled();
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(wakePoll).toHaveBeenCalledOnce();
   });
 
   it('does not create terminals when no launchers are flagged', async () => {
@@ -94,7 +94,7 @@ describe('WorktreeCreateLauncherRunner', () => {
       ensureSession: vi.fn(async () => undefined),
       sendCommandLine: vi.fn(async () => undefined),
     };
-    const refresh = vi.fn();
+    const wakePoll = vi.fn();
     const beforeCreate = vi.fn(async () => undefined);
     const resolveLaunchers = vi.fn(async () => ({
       repo: [{ label: 'Dev', command: 'npm run dev' }],
@@ -104,13 +104,13 @@ describe('WorktreeCreateLauncherRunner', () => {
 
     await new WorktreeCreateLauncherRunner(tmux, {
       beforeCreate,
-      refresh,
+      wakePoll,
       resolveLaunchers,
     }).run({ worktree: { path: '/work/repo' } });
 
     expect(beforeCreate).not.toHaveBeenCalled();
     expect(tmux.ensureSession).not.toHaveBeenCalled();
     expect(tmux.sendCommandLine).not.toHaveBeenCalled();
-    expect(refresh).not.toHaveBeenCalled();
+    expect(wakePoll).not.toHaveBeenCalled();
   });
 });

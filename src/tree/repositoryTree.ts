@@ -10,10 +10,8 @@ import { terminalSessionPrefix } from '../terminal/tmuxSafe';
 import { resolveTerminalTooltip } from '../terminal/terminalLabelResolver';
 import { TerminalOrderStore } from '../terminal/terminalOrderStore';
 import type { TmuxSession } from '../terminal/tmuxCli';
-import {
-  type CachedTerminalSession,
-  toCachedTerminalSessions,
-} from '../terminal/terminalSession';
+import type { CachedTerminalSession } from '../terminal/terminalSession';
+import { TerminalModel } from '../terminal/terminalModel';
 import type { AgentStatus } from '../agent/agentStatusStore';
 import {
   agentStatusDecorationResourceUri,
@@ -53,10 +51,6 @@ const terminalTreeIcon = {
     themeIcon: (id: string) => new vscode.ThemeIcon(id),
   },
 };
-
-interface TerminalSessionLister {
-  listSessions(prefix?: string): Promise<TmuxSession[]>;
-}
 
 interface AgentStatusLookup {
   get(sessionName: string): AgentStatus | undefined;
@@ -180,11 +174,8 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private readonly repositoryCommonDirs = new Map<string, string | null>();
   private readonly resolvingRepositoryPaths = new Set<string>();
   private readonly refreshingWorktrees = new Set<string>();
-  private readonly knownWorktreeRepositories = new Map<string, string>();
   private readonly knownTerminals = new Map<string, AgentStatusDecorationTerminal>();
   private readonly renderedTerminals = new Map<string, TerminalNode>();
-  private readonly tmux: TerminalSessionLister;
-  private readonly tmuxAvailable: boolean;
 
   constructor(
     private readonly repositoryRegistry: Pick<RepositoryRegistryStore, 'list'>,
@@ -198,27 +189,17 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       get: () => undefined,
       set: async () => undefined,
     },
-    tmuxOrAvailable: TerminalSessionLister | boolean = true,
-    tmuxAvailable?: boolean,
+    private readonly terminalModel: TerminalModel = new TerminalModel(),
+    private readonly tmuxAvailable = true,
     private readonly pendingWorktreeRemovals: ReadonlySet<string> = new Set(),
     private readonly agentStatuses?: AgentStatusLookup,
-    private readonly terminalOrders?: Pick<TerminalOrderStore, 'get' | 'set'>,
-    private readonly ensureSnapshotRestored: () => Promise<void> = () => Promise.resolve(),
+    private readonly terminalOrders?: Pick<TerminalOrderStore, 'get'>,
   ) {
-    this.syncAgentStatusDecorations();
+    this.syncAgentStatuses();
     this.agentStatuses?.onDidChange(() => {
-      this.syncAgentStatusDecorations();
+      this.syncAgentStatuses();
       this.refreshRenderedTerminals();
     });
-
-    if (typeof tmuxOrAvailable === 'boolean') {
-      this.tmux = { listSessions: async () => [] };
-      this.tmuxAvailable = tmuxAvailable ?? tmuxOrAvailable;
-      return;
-    }
-
-    this.tmux = tmuxOrAvailable;
-    this.tmuxAvailable = tmuxAvailable ?? true;
   }
 
   refresh(): void {
@@ -227,12 +208,29 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  refreshTerminalDisplays(sessions: readonly TmuxSession[]): void {
-    for (const session of sessions) {
-      const node = this.renderedTerminals.get(session.sessionName);
-      if (!node) continue;
-      this.refreshTerminalDisplay(node, session);
+  updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void {
+    const nextTerminals = new Map(terminals.map((terminal) => [terminal.sessionName, terminal]));
+    const changedSessionNames = new Set([
+      ...this.knownTerminals.keys(),
+      ...nextTerminals.keys(),
+    ].filter((sessionName) =>
+      !sameDecorationTerminal(
+        this.knownTerminals.get(sessionName),
+        nextTerminals.get(sessionName),
+      )));
+    if (changedSessionNames.size === 0) return;
+    const invalidations = [
+      ...this.agentStatusDecorationRollups.invalidationUrisForSessions(changedSessionNames),
+    ];
+    this.knownTerminals.clear();
+    for (const [sessionName, terminal] of nextTerminals) {
+      this.knownTerminals.set(sessionName, terminal);
     }
+    this.agentStatusDecorationRollups.setTerminals(terminals);
+    invalidations.push(
+      ...this.agentStatusDecorationRollups.invalidationUrisForSessions(changedSessionNames),
+    );
+    this.fireDeckDecorations(uniqueDecorationUris(invalidations));
   }
 
   private refreshRenderedTerminals(): void {
@@ -305,10 +303,8 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       this.resolveActiveRepository();
       const nodes = repositories.map((p) => {
         this.resolveRepositoryCommonDir(p);
-        this.syncCachedDecorationWorktrees(p);
         return new RepositoryNode(p, this.isActiveRepository(p));
       });
-      this.syncAgentStatusDecorations();
       return nodes;
     }
     if (element instanceof RepositoryNode) {
@@ -325,6 +321,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     sessionName: string,
     worktreePath: string,
   ): Promise<RepositoryTreeNode | undefined> {
+    if (this.terminalModel.find(sessionName) === undefined) return undefined;
     return this.findTerminalNode(
       sessionName,
       (worktree) => path.resolve(worktree.worktree.path) === path.resolve(worktreePath),
@@ -332,11 +329,13 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   }
 
   async findTerminalBySessionName(sessionName: string): Promise<RepositoryTreeNode | undefined> {
+    if (this.terminalModel.find(sessionName) === undefined) return undefined;
     return this.findTerminalNode(sessionName);
   }
 
   async describeSession(sessionName: string): Promise<{ repo: string; branch: string } | undefined> {
-    const worktree = await this.findWorktreeNodeForSession(sessionName);
+    if (this.terminalModel.find(sessionName) === undefined) return undefined;
+    const worktree = this.findWorktreeNodeForSession(sessionName);
     if (worktree === undefined) return undefined;
     return {
       repo: path.basename(worktree.repositoryPath),
@@ -348,9 +347,9 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     sessionName: string,
     worktreeMatches: (worktree: WorktreeNode) => boolean = () => true,
   ): Promise<TerminalNode | undefined> {
-    const worktree = await this.findWorktreeNodeForSession(sessionName, worktreeMatches);
+    const worktree = this.findWorktreeNodeForSession(sessionName, worktreeMatches);
     if (worktree === undefined) return undefined;
-    const terminals = await this.resolveChildren(worktree);
+    const terminals = this.getTerminalChildren(worktree);
     for (const terminal of terminals) {
       if (terminal instanceof TerminalNode && terminal.terminal.sessionName === sessionName) {
         return terminal;
@@ -359,28 +358,25 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return undefined;
   }
 
-  private async findWorktreeNodeForSession(
+  private findWorktreeNodeForSession(
     sessionName: string,
     worktreeMatches: (worktree: WorktreeNode) => boolean = () => true,
-  ): Promise<WorktreeNode | undefined> {
-    const repositories = await this.resolveChildren();
-    for (const repository of repositories) {
-      if (!(repository instanceof RepositoryNode)) continue;
-      const worktrees = await this.resolveChildren(repository);
-      for (const worktree of worktrees) {
-        if (!(worktree instanceof WorktreeNode)) continue;
-        // The session name embeds the worktree prefix — skip before the
-        // per-worktree tmux query.
-        if (!sessionName.startsWith(terminalSessionPrefix(worktree.worktree.path))) continue;
-        if (!worktreeMatches(worktree)) continue;
-        return worktree;
-      }
+  ): WorktreeNode | undefined {
+    for (const repositoryPath of this.repositoryRegistry.list()) {
+      const commonDir =
+        this.repositoryCommonDirCache.get(repositoryPath)
+        ?? this.repositoryCommonDirs.get(repositoryPath)
+        ?? undefined;
+      if (commonDir === undefined || commonDir === null) continue;
+      const cached = this.worktreeListCache.get(commonDir);
+      if (cached === undefined) continue;
+      const worktrees = this.toWorktreeNodes(repositoryPath, cached, commonDir);
+      const match = worktrees.find((worktree) =>
+        sessionName.startsWith(terminalSessionPrefix(worktree.worktree.path))
+        && worktreeMatches(worktree));
+      if (match !== undefined) return match;
     }
     return undefined;
-  }
-
-  private async resolveChildren(element?: RepositoryTreeNode): Promise<RepositoryTreeNode[]> {
-    return (await Promise.resolve(this.getChildren(element))) ?? [];
   }
 
   private currentWorktreePath(): string | undefined {
@@ -529,26 +525,10 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return this.toWorktreeNodes(repositoryPath, visibleWorktrees, commonDir);
   }
 
-  private async getTerminalChildren(element: WorktreeNode): Promise<RepositoryTreeNode[]> {
-    // Wait for the DeckSocket to finish restoring before listing — otherwise a
-    // reopen-after-kill reads an empty/partial session list, and the prune below
-    // would mistake the not-yet-restored Terminals for dead ones and wipe the
-    // stored TerminalOrder. Same hazard the tab-reattach gate guards against.
-    await this.ensureSnapshotRestored();
-    const liveTerminals = toCachedTerminalSessions(
-      element.worktree.path,
-      await this.tmux.listSessions(terminalSessionPrefix(element.worktree.path)),
-    );
-    const storedOrder = this.terminalOrders?.get(element.worktree.path);
-    const prunedStoredOrder = storedOrder === undefined
-      ? undefined
-      : pruneOrder(storedOrder, new Set(liveTerminals.map((terminal) => terminal.sessionName)));
-    if (prunedStoredOrder?.changed) {
-      await this.terminalOrders?.set(element.worktree.path, prunedStoredOrder.order);
-    }
+  private getTerminalChildren(element: WorktreeNode): RepositoryTreeNode[] {
     const terminals = reconcileTerminalOrder(
-      prunedStoredOrder?.order,
-      liveTerminals,
+      this.terminalOrders?.get(element.worktree.path),
+      this.terminalModel.get(element.worktree.path),
     );
     return this.toTerminalNodes(element, terminals);
   }
@@ -558,11 +538,6 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     const liveSessionNames = new Set(terminals.map((terminal) => terminal.sessionName));
     const nodes = terminals.map(
       (terminal) => {
-        this.knownTerminals.set(terminal.sessionName, {
-          repositoryPath: element.repositoryPath,
-          worktreePath: element.worktree.path,
-          sessionName: terminal.sessionName,
-        });
         const status = this.agentStatuses?.get(terminal.sessionName);
         const existing = this.renderedTerminals.get(terminal.sessionName);
         if (existing) {
@@ -579,7 +554,6 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
         this.renderedTerminals.delete(sessionName);
       }
     }
-    this.syncAgentStatusDecorations();
     return nodes;
   }
 
@@ -618,7 +592,6 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     );
     const mainWorktreePath = gitWorktrees.find((w) => !w.bare)?.path;
     const nodes = worktrees.map((w) => {
-      this.knownWorktreeRepositories.set(w.path, repositoryPath);
       return new WorktreeNode(
         repositoryPath,
         w,
@@ -626,7 +599,6 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
         mainWorktreePath,
       );
     });
-    this.syncAgentStatusDecorations();
     return nodes;
   }
 
@@ -651,32 +623,9 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return excludePending(currentlyVisible, pendingAtListStart);
   }
 
-  private syncCachedDecorationWorktrees(repositoryPath: string): void {
-    const commonDir =
-      this.repositoryCommonDirCache.get(repositoryPath) ??
-      this.repositoryCommonDirs.get(repositoryPath) ??
-      undefined;
-    if (commonDir === undefined || commonDir === null) return;
-
-    const worktrees = this.worktreeListCache.get(commonDir);
-    if (worktrees === undefined) return;
-    for (const worktree of this.visibleWorktrees(worktrees)) {
-      this.knownWorktreeRepositories.set(worktree.path, repositoryPath);
-    }
-  }
-
-  private syncAgentStatusDecorations(): void {
+  private syncAgentStatuses(): void {
     const statuses = [...(this.agentStatuses?.entries() ?? [])];
     this.agentStatusDecorationRollups.setStatuses(statuses);
-    const terminals = new Map(this.knownTerminals);
-    for (const [worktreePath, repositoryPath] of this.knownWorktreeRepositories) {
-      const prefix = terminalSessionPrefix(worktreePath);
-      for (const [sessionName] of statuses) {
-        if (!sessionName.startsWith(prefix)) continue;
-        terminals.set(sessionName, { repositoryPath, worktreePath, sessionName });
-      }
-    }
-    this.agentStatusDecorationRollups.setTerminals([...terminals.values()]);
   }
 }
 
@@ -685,6 +634,27 @@ function toDecorationUri(
   id: string,
 ): vscode.Uri {
   return vscode.Uri.from(agentStatusDecorationResourceUri(kind, id));
+}
+
+function uniqueDecorationUris(
+  uris: readonly AgentStatusDecorationResourceUri[],
+): AgentStatusDecorationResourceUri[] {
+  return [...new Map(uris.map((uri) => [
+    `${uri.scheme}:${uri.authority}:${uri.path}:${uri.query}`,
+    uri,
+  ])).values()];
+}
+
+function sameDecorationTerminal(
+  left: AgentStatusDecorationTerminal | undefined,
+  right: AgentStatusDecorationTerminal | undefined,
+): boolean {
+  return (
+    left !== undefined
+    && right !== undefined
+    && left.repositoryPath === right.repositoryPath
+    && left.worktreePath === right.worktreePath
+  );
 }
 
 function sameWorktrees(left: readonly Worktree[], right: readonly Worktree[]): boolean {
