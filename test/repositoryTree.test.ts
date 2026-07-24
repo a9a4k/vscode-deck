@@ -965,6 +965,70 @@ describe('RepositoryTreeProvider', () => {
     expect(terminalOrders.get).toHaveBeenCalledWith('/work/alpha-main');
   });
 
+  it('relabels only the changed rendered Terminal row', () => {
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
+    ]);
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      model,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync cached worktrees');
+    const terminals = provider.getChildren(worktrees[0]);
+    if (!Array.isArray(terminals)) throw new Error('expected sync Terminal rows');
+    vscodeState.emitters[0].fire.mockClear();
+
+    const diffs = model.apply([
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'renamed' },
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
+    ]);
+    provider.refreshTerminalDisplays(diffs[0].relabeled);
+
+    expect(terminals[0].label).toBe('renamed');
+    expect(terminals[1].label).toBe('two');
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledOnce();
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(terminals[0]);
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalledWith(worktrees[0]);
+  });
+
+  it('defers a relabel for an unrendered Terminal until its Worktree expands', () => {
+    const model = observedModel([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'old' },
+    ]);
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      model,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    vscodeState.emitters[0].fire.mockClear();
+
+    const diffs = model.apply([
+      { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'current' },
+    ]);
+    provider.refreshTerminalDisplays(diffs[0].relabeled);
+
+    expect(vscodeState.emitters[0].fire).not.toHaveBeenCalled();
+
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync cached worktrees');
+    const terminals = provider.getChildren(worktrees[1]);
+    if (!Array.isArray(terminals)) throw new Error('expected sync Terminal rows');
+    expect(terminals[0].label).toBe('current');
+  });
+
   it('relabels only the rendered Terminal row when its working status changes', async () => {
     const model = observedModel([
       {
