@@ -231,6 +231,32 @@ describe('TerminalReconciler', () => {
     expect(restore).toHaveBeenCalledTimes(2);
   });
 
+  it('retries the restore on the next tick after a failed attempt', async () => {
+    const restore = vi.fn(async () => undefined)
+      .mockRejectedValueOnce(new Error('restore lock timed out'));
+    const reconciler = new TerminalReconciler({
+      model: new TerminalModel(),
+      restoreTerminalSnapshot: restore,
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
+    });
+
+    await expect(reconciler.reconcile([])).rejects.toThrow('restore lock timed out');
+
+    await reconciler.reconcile([]);
+    expect(restore).toHaveBeenCalledTimes(2);
+
+    await reconciler.reconcile([]);
+    expect(restore).toHaveBeenCalledTimes(2);
+  });
+
   it('restores an anchor-only DeckSocket without pruning or firing', async () => {
     const model = observedModel();
     const restore = vi.fn(async () => undefined);

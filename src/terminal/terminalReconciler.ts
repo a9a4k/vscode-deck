@@ -36,7 +36,17 @@ export class TerminalReconciler {
     if (trust !== 'restored') {
       const restoreRequired = !this.untrustedObservationSeen;
       this.untrustedObservationSeen = true;
-      if (restoreRequired) await this.options.restoreTerminalSnapshot();
+      // A failed restore must not latch the episode: the next tick retries,
+      // otherwise the tree can never self-heal (a wake reaches this same path,
+      // so even Deck: Refresh could not force another attempt).
+      if (restoreRequired) {
+        try {
+          await this.options.restoreTerminalSnapshot();
+        } catch (error) {
+          this.untrustedObservationSeen = false;
+          throw error;
+        }
+      }
       return;
     }
     this.untrustedObservationSeen = false;
