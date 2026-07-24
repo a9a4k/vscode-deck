@@ -1,6 +1,6 @@
 import type { AgentStatusDecorationTerminal } from '../agent/agentStatusDecorations';
 import { pruneOrder } from '../tree/pruneOrder';
-import { classifyObservation, type ObservationTrust } from './observationTrust';
+import { classifyObservation } from './observationTrust';
 import type { TerminalModel, TerminalModelSession } from './terminalModel';
 import type { TmuxSession } from './tmuxCli';
 import { terminalSessionPrefix } from './tmuxSafe';
@@ -27,22 +27,19 @@ interface TerminalReconcilerOptions {
 }
 
 export class TerminalReconciler {
-  private lastTrust: ObservationTrust | undefined;
+  private untrustedObservationSeen = false;
 
   constructor(private readonly options: TerminalReconcilerOptions) {}
 
   async reconcile(sessions: readonly TmuxSession[]): Promise<void> {
     const trust = classifyObservation(sessions);
     if (trust !== 'restored') {
-      // Restore once per trust transition, not per tick: a socket that stays
-      // bare (zero Terminals) or down would otherwise re-run the restore
-      // machinery — lock, resurrect script — on every 2s observation, forever.
-      const transitioned = this.lastTrust !== trust;
-      this.lastTrust = trust;
-      if (transitioned) await this.options.restoreTerminalSnapshot();
+      const restoreRequired = !this.untrustedObservationSeen;
+      this.untrustedObservationSeen = true;
+      if (restoreRequired) await this.options.restoreTerminalSnapshot();
       return;
     }
-    this.lastTrust = trust;
+    this.untrustedObservationSeen = false;
 
     const worktreeDiffs = this.options.model.apply(sessions);
     const locations = uniqueLocations(this.options.listTerminalLocations());

@@ -175,7 +175,7 @@ describe('TerminalReconciler', () => {
     expect(refreshTerminals).not.toHaveBeenCalled();
   });
 
-  it('restores once while the DeckSocket observation stays untrusted', async () => {
+  it('restores once throughout a down-to-bare untrusted episode', async () => {
     const restore = vi.fn(async () => undefined);
     const reconciler = new TerminalReconciler({
       model: observedModel(),
@@ -196,15 +196,13 @@ describe('TerminalReconciler', () => {
     await reconciler.reconcile([]);
     expect(restore).toHaveBeenCalledOnce();
 
-    // down → bare is a new transition (the restore created the anchor):
-    // one more attempt, then a bare socket stays quiet.
     await reconciler.reconcile([
       { sessionName: TERMINAL_SNAPSHOT_ANCHOR_SESSION, windowName: 'anchor' },
     ]);
     await reconciler.reconcile([
       { sessionName: TERMINAL_SNAPSHOT_ANCHOR_SESSION, windowName: 'anchor' },
     ]);
-    expect(restore).toHaveBeenCalledTimes(2);
+    expect(restore).toHaveBeenCalledOnce();
   });
 
   it('restores again when a restored DeckSocket later dies', async () => {
