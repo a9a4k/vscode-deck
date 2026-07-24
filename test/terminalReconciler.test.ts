@@ -25,6 +25,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
+      refreshTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -73,6 +74,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
+      refreshTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -103,13 +105,14 @@ describe('TerminalReconciler', () => {
     expect(effects).toEqual(['order', 'decorations', 'wake', 'fire']);
   });
 
-  it('fires each Worktree whose TerminalModel entry changed', async () => {
+  it('fires the Worktree for set changes and only the relabeled rows for label churn', async () => {
     const model = new TerminalModel();
     model.apply([
       { sessionName: 'wt-_work_alpha__term-1', windowName: 'one' },
       { sessionName: 'wt-_work_beta__term-1', windowName: 'one' },
     ]);
     const refreshWorktree = vi.fn();
+    const refreshTerminals = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
       restoreTerminalSnapshot: vi.fn(async () => undefined),
@@ -124,17 +127,110 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree,
+      refreshTerminals,
     });
 
     await reconciler.reconcile([
       { sessionName: 'wt-_work_alpha__term-1', windowName: 'renamed' },
+      { sessionName: 'wt-_work_beta__term-1', windowName: 'one' },
       { sessionName: 'wt-_work_beta__term-2', windowName: 'two' },
     ]);
 
-    expect(refreshWorktree.mock.calls).toEqual([
-      ['/work/alpha'],
-      ['/work/beta'],
+    expect(refreshWorktree.mock.calls).toEqual([['/work/beta']]);
+    expect(refreshTerminals).toHaveBeenCalledOnce();
+    expect(refreshTerminals).toHaveBeenCalledWith([
+      { sessionName: 'wt-_work_alpha__term-1', n: 1, windowName: 'renamed' },
     ]);
+  });
+
+  it('relabels ride the Worktree fire when the same Worktree also changed its set', async () => {
+    const model = new TerminalModel();
+    model.apply([
+      { sessionName: 'wt-_work_alpha__term-1', windowName: 'one' },
+    ]);
+    const refreshWorktree = vi.fn();
+    const refreshTerminals = vi.fn();
+    const reconciler = new TerminalReconciler({
+      model,
+      restoreTerminalSnapshot: vi.fn(async () => undefined),
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [
+        { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
+      ],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree,
+      refreshTerminals,
+    });
+
+    await reconciler.reconcile([
+      { sessionName: 'wt-_work_alpha__term-1', windowName: 'renamed' },
+      { sessionName: 'wt-_work_alpha__term-2', windowName: 'two' },
+    ]);
+
+    expect(refreshWorktree.mock.calls).toEqual([['/work/alpha']]);
+    expect(refreshTerminals).not.toHaveBeenCalled();
+  });
+
+  it('restores once while the DeckSocket observation stays untrusted', async () => {
+    const restore = vi.fn(async () => undefined);
+    const reconciler = new TerminalReconciler({
+      model: observedModel(),
+      restoreTerminalSnapshot: restore,
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree: vi.fn(),
+      refreshTerminals: vi.fn(),
+    });
+
+    await reconciler.reconcile([]);
+    await reconciler.reconcile([]);
+    await reconciler.reconcile([]);
+    expect(restore).toHaveBeenCalledOnce();
+
+    // down → bare is a new transition (the restore created the anchor):
+    // one more attempt, then a bare socket stays quiet.
+    await reconciler.reconcile([
+      { sessionName: TERMINAL_SNAPSHOT_ANCHOR_SESSION, windowName: 'anchor' },
+    ]);
+    await reconciler.reconcile([
+      { sessionName: TERMINAL_SNAPSHOT_ANCHOR_SESSION, windowName: 'anchor' },
+    ]);
+    expect(restore).toHaveBeenCalledTimes(2);
+  });
+
+  it('restores again when a restored DeckSocket later dies', async () => {
+    const restore = vi.fn(async () => undefined);
+    const reconciler = new TerminalReconciler({
+      model: new TerminalModel(),
+      restoreTerminalSnapshot: restore,
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree: vi.fn(),
+      refreshTerminals: vi.fn(),
+    });
+
+    await reconciler.reconcile([]);
+    expect(restore).toHaveBeenCalledOnce();
+
+    await reconciler.reconcile([
+      { sessionName: 'wt-_work_alpha__term-1', windowName: 'one' },
+    ]);
+    await reconciler.reconcile([]);
+    expect(restore).toHaveBeenCalledTimes(2);
   });
 
   it('restores an anchor-only DeckSocket without pruning or firing', async () => {
@@ -155,6 +251,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
+      refreshTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -192,6 +289,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
+      refreshTerminals: vi.fn(),
     });
 
     await reconciler.reconcile(sessions);

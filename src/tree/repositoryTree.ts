@@ -257,6 +257,14 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     this.fireDeckDecorations(this.agentStatusDecorationRollups.setTerminals(terminals));
   }
 
+  refreshTerminalDisplays(sessions: readonly TmuxSession[]): void {
+    for (const session of sessions) {
+      const node = this.renderedTerminals.get(session.sessionName);
+      if (!node) continue;
+      this.refreshTerminalDisplay(node, session);
+    }
+  }
+
   private refreshRenderedTerminals(): void {
     for (const node of this.renderedTerminals.values()) {
       this.refreshTerminalDisplay(node, node.terminal);
