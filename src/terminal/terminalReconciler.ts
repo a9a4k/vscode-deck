@@ -23,7 +23,7 @@ interface TerminalReconcilerOptions {
   updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void;
   wakeAgentExitSweep(): void;
   refreshWorktree(worktreePath: string): void;
-  refreshTerminals(sessions: readonly TerminalModelSession[]): void;
+  refreshTerminalDisplays(sessions: readonly TerminalModelSession[]): void;
 }
 
 export class TerminalReconciler {
@@ -61,7 +61,7 @@ export class TerminalReconciler {
       if (worktreeDiff.added.length > 0 || worktreeDiff.removed.length > 0) {
         this.options.refreshWorktree(worktreePath);
       } else if (worktreeDiff.relabeled.length > 0) {
-        this.options.refreshTerminals(worktreeDiff.relabeled);
+        this.options.refreshTerminalDisplays(worktreeDiff.relabeled);
       }
     }
   }

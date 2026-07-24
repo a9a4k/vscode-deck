@@ -25,7 +25,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -74,7 +74,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -112,7 +112,7 @@ describe('TerminalReconciler', () => {
       { sessionName: 'wt-_work_beta__term-1', windowName: 'one' },
     ]);
     const refreshWorktree = vi.fn();
-    const refreshTerminals = vi.fn();
+    const refreshTerminalDisplays = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
       restoreTerminalSnapshot: vi.fn(async () => undefined),
@@ -127,7 +127,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree,
-      refreshTerminals,
+      refreshTerminalDisplays,
     });
 
     await reconciler.reconcile([
@@ -137,19 +137,19 @@ describe('TerminalReconciler', () => {
     ]);
 
     expect(refreshWorktree.mock.calls).toEqual([['/work/beta']]);
-    expect(refreshTerminals).toHaveBeenCalledOnce();
-    expect(refreshTerminals).toHaveBeenCalledWith([
+    expect(refreshTerminalDisplays).toHaveBeenCalledOnce();
+    expect(refreshTerminalDisplays).toHaveBeenCalledWith([
       { sessionName: 'wt-_work_alpha__term-1', n: 1, windowName: 'renamed' },
     ]);
   });
 
-  it('relabels ride the Worktree fire when the same Worktree also changed its set', async () => {
+  it('uses only the Worktree refresh for a mixed set and label change', async () => {
     const model = new TerminalModel();
     model.apply([
       { sessionName: 'wt-_work_alpha__term-1', windowName: 'one' },
     ]);
     const refreshWorktree = vi.fn();
-    const refreshTerminals = vi.fn();
+    const refreshTerminalDisplays = vi.fn();
     const reconciler = new TerminalReconciler({
       model,
       restoreTerminalSnapshot: vi.fn(async () => undefined),
@@ -163,7 +163,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree,
-      refreshTerminals,
+      refreshTerminalDisplays,
     });
 
     await reconciler.reconcile([
@@ -172,7 +172,7 @@ describe('TerminalReconciler', () => {
     ]);
 
     expect(refreshWorktree.mock.calls).toEqual([['/work/alpha']]);
-    expect(refreshTerminals).not.toHaveBeenCalled();
+    expect(refreshTerminalDisplays).not.toHaveBeenCalled();
   });
 
   it('restores once throughout a down-to-bare untrusted episode', async () => {
@@ -188,7 +188,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree: vi.fn(),
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -218,7 +218,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree: vi.fn(),
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -249,7 +249,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -287,7 +287,7 @@ describe('TerminalReconciler', () => {
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
-      refreshTerminals: vi.fn(),
+      refreshTerminalDisplays: vi.fn(),
     });
 
     await reconciler.reconcile(sessions);

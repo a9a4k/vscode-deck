@@ -226,7 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     updateTerminalDecorations: (terminals) => tree.updateTerminalDecorations(terminals),
     wakeAgentExitSweep,
     refreshWorktree: (worktreePath) => tree.refreshWorktree(worktreePath),
-    refreshTerminals: (sessions) => tree.refreshTerminalDisplays(sessions),
+    refreshTerminalDisplays: (sessions) => tree.refreshTerminalDisplays(sessions),
   });
   const worktreeReconciler = new WorktreeReconciler({
     repositories: repositoryRegistry,
