@@ -75,6 +75,28 @@ function providerDocument(
 }
 
 describe('TerminalEditorProvider', () => {
+  it('delivers an explicit terminal focus request after the webview is ready', () => {
+    let receiveMessage: ((message: { type: string }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    terminalPanel.webview.postMessage.mockClear();
+    provider.focusTerminal('wt-_work_alpha-main__term-1');
+
+    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
+
+    receiveMessage?.({ type: 'ready' });
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
   it('tracks live panels by session and clears them on dispose', () => {
     let disposePanel: (() => void) | undefined;
     const closeSession = vi.fn(async () => undefined);
@@ -595,6 +617,17 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain('searchAddon.findNext');
     expect(terminalPanel.webview.html).toContain("matchBackground: '#5c3300'");
     expect(terminalPanel.webview.html).not.toContain('rgba(');
+  });
+
+  it('focuses xterm from explicit open intent instead of window focus state', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    expect(terminalPanel.webview.html).toContain("if (message.type === 'focus') terminal.focus()");
+    expect(terminalPanel.webview.html).not.toContain('document.hasFocus()');
+    expect(terminalPanel.webview.html).not.toContain("window.addEventListener('focus'");
   });
 
   it('renders Copy Link as a contextual terminal link menu action', () => {

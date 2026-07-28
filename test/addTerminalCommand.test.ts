@@ -70,6 +70,27 @@ describe('AddTerminalCommand', () => {
     expect(wakePoll).toHaveBeenCalledOnce();
   });
 
+  it('requests focus for the newly opened Terminal', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+    };
+    const focusTerminal = vi.fn();
+
+    await new AddTerminalCommand(
+      tmux,
+      vi.fn(),
+      undefined,
+      undefined,
+      focusTerminal,
+    ).run({ worktree: { path: '/work/repo' } });
+
+    expect(focusTerminal).toHaveBeenCalledWith('wt-_work_repo__term-1');
+    expect(vscodeState.executeCommand.mock.invocationCallOrder[0]).toBeLessThan(
+      focusTerminal.mock.invocationCallOrder[0],
+    );
+  });
+
   it('restores the TerminalSnapshot before creating, so a + right after a server death does not clobber it', async () => {
     const order: string[] = [];
     const tmux = {

@@ -98,6 +98,27 @@ describe('RunLauncherCommand', () => {
     expect(wakePoll).toHaveBeenCalledOnce();
   });
 
+  it('requests focus for the Terminal opened by a launcher', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+      sendCommandLine: vi.fn(async () => undefined),
+    };
+    const focusTerminal = vi.fn();
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[1]);
+
+    await new RunLauncherCommand(tmux, {
+      focusTerminal,
+      resolveLaunchers: vi.fn(async () => ({
+        repo: [{ label: 'Dev', command: 'npm run dev' }],
+        repositoryLocal: [],
+        user: [],
+      })),
+    }).run({ worktree: { path: '/work/repo' } });
+
+    expect(focusTerminal).toHaveBeenCalledWith('wt-_work_repo__term-1');
+  });
+
   it('opens launcher settings from the empty-state item', async () => {
     const tmux = {
       listSessions: vi.fn(async () => []),

@@ -23,6 +23,7 @@ type LauncherQuickPickItem = vscode.QuickPickItem & {
 
 interface RunLauncherCommandOptions {
   wakePoll?: () => void;
+  focusTerminal?: (sessionName: string) => void;
   sessionUriCodec?: SessionUriCodec;
   resolveLaunchers?: (
     worktreePath: string,
@@ -35,6 +36,7 @@ interface RunLauncherCommandOptions {
 
 export class RunLauncherCommand {
   private readonly wakePoll: () => void;
+  private readonly focusTerminal: (sessionName: string) => void;
   private readonly sessionUriCodec: SessionUriCodec;
   private readonly resolveLaunchers: (
     worktreePath: string,
@@ -48,6 +50,7 @@ export class RunLauncherCommand {
     options: RunLauncherCommandOptions = {},
   ) {
     this.wakePoll = options.wakePoll ?? (() => undefined);
+    this.focusTerminal = options.focusTerminal ?? (() => undefined);
     this.sessionUriCodec = options.sessionUriCodec ?? new SessionUriCodec();
     this.resolveLaunchers = options.resolveLaunchers ?? ((worktreePath, userLaunchers, repositoryLaunchers) =>
       resolveLauncherGroups(worktreePath, userLaunchers, repositoryLaunchers, {
@@ -73,7 +76,12 @@ export class RunLauncherCommand {
     if (!picked.launcher) return;
 
     await this.beforeCreate();
-    const session = await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec);
+    const session = await createAndOpenTerminal(
+      this.tmux,
+      node,
+      this.sessionUriCodec,
+      this.focusTerminal,
+    );
     await this.tmux.sendCommandLine(session, picked.launcher.command);
     this.wakePoll();
   }

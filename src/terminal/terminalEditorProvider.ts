@@ -81,6 +81,8 @@ export type TerminalEditorTitleChangeHandler = (sessionName: string) => Promise<
 
 export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvider<TerminalDocument> {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
+  private readonly readyPanels = new Set<vscode.WebviewPanel>();
+  private readonly pendingTerminalFocus = new Set<string>();
   // Sessions whose decoration we skipped while hidden — re-applied when shown.
   private readonly staleDecorations = new Set<string>();
   private readonly configChangeSubscription: vscode.Disposable;
@@ -148,6 +150,16 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     return this.panels.get(sessionName);
   }
 
+  focusTerminal(sessionName: string): void {
+    const panel = this.panels.get(sessionName);
+    if (!panel) return;
+    if (!this.readyPanels.has(panel)) {
+      this.pendingTerminalFocus.add(sessionName);
+      return;
+    }
+    void panel.webview.postMessage({ type: 'focus' });
+  }
+
   refreshTitles(changedSessionNames: readonly string[]): void {
     for (const sessionName of changedSessionNames) {
       const panel = this.panels.get(sessionName);
@@ -208,6 +220,10 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       panel.webview.onDidReceiveMessage((message: TerminalWebviewMessage) => {
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
+          this.readyPanels.add(panel);
+          if (this.pendingTerminalFocus.delete(document.sessionName)) {
+            void panel.webview.postMessage({ type: 'focus' });
+          }
           void this.beforeReattach().then(() => {
             transport.start(document.sessionName, document.cwd, cols, rows);
           });
@@ -229,7 +245,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       if (this.panels.get(document.sessionName) === panel) {
         this.panels.delete(document.sessionName);
         this.staleDecorations.delete(document.sessionName);
+        this.pendingTerminalFocus.delete(document.sessionName);
       }
+      this.readyPanels.delete(panel);
       if (this.activePanel === panel) this.activePanel = undefined;
       void this.onPanelDispose(document.sessionName);
       transport.dispose();
@@ -538,11 +556,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 
       terminal.open(terminalElement);
       fitAddon.fit();
-      // Only grab focus if this webview was opened focused. A preserveFocus
-      // open (single-clicking a row, like the Explorer) leaves focus on the
-      // tree so cmd+backspace can delete; clicking into the terminal focuses it.
-      if (document.hasFocus()) terminal.focus();
-      window.addEventListener('focus', () => terminal.focus());
       new ResizeObserver(debounceResize).observe(terminalElement);
       new MutationObserver(() => { terminal.options.theme = readVsCodeTheme(); }).observe(
         document.documentElement,
@@ -728,6 +741,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           fitAddon.fit();
         }
         if (message.type === 'find') openFindWidget();
+        if (message.type === 'focus') terminal.focus();
         if (message.type === 'exit') {
           terminal.writeln('\\r\\n[process exited ' + message.code + ']');
           vscode.postMessage({ type: 'exit' });
@@ -735,7 +749,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       });
       requestAnimationFrame(() => {
         postResize();
-        if (document.hasFocus()) terminal.focus();
         vscode.postMessage({ type: 'ready', cols: terminal.cols, rows: terminal.rows });
       });
     })();

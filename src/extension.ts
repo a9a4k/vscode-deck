@@ -293,18 +293,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     console.warn('Deck: reconciling Worktrees during activation failed', error);
   });
 
-  const addTerminal = new AddTerminalCommand(
-    tmux,
-    () => terminalPoll?.wake(),
-    undefined,
-    ensureSnapshotRestored,
-  );
-  const runLauncher = new RunLauncherCommand(tmux, {
-    wakePoll: () => terminalPoll?.wake(),
-    beforeCreate: ensureSnapshotRestored,
-    resolveCommonDir: (repositoryPath) =>
-      resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
-  });
   const worktreeCreateLaunchers = new WorktreeCreateLauncherRunner(tmux, {
     wakePoll: () => terminalPoll?.wake(),
     beforeCreate: ensureSnapshotRestored,
@@ -324,6 +312,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ensureSnapshotRestored,
     resolveAgentName,
   );
+  const focusTerminal = (sessionName: string) =>
+    terminalEditorProvider.focusTerminal(sessionName);
+  const addTerminal = new AddTerminalCommand(
+    tmux,
+    () => terminalPoll?.wake(),
+    undefined,
+    ensureSnapshotRestored,
+    focusTerminal,
+  );
+  const runLauncher = new RunLauncherCommand(tmux, {
+    wakePoll: () => terminalPoll?.wake(),
+    focusTerminal,
+    beforeCreate: ensureSnapshotRestored,
+    resolveCommonDir: (repositoryPath) =>
+      resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
+  });
   const disconnectedTabs = new DisconnectedTabWatch({
     panelFor: (sessionName) => terminalEditorProvider.panelFor(sessionName),
   });

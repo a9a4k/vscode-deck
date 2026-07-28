@@ -22,6 +22,7 @@ export async function createAndOpenTerminal(
   tmux: AddTerminalTmuxCli,
   node: WorktreeNodeLike,
   sessionUriCodec: SessionUriCodec,
+  focusTerminal: (sessionName: string) => void = () => undefined,
 ): Promise<string> {
   const { session, term } = await createHeadlessTerminal(tmux, node);
 
@@ -31,6 +32,7 @@ export async function createAndOpenTerminal(
     'deck.terminal',
     { viewColumn: vscode.ViewColumn.Active },
   );
+  focusTerminal(session);
   return session;
 }
 
@@ -57,13 +59,14 @@ export class AddTerminalCommand {
     // adds the new terminal alongside the restored ones instead of starting a
     // lone blank server that the next save would write over the good snapshot.
     private readonly beforeCreate: () => Promise<void> = () => Promise.resolve(),
+    private readonly focusTerminal: (sessionName: string) => void = () => undefined,
   ) {}
 
   async run(node: WorktreeNodeLike | undefined): Promise<void> {
     if (!node) return;
 
     await this.beforeCreate();
-    await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec);
+    await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec, this.focusTerminal);
     this.wakePoll();
   }
 }
