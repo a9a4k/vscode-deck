@@ -75,7 +75,7 @@ function providerDocument(
 }
 
 describe('TerminalEditorProvider', () => {
-  it('delivers an explicit terminal focus request after the webview is ready', () => {
+  it('queues an explicit terminal focus request until the webview is ready', () => {
     let receiveMessage: ((message: { type: string }) => void) | undefined;
     const terminalPanel = panel();
     terminalPanel.webview.onDidReceiveMessage.mockImplementation(
@@ -93,6 +93,45 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
 
     receiveMessage?.({ type: 'ready' });
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('does not focus a ready webview without an explicit request', () => {
+    let receiveMessage: ((message: { type: string }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    terminalPanel.webview.postMessage.mockClear();
+
+    receiveMessage?.({ type: 'ready' });
+
+    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('delivers an explicit terminal focus request immediately when the webview is ready', () => {
+    let receiveMessage: ((message: { type: string }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    receiveMessage?.({ type: 'ready' });
+    terminalPanel.webview.postMessage.mockClear();
+
+    provider.focusTerminal('wt-_work_alpha-main__term-1');
 
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
   });
