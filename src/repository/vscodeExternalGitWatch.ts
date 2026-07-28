@@ -21,11 +21,9 @@ export function watchGitCommonDir(
   const watchers = [
     createWatcher(commonDir, 'HEAD', schedule),
     createWatcher(commonDir, 'worktrees/**/HEAD', schedule),
-    // worktree add/remove: `git worktree remove` deletes the whole
-    // `worktrees/<name>/` dir, which VS Code reports as one dir-level delete —
-    // `worktrees/**/HEAD` never matches it. `worktrees/*` matches the child
-    // entry itself, and stays shallow enough not to fire on `index`/`logs`
-    // writes during a commit.
+    // Git deletes `worktrees` with the last linked worktree, and reports child
+    // directory changes while others remain. Neither pattern covers both.
+    createWatcher(commonDir, 'worktrees', schedule),
     createWatcher(commonDir, 'worktrees/*', schedule),
   ];
 

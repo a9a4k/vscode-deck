@@ -71,11 +71,31 @@ describe('watchGitCommonDir', () => {
     expect(vscodeState.patterns).toEqual([
       { baseUri: { fsPath: '/git/alpha' }, pattern: 'HEAD' },
       { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/**/HEAD' },
+      { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees' },
       { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*' },
     ]);
     expect(refresh).toHaveBeenCalledOnce();
 
-    vscodeState.watchers[2].handlers[2]({ path: '/git/alpha/worktrees/feature' });
+    vscodeState.watchers[3].handlers[2]({ path: '/git/alpha/worktrees/feature' });
+    vi.advanceTimersByTime(250);
+
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes when the worktrees directory is created or deleted', () => {
+    const refresh = vi.fn();
+
+    watchGitCommonDir('/git/alpha', refresh);
+    const watcherIndex = vscodeState.patterns.findIndex(({ pattern }) => pattern === 'worktrees');
+
+    expect(watcherIndex).not.toBe(-1);
+
+    vscodeState.watchers[watcherIndex].handlers[0]({ path: '/git/alpha/worktrees' });
+    vi.advanceTimersByTime(250);
+
+    expect(refresh).toHaveBeenCalledOnce();
+
+    vscodeState.watchers[watcherIndex].handlers[2]({ path: '/git/alpha/worktrees' });
     vi.advanceTimersByTime(250);
 
     expect(refresh).toHaveBeenCalledTimes(2);
