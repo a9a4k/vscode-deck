@@ -75,11 +75,16 @@ describe('watchGitCommonDir', () => {
       { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*' },
     ]);
     expect(refresh).toHaveBeenCalledOnce();
+  });
 
+  it('refreshes when a child worktree directory is deleted', () => {
+    const refresh = vi.fn();
+
+    watchGitCommonDir('/git/alpha', refresh);
     vscodeState.watchers[3].handlers[2]({ path: '/git/alpha/worktrees/feature' });
     vi.advanceTimersByTime(250);
 
-    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(refresh).toHaveBeenCalledOnce();
   });
 
   it('refreshes when the worktrees directory is created or deleted', () => {

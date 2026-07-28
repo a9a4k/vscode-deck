@@ -27,11 +27,15 @@ signal when git state changes outside Deck.
    HEAD
    worktrees/**/HEAD
    worktrees
+   worktrees/*
    ```
 
    `HEAD` changes when a Worktree checks out another branch or detaches. A
    commit, fetch, or rebase moves refs without rewriting `HEAD`, so storm
-   avoidance is structural, not only debounce-based.
+   avoidance is structural, not only debounce-based. The exact `worktrees`
+   pattern catches the first linked Worktree's creation and the last one's
+   deletion; `worktrees/*` catches child directory changes while linked
+   Worktrees remain.
 
 3. Debounce watch events on a trailing 250ms edge. A checkout can touch several
    files; Deck should repaint once after the burst.
