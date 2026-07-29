@@ -37,8 +37,9 @@ merely relabelled.
 
 2. **Bare is filtered out** in `visibleWorktrees`, so it never renders and can
    never be a Switch target. This is the sole reason it is hidden: it cannot be
-   mounted. `mainWorktreePath` detection already skips bare
-   (`gitWorktrees.find((w) => !w.bare)`), so hiding it there changes nothing.
+   mounted. Main identity is captured from the first porcelain entry before
+   this filter runs. For a bare Repository that entry is the Bare Worktree, so
+   none of its visible linked Worktrees is treated as main.
 
 3. **Empty bare-only Repository is tolerated as-is.** A bare repo with no linked
    worktrees renders a childless Repository node. VS Code's native
