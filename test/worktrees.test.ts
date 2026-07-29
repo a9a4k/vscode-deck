@@ -15,6 +15,36 @@ afterEach(async () => {
 });
 
 describe('parsePorcelain', () => {
+  it('marks the bare Repository entry as main instead of its first linked Worktree', () => {
+    expect(
+      parsePorcelain(`worktree /repo.git
+bare
+
+worktree /work/feature
+HEAD abc123
+branch refs/heads/feature
+
+`),
+    ).toEqual([
+      {
+        path: '/repo.git',
+        head: '',
+        branch: undefined,
+        bare: true,
+        detached: false,
+        main: true,
+      },
+      {
+        path: '/work/feature',
+        head: 'abc123',
+        branch: 'feature',
+        bare: false,
+        detached: false,
+        main: false,
+      },
+    ]);
+  });
+
   it('parses normal, detached, and bare worktree entries', () => {
     expect(
       parsePorcelain(`worktree /repo/main
@@ -37,6 +67,7 @@ bare
         branch: 'main',
         bare: false,
         detached: false,
+        main: true,
       },
       {
         path: '/repo/detached',
@@ -44,6 +75,7 @@ bare
         branch: undefined,
         bare: false,
         detached: true,
+        main: false,
       },
       {
         path: '/repo/bare',
@@ -51,6 +83,7 @@ bare
         branch: undefined,
         bare: true,
         detached: false,
+        main: false,
       },
     ]);
   });
@@ -70,6 +103,7 @@ locked because
         branch: 'feature',
         bare: false,
         detached: false,
+        main: true,
         locked: true,
       },
     ]);

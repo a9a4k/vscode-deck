@@ -33,6 +33,7 @@ describe('describeWorktreeTreeItem', () => {
         bare: false,
         detached: false,
         branch: 'main',
+        main: true,
       },
       {
         path: '/work/alpha-feature',
@@ -40,36 +41,35 @@ describe('describeWorktreeTreeItem', () => {
         bare: false,
         detached: false,
         branch: 'feature',
+        main: false,
       },
     ];
 
     expect(
-      worktrees.map((worktree) =>
-        describeWorktreeTreeItem(worktree, worktree.path === '/work/alpha-main', '/work/alpha-feature'),
-      ),
+      worktrees.map((worktree) => describeWorktreeTreeItem(worktree, false)),
     ).toEqual([
       {
         label: 'main',
-        description: 'active',
+        description: '',
         tooltip: '/work/alpha-main',
-        contextValue: 'deck.worktree.active',
+        contextValue: 'deck.worktree.main',
       },
       {
         label: 'feature',
         description: '',
         tooltip: '/work/alpha-feature',
-        contextValue: 'deck.worktree.main',
+        contextValue: 'deck.worktree',
       },
     ]);
 
     expect(
-      describeWorktreeTreeItem(worktrees[0], true, '/work/alpha-main')
+      describeWorktreeTreeItem(worktrees[0], true)
+        .contextValue,
+    ).toBe('deck.worktree.main.active');
+    expect(
+      describeWorktreeTreeItem(worktrees[1], true)
         .contextValue,
     ).toBe('deck.worktree.active');
-    expect(
-      describeWorktreeTreeItem(worktrees[1], false, '/work/other')
-        .contextValue,
-    ).toBe('deck.worktree');
   });
 
   it('does not render agent status rollups in the worktree description', () => {
@@ -79,9 +79,10 @@ describe('describeWorktreeTreeItem', () => {
       bare: false,
       detached: false,
       branch: 'feature',
+      main: false,
     };
 
-    expect(describeWorktreeTreeItem(worktree, false, '/work/alpha-main').description)
+    expect(describeWorktreeTreeItem(worktree, false).description)
       .toBe('');
   });
 
@@ -91,9 +92,10 @@ describe('describeWorktreeTreeItem', () => {
       head: 'abcdef1234567890',
       bare: false,
       detached: true,
+      main: false,
     };
 
-    expect(describeWorktreeTreeItem(worktree, true, '/work/alpha-main')).toEqual({
+    expect(describeWorktreeTreeItem(worktree, true)).toEqual({
       label: 'alpha-origin-fix',
       description: 'active',
       tooltip: '/work/alpha-origin-fix\nDetached HEAD · abcdef1',
@@ -107,9 +109,10 @@ describe('describeWorktreeTreeItem', () => {
       head: '',
       bare: false,
       detached: true,
+      main: false,
     };
 
-    expect(describeWorktreeTreeItem(worktree, false, '/work/alpha-main').tooltip)
+    expect(describeWorktreeTreeItem(worktree, false).tooltip)
       .toBe('/work/alpha-detached\nDetached HEAD');
   });
 });

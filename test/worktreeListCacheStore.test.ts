@@ -24,6 +24,7 @@ const alphaWorktrees = [
     bare: false,
     detached: false,
     branch: 'main',
+    main: true,
   },
 ];
 
@@ -48,6 +49,24 @@ describe('WorktreeListCacheStore', () => {
       '/git/alpha': {
         schemaVersion: WORKTREE_LIST_CACHE_SCHEMA_VERSION - 1,
         worktrees: alphaWorktrees,
+      },
+    };
+
+    expect(store.get('/git/alpha')).toBeUndefined();
+  });
+
+  it('treats schema version 2 without main identity as a cold cache', () => {
+    const { store, values } = createStore();
+    values[WORKTREE_LIST_CACHE_KEY] = {
+      '/git/alpha': {
+        schemaVersion: 2,
+        worktrees: [{
+          path: '/work/alpha-main',
+          head: 'abc',
+          bare: false,
+          detached: false,
+          branch: 'main',
+        }],
       },
     };
 

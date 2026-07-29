@@ -9,6 +9,7 @@ function worktree(path: string, createdAt?: number): Worktree {
     bare: false,
     detached: false,
     branch: path,
+    main: path === '/work/main',
     createdAt,
   };
 }
@@ -26,6 +27,18 @@ describe('reconcileWorktreeOrder', () => {
       '/work/main',
       '/work/feature-old',
       '/work/feature-middle',
+      '/work/feature-new',
+    ]);
+  });
+
+  it('does not pin the first linked Worktree of a bare Repository', () => {
+    const linkedWorktrees = [
+      worktree('/work/feature-new', 3000),
+      worktree('/work/feature-old', 1000),
+    ];
+
+    expect(reconcileWorktreeOrder(undefined, linkedWorktrees).map((w) => w.path)).toEqual([
+      '/work/feature-old',
       '/work/feature-new',
     ]);
   });

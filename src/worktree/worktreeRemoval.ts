@@ -8,7 +8,6 @@ export interface WorktreeRemovalDecision {
 export function canRemoveWorktree(
   worktree: Worktree,
   activeWorktreePath: string | undefined,
-  mainWorktreePath: string | undefined,
 ): WorktreeRemovalDecision {
   if (worktree.path === activeWorktreePath) {
     return {
@@ -17,7 +16,7 @@ export function canRemoveWorktree(
     };
   }
 
-  if (worktree.path === mainWorktreePath) {
+  if (worktree.main) {
     return {
       canDelete: false,
       reason: 'git refuses to remove the main worktree.',

@@ -98,7 +98,7 @@ class WorktreeNode extends vscode.TreeItem {
     isActiveWorktree: boolean,
     mainWorktreePath: string | undefined,
   ): void {
-    const item = describeWorktreeTreeItem(worktree, isActiveWorktree, mainWorktreePath);
+    const item = describeWorktreeTreeItem(worktree, isActiveWorktree);
     this.worktree = worktree;
     this.mainWorktreePath = mainWorktreePath;
     this.label = item.label;
@@ -595,7 +595,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     mainWorktreePath: string | undefined,
   ): WorktreeNode {
     const isActiveWorktree = this.isCurrentWorktree(worktree.path);
-    const item = describeWorktreeTreeItem(worktree, isActiveWorktree, mainWorktreePath);
+    const item = describeWorktreeTreeItem(worktree, isActiveWorktree);
     return this.renderedWorktrees.upsert(
       worktree.path,
       JSON.stringify([item.label, item.description, item.tooltip, item.contextValue]),
@@ -615,7 +615,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
         [...gitWorktrees],
       ),
     );
-    const mainWorktreePath = gitWorktrees.find((w) => !w.bare)?.path;
+    const mainWorktreePath = gitWorktrees.find((worktree) => worktree.main)?.path;
     return worktrees.map((worktree) =>
       this.toWorktreeNode(
         repositoryPath,

@@ -322,12 +322,12 @@
         },
         {
           "command": "deck.addTerminal",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable",
           "group": "inline"
         },
         {
           "command": "deck.runLauncher",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable",
           "group": "inline@5"
         },
         {
@@ -337,7 +337,7 @@
         },
         {
           "command": "deck.removeWorktree",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main)",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active)",
           "group": "navigation@3"
         },
         {

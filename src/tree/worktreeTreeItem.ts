@@ -18,7 +18,11 @@ export interface WorktreeTreeItemDescription {
   label: string;
   description: string;
   tooltip: string;
-  contextValue: 'deck.worktree.active' | 'deck.worktree.main' | 'deck.worktree';
+  contextValue:
+    | 'deck.worktree.active'
+    | 'deck.worktree.main'
+    | 'deck.worktree.main.active'
+    | 'deck.worktree';
 }
 
 export type TerminalTreeIconId = 'terminal' | 'agent-working' | 'agent';
@@ -61,13 +65,13 @@ export function describeRepositoryTreeItem(
 export function describeWorktreeTreeItem(
   worktree: Worktree,
   isActive: boolean,
-  mainWorktreePath?: string,
 ): WorktreeTreeItemDescription {
-  const isMain = worktree.path === mainWorktreePath;
   let contextValue: WorktreeTreeItemDescription['contextValue'] = 'deck.worktree';
-  if (isActive) {
+  if (worktree.main && isActive) {
+    contextValue = 'deck.worktree.main.active';
+  } else if (isActive) {
     contextValue = 'deck.worktree.active';
-  } else if (isMain) {
+  } else if (worktree.main) {
     contextValue = 'deck.worktree.main';
   }
 

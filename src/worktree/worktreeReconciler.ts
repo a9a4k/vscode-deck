@@ -110,14 +110,12 @@ function renderedProjection(
   order: readonly string[] | undefined,
   activeWorktreePath: string | undefined,
 ): string {
-  const mainWorktreePath = worktrees.find((worktree) => !worktree.bare)?.path;
   const ordered = reconcileWorktreeOrder(order, worktrees);
 
   return JSON.stringify(ordered.map((worktree) => {
     const item = describeWorktreeTreeItem(
       worktree,
       samePath(worktree.path, activeWorktreePath),
-      mainWorktreePath,
     );
     return {
       path: worktree.path,

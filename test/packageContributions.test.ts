@@ -252,7 +252,7 @@ describe('package contributions', () => {
       ),
     ).toEqual([{
       command: 'deck.removeWorktree',
-      when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main)',
+      when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active)',
       group: 'navigation@3',
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
@@ -275,7 +275,7 @@ describe('package contributions', () => {
     ).toEqual([{
       command: 'deck.addTerminal',
       when:
-        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable',
+        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable',
       group: 'inline',
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
@@ -298,7 +298,7 @@ describe('package contributions', () => {
     ).toEqual([{
       command: 'deck.runLauncher',
       when:
-        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main) && deck.tmuxAvailable',
+        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable',
       group: 'inline@5',
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({

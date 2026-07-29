@@ -11,6 +11,7 @@ export interface Worktree {
   branch?: string;
   bare: boolean;
   detached: boolean;
+  main: boolean;
   locked?: boolean;
   createdAt?: number;
 }
@@ -154,6 +155,7 @@ export function parsePorcelain(input: string): Worktree[] {
       branch: current.branch,
       bare: current.bare ?? false,
       detached: current.detached ?? false,
+      main: out.length === 0,
     };
     if (current.locked) worktree.locked = true;
     out.push(worktree);

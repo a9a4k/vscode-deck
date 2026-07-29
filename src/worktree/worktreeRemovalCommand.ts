@@ -65,7 +65,6 @@ export class WorktreeRemovalCommand {
     const decision = canRemoveWorktree(
       node.worktree,
       activeWorktreePath,
-      node.mainWorktreePath,
     );
     if (!decision.canDelete) {
       // VS Code's modal provides an implicit Cancel button; no explicit action items.

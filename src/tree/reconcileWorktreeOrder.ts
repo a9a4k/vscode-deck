@@ -24,7 +24,7 @@ function sortUnplacedWorktrees(
   gitWorktrees: readonly Worktree[],
   placedPaths: ReadonlySet<string>,
 ): Worktree[] {
-  const mainWorktree = gitWorktrees.find((worktree) => !worktree.bare);
+  const mainWorktree = gitWorktrees.find((worktree) => worktree.main);
   const unplacedWorktrees = gitWorktrees.filter(
     (worktree) => worktree.path !== mainWorktree?.path && !placedPaths.has(worktree.path),
   );

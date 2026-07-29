@@ -11,9 +11,9 @@ describe('canRemoveWorktree', () => {
           bare: false,
           detached: false,
           branch: 'feature',
+          main: false,
         },
         '/repo/other',
-        '/repo/main',
       ),
     ).toEqual({ canDelete: true });
   });
@@ -27,9 +27,9 @@ describe('canRemoveWorktree', () => {
           bare: false,
           detached: false,
           branch: 'feature',
+          main: false,
         },
         '/repo/feature',
-        '/repo/main',
       ),
     ).toEqual({
       canDelete: false,
@@ -46,9 +46,9 @@ describe('canRemoveWorktree', () => {
           bare: false,
           detached: false,
           branch: 'main',
+          main: true,
         },
         '/repo/feature',
-        '/repo/main',
       ),
     ).toEqual({
       canDelete: false,
@@ -65,8 +65,8 @@ describe('canRemoveWorktree', () => {
           bare: false,
           detached: false,
           branch: 'main',
+          main: true,
         },
-        '/repo/main',
         '/repo/main',
       ),
     ).toEqual({

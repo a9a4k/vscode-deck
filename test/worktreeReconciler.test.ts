@@ -8,6 +8,7 @@ const branchWorktree = (head: string): Worktree => ({
   branch: 'main',
   bare: false,
   detached: false,
+  main: true,
 });
 
 describe('WorktreeReconciler', () => {
@@ -47,6 +48,7 @@ describe('WorktreeReconciler', () => {
       head,
       bare: false,
       detached: true,
+      main: false,
     });
     const worktreeListCache = {
       get: vi.fn(() => [detachedWorktree('11111112222222')]),
@@ -129,6 +131,46 @@ describe('WorktreeReconciler', () => {
     expect(refreshRepository).toHaveBeenCalledWith('/work/alpha-main');
   });
 
+  it('fires the Repository when main Worktree identity changes', async () => {
+    const first = {
+      ...branchWorktree('head'),
+      path: '/work/first',
+      branch: 'first',
+    };
+    const second = {
+      ...branchWorktree('head'),
+      path: '/work/second',
+      branch: 'second',
+      main: false,
+    };
+    const refreshRepository = vi.fn();
+    const reconciler = new WorktreeReconciler({
+      repositories: { list: () => ['/work/first'] },
+      commonDirs: {
+        get: () => '/git/alpha',
+        resolve: async () => '/git/alpha',
+      },
+      worktreeListCache: {
+        get: () => [first, second],
+        set: async () => undefined,
+      },
+      worktreeOrders: {
+        get: () => undefined,
+        set: async () => undefined,
+      },
+      listWorktrees: async () => [
+        { ...first, main: false },
+        { ...second, main: true },
+      ],
+      activeWorktreePath: () => undefined,
+      refreshRepository,
+    });
+
+    await reconciler.reconcile('/work/first');
+
+    expect(refreshRepository).toHaveBeenCalledWith('/work/first');
+  });
+
   it('prunes WorktreeOrder from the fresh Git listing', async () => {
     const worktreeOrders = {
       get: vi.fn(() => ['/work/missing', '/work/alpha-main']),
@@ -166,6 +208,7 @@ describe('WorktreeReconciler', () => {
         branch: 'feature',
         bare: false,
         detached: false,
+        main: false,
       },
     ]);
     const refreshRepository = vi.fn();
@@ -266,6 +309,7 @@ describe('WorktreeReconciler', () => {
         branch: 'feature',
         bare: false,
         detached: false,
+        main: false,
       },
     ]);
     await reconciliation;

@@ -75,6 +75,7 @@ vi.mock('../src/git/worktrees', () => ({
           bare: false,
           detached: false,
           branch: 'main',
+          main: true,
         },
         {
           path: '/work/alpha-feature',
@@ -82,6 +83,7 @@ vi.mock('../src/git/worktrees', () => ({
           bare: false,
           detached: false,
           branch: 'feature',
+          main: false,
         },
       ];
     }
@@ -93,6 +95,7 @@ vi.mock('../src/git/worktrees', () => ({
         bare: false,
         detached: false,
         branch: 'main',
+        main: true,
       },
     ];
   }),
@@ -122,6 +125,7 @@ const alphaMainWorktree: Worktree = {
   bare: false,
   detached: false,
   branch: 'main',
+  main: true,
 };
 
 const alphaFeatureWorktree: Worktree = {
@@ -130,6 +134,7 @@ const alphaFeatureWorktree: Worktree = {
   bare: false,
   detached: false,
   branch: 'feature',
+  main: false,
 };
 
 function observedModel(sessions: Parameters<TerminalModel['apply']>[0] = []): TerminalModel {
@@ -149,6 +154,7 @@ function warmWorktreeCache(): WorktreeListCacheStore {
             bare: false,
             detached: false,
             branch: 'main',
+            main: true,
           }]),
     set: vi.fn(async () => undefined),
   } as unknown as WorktreeListCacheStore;
@@ -269,7 +275,7 @@ describe('RepositoryTreeProvider', () => {
     expect(worktreeNodes.map((node) => node.contextValue)).toEqual([
       'deck.worktree.main',
       'deck.worktree',
-      'deck.worktree.active',
+      'deck.worktree.main.active',
     ]);
     expect(worktreeNodes.map((node) => node.description)).toEqual([
       '',
@@ -497,6 +503,57 @@ describe('RepositoryTreeProvider', () => {
     expect(worktreeNodes.map((node) => node.label)).toEqual([
       'main',
       'alpha-detached',
+    ]);
+  });
+
+  it('renders every linked Worktree of a bare Repository as removable', async () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/feature-one']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      {
+        get: vi.fn(() => [
+          {
+            path: '/git/alpha.git',
+            head: '',
+            bare: true,
+            detached: false,
+            main: true,
+          },
+          {
+            path: '/work/feature-one',
+            head: 'abc',
+            branch: 'feature-one',
+            bare: false,
+            detached: false,
+            main: false,
+          },
+          {
+            path: '/work/feature-two',
+            head: 'def',
+            branch: 'feature-two',
+            bare: false,
+            detached: false,
+            main: false,
+          },
+        ]),
+        set: vi.fn(async () => undefined),
+      } as unknown as WorktreeListCacheStore,
+      {
+        get: vi.fn(() => '/git/alpha'),
+        set: vi.fn(async () => undefined),
+      } as unknown as RepositoryCommonDirCache,
+    );
+
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync Repository roots');
+    const worktreeNodes = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktreeNodes)) throw new Error('expected sync Worktree rows');
+
+    expect(worktreeNodes.map((node) => node.label)).toEqual(['feature-one', 'feature-two']);
+    expect(worktreeNodes.map((node) => node.contextValue)).toEqual([
+      'deck.worktree',
+      'deck.worktree',
     ]);
   });
 

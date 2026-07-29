@@ -42,6 +42,7 @@ const node = {
     bare: false,
     detached: false,
     branch: 'feature',
+    main: false,
   },
 };
 
@@ -645,6 +646,7 @@ describe('WorktreeRemovalCommand', () => {
       worktree: {
         ...node.worktree,
         path: '/repo/main',
+        main: true,
       },
     });
 
