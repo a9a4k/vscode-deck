@@ -556,6 +556,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 
       terminal.open(terminalElement);
       fitAddon.fit();
+      window.addEventListener('focus', () => terminal.focus());
       new ResizeObserver(debounceResize).observe(terminalElement);
       new MutationObserver(() => { terminal.options.theme = readVsCodeTheme(); }).observe(
         document.documentElement,

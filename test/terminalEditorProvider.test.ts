@@ -658,7 +658,7 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).not.toContain('rgba(');
   });
 
-  it('focuses xterm from explicit open intent instead of window focus state', () => {
+  it('restores xterm focus when a Terminal webview regains focus without sniffing initial focus', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
@@ -666,7 +666,7 @@ describe('TerminalEditorProvider', () => {
 
     expect(terminalPanel.webview.html).toContain("if (message.type === 'focus') terminal.focus()");
     expect(terminalPanel.webview.html).not.toContain('document.hasFocus()');
-    expect(terminalPanel.webview.html).not.toContain("window.addEventListener('focus'");
+    expect(terminalPanel.webview.html).toContain("window.addEventListener('focus', () => terminal.focus())");
   });
 
   it('renders Copy Link as a contextual terminal link menu action', () => {
