@@ -75,6 +75,23 @@ diffs `git worktree list` results.
 - Commits, fetches, and rebases do not churn the tree because refs are not
   watched.
 - All watches are disposed through the extension subscription lifecycle.
+- **Known gap, accepted: a common dir replaced at the same path mid-session
+  stops delivering events until the window reloads.** A `FileSystemWatcher`
+  does not survive its base directory being deleted and recreated, and `sync`
+  skips any dir it already watches, so the dead watch is never replaced.
+  Triggers are rare and deliberate — re-cloning in place, a script rebuilding
+  `.git`, a volume unmounted while VS Code stays open. Deck: Refresh still
+  reconciles the data on demand (only the push signal is lost), and a reload
+  repairs it fully. A fix was implemented and reverted (#168): detecting
+  replacement needs the dir's filesystem identity, and deriving that from
+  `birthtimeMs` is unreliable on filesystems lacking a creation timestamp —
+  Node substitutes ctime there, which changes whenever an entry inside `.git`
+  changes, so every sync would dispose and recreate every watcher. That trades
+  a rare single-Repository degradation for a systematic one on untested
+  platforms. Revisit only with a stable identity source (e.g. `dev:ino` alone)
+  or if the scenario proves common.
+  The distinct case of a dir missing *when the watch is first attempted* IS
+  handled — that attempt is not recorded, so a later sync retries it (#166).
 - Unit tests verify watch reconciliation and debounce coalescing without a real
   filesystem watcher.
 - OS delivery for out-of-workspace `RelativePattern` git events remains
