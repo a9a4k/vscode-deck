@@ -46,6 +46,22 @@ describe('ExternalGitWatch', () => {
     expect(watchCommonDir).not.toHaveBeenCalled();
   });
 
+  it('retries a common dir that could not be watched', () => {
+    const watch = { dispose: vi.fn() };
+    const watchCommonDir = vi
+      .fn()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce(watch);
+    const externalGitWatch = new ExternalGitWatch(watchCommonDir);
+
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    externalGitWatch.sync(new Set(['/git/alpha']));
+
+    expect(watchCommonDir).toHaveBeenCalledTimes(2);
+    expect(watch.dispose).not.toHaveBeenCalled();
+  });
+
   it('identifies the changed common dir', () => {
     let change: (() => void) | undefined;
     const onChange = vi.fn();

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { Disposable } from './externalGitWatch';
 
@@ -7,7 +8,9 @@ export function watchGitCommonDir(
   commonDir: string,
   onChange: () => void,
   debounceMs = DEFAULT_DEBOUNCE_MS,
-): Disposable {
+): Disposable | undefined {
+  if (!existsSync(commonDir)) return undefined;
+
   let timeout: NodeJS.Timeout | undefined;
   const schedule = (uri: vscode.Uri) => {
     if (isIgnoredGitChange(uri.path)) return;

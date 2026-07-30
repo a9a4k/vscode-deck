@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const vscodeState = vi.hoisted(() => ({
   createFileSystemWatcher: vi.fn(),
+  existsSync: vi.fn(),
   patterns: [] as Array<{ baseUri: { fsPath: string }; pattern: string }>,
   watchers: [] as Array<{
     dispose: ReturnType<typeof vi.fn>;
@@ -10,6 +11,10 @@ const vscodeState = vi.hoisted(() => ({
     onDidDelete: ReturnType<typeof vi.fn>;
     handlers: Array<(uri: { path: string }) => void>;
   }>,
+}));
+
+vi.mock('node:fs', () => ({
+  existsSync: vscodeState.existsSync,
 }));
 
 vi.mock('vscode', () => ({
@@ -32,6 +37,7 @@ describe('watchGitCommonDir', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    vscodeState.existsSync.mockReturnValue(true);
     vscodeState.patterns = [];
     vscodeState.watchers = [];
     vscodeState.createFileSystemWatcher.mockImplementation(() => {
@@ -54,6 +60,15 @@ describe('watchGitCommonDir', () => {
       vscodeState.watchers.push(watcher);
       return watcher;
     });
+  });
+
+  it('does not create watchers for a missing common dir', () => {
+    vscodeState.existsSync.mockReturnValue(false);
+
+    const watch = watchGitCommonDir('/git/missing', vi.fn());
+
+    expect(watch).toBeUndefined();
+    expect(vscodeState.createFileSystemWatcher).not.toHaveBeenCalled();
   });
 
   it('watches git HEAD paths and coalesces bursts into one refresh', () => {

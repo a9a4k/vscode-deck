@@ -2,7 +2,7 @@ export interface Disposable {
   dispose(): unknown;
 }
 
-export type WatchCommonDir = (commonDir: string, onChange: () => void) => Disposable;
+export type WatchCommonDir = (commonDir: string, onChange: () => void) => Disposable | undefined;
 
 export class ExternalGitWatch implements Disposable {
   private readonly watches = new Map<string, Disposable>();
@@ -24,10 +24,8 @@ export class ExternalGitWatch implements Disposable {
 
     for (const commonDir of commonDirs) {
       if (this.watches.has(commonDir)) continue;
-      this.watches.set(
-        commonDir,
-        this.watchCommonDir(commonDir, () => this.onChange(commonDir)),
-      );
+      const watch = this.watchCommonDir(commonDir, () => this.onChange(commonDir));
+      if (watch !== undefined) this.watches.set(commonDir, watch);
     }
   }
 
