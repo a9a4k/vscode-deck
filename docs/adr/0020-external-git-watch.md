@@ -16,9 +16,9 @@ signal when git state changes outside Deck.
 ## Decision
 
 1. Add **ExternalGitWatch** per Repository common dir. The module owns a
-   `Map<commonDir, Disposable>` and exposes `sync(commonDirs)` plus
-   `dispose()`. It is synchronous and has no `vscode` dependency; callers
-   resolve discovery seeds to common dirs first.
+   `Map<commonDir, { identity, disposable }>` and exposes `sync(commonDirs)`
+   plus `dispose()`. It is synchronous and has no `vscode` dependency;
+   callers resolve discovery seeds to common dirs first.
 
 2. Create watches with `vscode.workspace.createFileSystemWatcher` over an
    absolute common-dir base:
@@ -52,6 +52,12 @@ signal when git state changes outside Deck.
    `sameWorktrees` suppresses redundant repaints. Self-muting would add state
    without changing the observable result.
 
+6. Each `sync` compares the filesystem identity of every registered common dir
+   with the identity captured when its watch was created. A missing or replaced
+   directory disposes the stale watch; a present directory is registered again
+   through the same retry path. An unchanged directory keeps its existing
+   watcher.
+
 ## Rejected Option: VS Code Git Extension API
 
 Deck does not use `vscode.git`'s `getAPI(1)` for this signal.
@@ -75,6 +81,8 @@ diffs `git worktree list` results.
 - Commits, fetches, and rebases do not churn the tree because refs are not
   watched.
 - All watches are disposed through the extension subscription lifecycle.
+- Deleting and recreating a common dir cannot leave a permanently dead watcher;
+  the next sync trigger repairs it without churning healthy watchers.
 - Unit tests verify watch reconciliation and debounce coalescing without a real
   filesystem watcher.
 - OS delivery for out-of-workspace `RelativePattern` git events remains

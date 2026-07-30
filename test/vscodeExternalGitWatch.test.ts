@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const vscodeState = vi.hoisted(() => ({
   createFileSystemWatcher: vi.fn(),
   existsSync: vi.fn(),
+  statSync: vi.fn(),
   patterns: [] as Array<{ baseUri: { fsPath: string }; pattern: string }>,
   watchers: [] as Array<{
     dispose: ReturnType<typeof vi.fn>;
@@ -15,6 +16,7 @@ const vscodeState = vi.hoisted(() => ({
 
 vi.mock('node:fs', () => ({
   existsSync: vscodeState.existsSync,
+  statSync: vscodeState.statSync,
 }));
 
 vi.mock('vscode', () => ({
@@ -31,7 +33,10 @@ vi.mock('vscode', () => ({
   },
 }));
 
-import { watchGitCommonDir } from '../src/repository/vscodeExternalGitWatch';
+import {
+  readGitCommonDirIdentity,
+  watchGitCommonDir,
+} from '../src/repository/vscodeExternalGitWatch';
 
 function watcherFor(pattern: string) {
   const watcherIndex = vscodeState.patterns.findIndex((entry) => entry.pattern === pattern);
@@ -46,6 +51,12 @@ describe('watchGitCommonDir', () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     vscodeState.existsSync.mockReturnValue(true);
+    vscodeState.statSync.mockReturnValue({
+      birthtimeMs: 3,
+      dev: 1,
+      ino: 2,
+      isDirectory: () => true,
+    });
     vscodeState.patterns = [];
     vscodeState.watchers = [];
     vscodeState.createFileSystemWatcher.mockImplementation(() => {
@@ -77,6 +88,18 @@ describe('watchGitCommonDir', () => {
 
     expect(watch).toBeUndefined();
     expect(vscodeState.createFileSystemWatcher).not.toHaveBeenCalled();
+  });
+
+  it('reads the identity of a git common dir', () => {
+    expect(readGitCommonDirIdentity('/git/alpha')).toBe('1:2:3');
+  });
+
+  it('treats an unavailable common dir as missing', () => {
+    vscodeState.statSync.mockImplementation(() => {
+      throw new Error('missing');
+    });
+
+    expect(readGitCommonDirIdentity('/git/missing')).toBeUndefined();
   });
 
   it('watches git HEAD paths and coalesces bursts into one refresh', () => {

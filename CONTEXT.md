@@ -135,6 +135,7 @@ _Avoid_: dead tab (the Terminal did not die), stale tab (the defect is lost inte
 
 **ExternalGitWatch**:
 Watches a Repository's git common dir for changes made **outside** Deck (e.g. a terminal `git checkout`, or `git worktree add/remove/move` from the CLI) and tells the tree to reconcile. One per Repository, keyed by common dir. Deck's own operations already refresh, so this exists solely to catch out-of-Deck drift.
+Each watch records the common dir's filesystem identity. On a sync trigger, Deck drops a watch whose directory disappeared or was replaced at the same path, then retries registration while keeping unchanged watches.
 _Avoid_: file watcher, watcher controller (implementation); polling (it is event-driven, not polled)
 
 **ExternalTerminalWatch**:

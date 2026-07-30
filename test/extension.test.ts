@@ -303,6 +303,7 @@ vi.mock('../src/git/worktrees', () => ({
 }));
 
 vi.mock('../src/repository/vscodeExternalGitWatch', () => ({
+  readGitCommonDirIdentity: (commonDir: string) => commonDir,
   watchGitCommonDir: vscodeState.watchGitCommonDir,
 }));
 

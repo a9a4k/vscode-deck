@@ -9,7 +9,7 @@ describe('ExternalGitWatch', () => {
       disposables.set(commonDir, disposable);
       return disposable;
     });
-    const externalGitWatch = new ExternalGitWatch(watchCommonDir);
+    const externalGitWatch = new ExternalGitWatch(watchCommonDir, () => undefined, () => 'stable');
 
     externalGitWatch.sync(new Set(['/git/alpha', '/git/beta']));
     externalGitWatch.sync(new Set(['/git/beta', '/git/gamma']));
@@ -38,7 +38,7 @@ describe('ExternalGitWatch', () => {
 
   it('does not create watches after disposal', () => {
     const watchCommonDir = vi.fn(() => ({ dispose: vi.fn() }));
-    const externalGitWatch = new ExternalGitWatch(watchCommonDir);
+    const externalGitWatch = new ExternalGitWatch(watchCommonDir, () => undefined, () => 'stable');
 
     externalGitWatch.dispose();
     externalGitWatch.sync(new Set(['/git/alpha']));
@@ -52,7 +52,7 @@ describe('ExternalGitWatch', () => {
       .fn()
       .mockReturnValueOnce(undefined)
       .mockReturnValueOnce(watch);
-    const externalGitWatch = new ExternalGitWatch(watchCommonDir);
+    const externalGitWatch = new ExternalGitWatch(watchCommonDir, () => undefined, () => 'stable');
 
     externalGitWatch.sync(new Set(['/git/alpha']));
     externalGitWatch.sync(new Set(['/git/alpha']));
@@ -60,6 +60,59 @@ describe('ExternalGitWatch', () => {
 
     expect(watchCommonDir).toHaveBeenCalledTimes(2);
     expect(watch.dispose).not.toHaveBeenCalled();
+  });
+
+  it('replaces a watch after its common dir disappears and returns', () => {
+    let commonDirIdentity: string | undefined = 'first';
+    const watches: Disposable[] = [];
+    const watchCommonDir = vi.fn(() => {
+      const watch = { dispose: vi.fn() };
+      watches.push(watch);
+      return watch;
+    });
+    const externalGitWatch = new ExternalGitWatch(
+      watchCommonDir,
+      () => undefined,
+      () => commonDirIdentity,
+    );
+
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    commonDirIdentity = undefined;
+    externalGitWatch.sync(new Set(['/git/alpha']));
+
+    expect(watches[0]?.dispose).toHaveBeenCalledOnce();
+    expect(watchCommonDir).toHaveBeenCalledOnce();
+
+    commonDirIdentity = 'second';
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    externalGitWatch.sync(new Set(['/git/alpha']));
+
+    expect(watchCommonDir).toHaveBeenCalledTimes(2);
+    expect(watches[1]?.dispose).not.toHaveBeenCalled();
+  });
+
+  it('replaces a watch when its common dir is recreated before the next sync', () => {
+    let commonDirIdentity = 'first';
+    const watches: Disposable[] = [];
+    const watchCommonDir = vi.fn(() => {
+      const watch = { dispose: vi.fn() };
+      watches.push(watch);
+      return watch;
+    });
+    const externalGitWatch = new ExternalGitWatch(
+      watchCommonDir,
+      () => undefined,
+      () => commonDirIdentity,
+    );
+
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    commonDirIdentity = 'second';
+    externalGitWatch.sync(new Set(['/git/alpha']));
+    externalGitWatch.sync(new Set(['/git/alpha']));
+
+    expect(watches[0]?.dispose).toHaveBeenCalledOnce();
+    expect(watchCommonDir).toHaveBeenCalledTimes(2);
+    expect(watches[1]?.dispose).not.toHaveBeenCalled();
   });
 
   it('identifies the changed common dir', () => {
@@ -71,6 +124,7 @@ describe('ExternalGitWatch', () => {
         return { dispose: vi.fn() };
       }),
       onChange,
+      () => 'stable',
     );
     externalGitWatch.sync(new Set(['/git/alpha']));
 
