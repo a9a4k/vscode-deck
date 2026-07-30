@@ -24,6 +24,7 @@ export function watchGitCommonDir(
   const watchers = [
     createWatcher(commonDir, 'HEAD', schedule),
     createWatcher(commonDir, 'worktrees/**/HEAD', schedule),
+    createWatcher(commonDir, 'worktrees/*/gitdir', schedule),
     // Git deletes `worktrees` with the last linked worktree, and reports child
     // directory changes while others remain. Neither pattern covers both.
     createWatcher(commonDir, 'worktrees', schedule),
