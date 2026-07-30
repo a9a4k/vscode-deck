@@ -3,21 +3,14 @@ export interface Disposable {
 }
 
 export type WatchCommonDir = (commonDir: string, onChange: () => void) => Disposable | undefined;
-export type ReadCommonDirIdentity = (commonDir: string) => string | undefined;
-
-interface CommonDirWatch {
-  identity: string;
-  disposable: Disposable;
-}
 
 export class ExternalGitWatch implements Disposable {
-  private readonly watches = new Map<string, CommonDirWatch>();
+  private readonly watches = new Map<string, Disposable>();
   private disposed = false;
 
   constructor(
     private readonly watchCommonDir: WatchCommonDir,
-    private readonly onChange: (commonDir: string) => void,
-    private readonly readCommonDirIdentity: ReadCommonDirIdentity,
+    private readonly onChange: (commonDir: string) => void = () => undefined,
   ) {}
 
   sync(commonDirs: ReadonlySet<string>): void {
@@ -25,28 +18,21 @@ export class ExternalGitWatch implements Disposable {
 
     for (const [commonDir, watch] of this.watches) {
       if (commonDirs.has(commonDir)) continue;
-      watch.disposable.dispose();
+      watch.dispose();
       this.watches.delete(commonDir);
     }
 
     for (const commonDir of commonDirs) {
-      const identity = this.readCommonDirIdentity(commonDir);
-      const existing = this.watches.get(commonDir);
-      if (identity !== undefined && existing?.identity === identity) continue;
-
-      existing?.disposable.dispose();
-      this.watches.delete(commonDir);
-      if (identity === undefined) continue;
-
-      const disposable = this.watchCommonDir(commonDir, () => this.onChange(commonDir));
-      if (disposable !== undefined) this.watches.set(commonDir, { identity, disposable });
+      if (this.watches.has(commonDir)) continue;
+      const watch = this.watchCommonDir(commonDir, () => this.onChange(commonDir));
+      if (watch !== undefined) this.watches.set(commonDir, watch);
     }
   }
 
   dispose(): void {
     this.disposed = true;
     for (const watch of this.watches.values()) {
-      watch.disposable.dispose();
+      watch.dispose();
     }
     this.watches.clear();
   }

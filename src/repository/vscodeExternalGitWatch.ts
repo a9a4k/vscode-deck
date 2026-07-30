@@ -1,18 +1,8 @@
-import { existsSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { Disposable } from './externalGitWatch';
 
 const DEFAULT_DEBOUNCE_MS = 250;
-
-export function readGitCommonDirIdentity(commonDir: string): string | undefined {
-  try {
-    const stats = statSync(commonDir);
-    if (!stats.isDirectory()) return undefined;
-    return `${stats.dev}:${stats.ino}:${stats.birthtimeMs}`;
-  } catch {
-    return undefined;
-  }
-}
 
 export function watchGitCommonDir(
   commonDir: string,

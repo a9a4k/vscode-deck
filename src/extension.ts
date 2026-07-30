@@ -13,10 +13,7 @@ import { RepositoryRemovalCommand } from './repository/repositoryRemovalCommand'
 import { ExternalGitWatch } from './repository/externalGitWatch';
 import { RepositoryCommonDirCache, resolveCommonDirSafe } from './repository/repositoryCommonDirCache';
 import { RepositoryRegistryStore } from './repository/repositoryRegistryStore';
-import {
-  readGitCommonDirIdentity,
-  watchGitCommonDir,
-} from './repository/vscodeExternalGitWatch';
+import { watchGitCommonDir } from './repository/vscodeExternalGitWatch';
 import { AddWorktreeCommand } from './worktree/addWorktreeCommand';
 import { BranchDeletionPreferenceStore } from './worktree/branchDeletionPreferenceStore';
 import { WorktreeListCacheStore } from './worktree/worktreeListCacheStore';
@@ -268,7 +265,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         console.warn('Deck: reconciling external Git change failed', error);
       });
     },
-    readGitCommonDirIdentity,
   );
   let externalGitSyncVersion = 0;
 
