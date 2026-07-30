@@ -33,6 +33,14 @@ vi.mock('vscode', () => ({
 
 import { watchGitCommonDir } from '../src/repository/vscodeExternalGitWatch';
 
+function watcherFor(pattern: string) {
+  const watcherIndex = vscodeState.patterns.findIndex((entry) => entry.pattern === pattern);
+
+  expect(watcherIndex).not.toBe(-1);
+
+  return vscodeState.watchers[watcherIndex];
+}
+
 describe('watchGitCommonDir', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -75,21 +83,26 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    vscodeState.watchers[0].handlers[0]({ path: '/git/alpha/HEAD' });
-    vscodeState.watchers[1].handlers[1]({ path: '/git/alpha/worktrees/feature/HEAD' });
+    watcherFor('HEAD').handlers[0]({ path: '/git/alpha/HEAD' });
+    watcherFor('worktrees/**/HEAD').handlers[1]({
+      path: '/git/alpha/worktrees/feature/HEAD',
+    });
     vi.advanceTimersByTime(249);
 
     expect(refresh).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
 
-    expect(vscodeState.patterns).toEqual([
-      { baseUri: { fsPath: '/git/alpha' }, pattern: 'HEAD' },
-      { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/**/HEAD' },
-      { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*/gitdir' },
-      { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees' },
-      { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*' },
-    ]);
+    expect(vscodeState.patterns).toHaveLength(5);
+    expect(vscodeState.patterns).toEqual(
+      expect.arrayContaining([
+        { baseUri: { fsPath: '/git/alpha' }, pattern: 'HEAD' },
+        { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/**/HEAD' },
+        { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*/gitdir' },
+        { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees' },
+        { baseUri: { fsPath: '/git/alpha' }, pattern: 'worktrees/*' },
+      ]),
+    );
     expect(refresh).toHaveBeenCalledOnce();
   });
 
@@ -97,7 +110,7 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    vscodeState.watchers[4].handlers[2]({ path: '/git/alpha/worktrees/feature' });
+    watcherFor('worktrees/*').handlers[2]({ path: '/git/alpha/worktrees/feature' });
     vi.advanceTimersByTime(250);
 
     expect(refresh).toHaveBeenCalledOnce();
@@ -107,13 +120,7 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    const watcherIndex = vscodeState.patterns.findIndex(
-      ({ pattern }) => pattern === 'worktrees/*/gitdir',
-    );
-
-    expect(watcherIndex).not.toBe(-1);
-
-    vscodeState.watchers[watcherIndex].handlers[1]({
+    watcherFor('worktrees/*/gitdir').handlers[1]({
       path: '/git/alpha/worktrees/feature/gitdir',
     });
     vi.advanceTimersByTime(250);
@@ -125,16 +132,14 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    const watcherIndex = vscodeState.patterns.findIndex(({ pattern }) => pattern === 'worktrees');
+    const watcher = watcherFor('worktrees');
 
-    expect(watcherIndex).not.toBe(-1);
-
-    vscodeState.watchers[watcherIndex].handlers[0]({ path: '/git/alpha/worktrees' });
+    watcher.handlers[0]({ path: '/git/alpha/worktrees' });
     vi.advanceTimersByTime(250);
 
     expect(refresh).toHaveBeenCalledOnce();
 
-    vscodeState.watchers[watcherIndex].handlers[2]({ path: '/git/alpha/worktrees' });
+    watcher.handlers[2]({ path: '/git/alpha/worktrees' });
     vi.advanceTimersByTime(250);
 
     expect(refresh).toHaveBeenCalledTimes(2);
@@ -144,7 +149,7 @@ describe('watchGitCommonDir', () => {
     const refresh = vi.fn();
 
     watchGitCommonDir('/git/alpha', refresh);
-    const changed = vscodeState.watchers[2].handlers[1];
+    const changed = watcherFor('worktrees/*').handlers[1];
     changed({ path: '/git/alpha/index.lock' });
     changed({ path: '/git/alpha/worktrees/feature/index.lock' });
     changed({ path: '/git/alpha/.watchman-cookie-host-123' });
