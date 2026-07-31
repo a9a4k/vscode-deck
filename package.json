@@ -2,7 +2,7 @@
   "name": "deck",
   "displayName": "Deck",
   "description": "Run coding agents across multiple repos and worktrees",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "publisher": "a9a4k",
   "repository": {
     "type": "git",
