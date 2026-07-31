@@ -658,7 +658,10 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).not.toContain('rgba(');
   });
 
-  it('restores xterm focus when a Terminal webview regains focus without sniffing initial focus', () => {
+  // Asserts the webview script's focus wiring is present, not that focusing works:
+  // the script is a template string never executed here. Behavioural coverage of
+  // re-display focus would need a webview harness.
+  it('wires xterm focus to the focus message and the window focus event, never to initial focus state', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
