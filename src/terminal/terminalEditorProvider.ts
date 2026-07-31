@@ -83,7 +83,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly readyPanels = new Set<vscode.WebviewPanel>();
   private readonly pendingTerminalFocus = new Set<string>();
-  private readonly pendingPreservedFocus = new Set<string>();
+  private readonly pendingPreserveFocus = new Set<string>();
   // Sessions whose decoration we skipped while hidden — re-applied when shown.
   private readonly staleDecorations = new Set<string>();
   private readonly configChangeSubscription: vscode.Disposable;
@@ -165,8 +165,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     // panel.active also becomes true when a reveal changes tabs but leaves
     // keyboard focus in the tree, so carry that user intent to the view event.
     const panel = this.panels.get(sessionName);
-    if (!panel || (!panel.active && !panel.visible)) {
-      this.pendingPreservedFocus.add(sessionName);
+    if (!panel?.active && !panel?.visible) {
+      this.pendingPreserveFocus.add(sessionName);
     }
   }
 
@@ -191,7 +191,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     }
 
     this.panels.set(document.sessionName, panel);
-    if (panel.visible) this.pendingPreservedFocus.delete(document.sessionName);
+    if (panel.visible) this.pendingPreserveFocus.delete(document.sessionName);
     this.activePanel = panel;
     const transport = this.transportFactory();
     const transportDisposables: vscode.Disposable[] = [];
@@ -227,8 +227,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       // tab switch does no work when nothing changed while the tab was hidden.
       panel.onDidChangeViewState(() => {
         if (panel.visible && this.staleDecorations.has(document.sessionName)) applyTabDecoration();
-        const preservedFocus = panel.visible && this.pendingPreservedFocus.delete(document.sessionName);
-        if (panel.active && !preservedFocus) {
+        const preserveFocus = panel.visible && this.pendingPreserveFocus.delete(document.sessionName);
+        if (panel.active && !preserveFocus) {
           this.focusTerminal(document.sessionName);
         }
       }),
@@ -261,7 +261,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         this.panels.delete(document.sessionName);
         this.staleDecorations.delete(document.sessionName);
         this.pendingTerminalFocus.delete(document.sessionName);
-        this.pendingPreservedFocus.delete(document.sessionName);
+        this.pendingPreserveFocus.delete(document.sessionName);
       }
       this.readyPanels.delete(panel);
       if (this.activePanel === panel) this.activePanel = undefined;

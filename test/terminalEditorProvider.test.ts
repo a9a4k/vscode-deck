@@ -59,11 +59,15 @@ function focusLifecycle(active = false, visible = active) {
   });
   return {
     terminalPanel,
-    ready: () => receiveMessage?.({ type: 'ready' }),
+    ready() {
+      if (!receiveMessage) throw new Error('Webview message handler is not registered');
+      receiveMessage({ type: 'ready' });
+    },
     setViewState(nextActive: boolean, nextVisible = nextActive) {
       terminalPanel.active = nextActive;
       terminalPanel.visible = nextVisible;
-      viewStateHandler?.();
+      if (!viewStateHandler) throw new Error('View state handler is not registered');
+      viewStateHandler();
     },
   };
 }
@@ -101,14 +105,7 @@ function providerDocument(
 
 describe('TerminalEditorProvider', () => {
   it('queues an explicit terminal focus request until the webview is ready', () => {
-    let receiveMessage: ((message: { type: string }) => void) | undefined;
-    const terminalPanel = panel();
-    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
-      (handler: (message: { type: string }) => void) => {
-        receiveMessage = handler;
-        return { dispose: vi.fn() };
-      },
-    );
+    const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
@@ -117,43 +114,29 @@ describe('TerminalEditorProvider', () => {
 
     expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
 
-    receiveMessage?.({ type: 'ready' });
+    ready();
 
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
   });
 
   it('does not focus a ready webview without an explicit request', () => {
-    let receiveMessage: ((message: { type: string }) => void) | undefined;
-    const terminalPanel = panel();
-    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
-      (handler: (message: { type: string }) => void) => {
-        receiveMessage = handler;
-        return { dispose: vi.fn() };
-      },
-    );
+    const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
     terminalPanel.webview.postMessage.mockClear();
 
-    receiveMessage?.({ type: 'ready' });
+    ready();
 
     expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
   });
 
   it('delivers an explicit terminal focus request immediately when the webview is ready', () => {
-    let receiveMessage: ((message: { type: string }) => void) | undefined;
-    const terminalPanel = panel();
-    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
-      (handler: (message: { type: string }) => void) => {
-        receiveMessage = handler;
-        return { dispose: vi.fn() };
-      },
-    );
+    const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
-    receiveMessage?.({ type: 'ready' });
+    ready();
     terminalPanel.webview.postMessage.mockClear();
 
     provider.focusTerminal('wt-_work_alpha-main__term-1');
