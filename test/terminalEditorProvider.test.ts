@@ -43,6 +43,31 @@ function panel() {
   };
 }
 
+function focusLifecycle(active = false, visible = active) {
+  let receiveMessage: ((message: { type: string }) => void) | undefined;
+  let viewStateHandler: (() => void) | undefined;
+  const terminalPanel = Object.assign(panel(), { active, visible });
+  terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+    (handler: (message: { type: string }) => void) => {
+      receiveMessage = handler;
+      return { dispose: vi.fn() };
+    },
+  );
+  terminalPanel.onDidChangeViewState.mockImplementation((handler: () => void) => {
+    viewStateHandler = handler;
+    return { dispose: vi.fn() };
+  });
+  return {
+    terminalPanel,
+    ready: () => receiveMessage?.({ type: 'ready' }),
+    setViewState(nextActive: boolean, nextVisible = nextActive) {
+      terminalPanel.active = nextActive;
+      terminalPanel.visible = nextVisible;
+      viewStateHandler?.();
+    },
+  };
+}
+
 function bridge() {
   return {
     start: vi.fn(),
@@ -132,6 +157,62 @@ describe('TerminalEditorProvider', () => {
     terminalPanel.webview.postMessage.mockClear();
 
     provider.focusTerminal('wt-_work_alpha-main__term-1');
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('focuses a never-focused Terminal when keyboard navigation activates its panel', () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    terminalPanel.webview.postMessage.mockClear();
+
+    setViewState(true);
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('does not focus a never-focused Terminal when a tree reveal activates its panel', () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    terminalPanel.webview.postMessage.mockClear();
+    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
+
+    setViewState(true);
+
+    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('focuses a preserved new Terminal on its first later keyboard activation', () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle(true);
+    const { provider, document } = providerDocument();
+
+    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    terminalPanel.webview.postMessage.mockClear();
+
+    setViewState(false);
+    setViewState(true);
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('focuses an already-visible Terminal on its next keyboard activation', () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle(false, true);
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    terminalPanel.webview.postMessage.mockClear();
+    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
+
+    setViewState(true);
 
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
   });

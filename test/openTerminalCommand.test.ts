@@ -33,11 +33,19 @@ describe('OpenTerminalCommand', () => {
   });
 
   it('opens a same-worktree terminal row as a Deck custom editor', async () => {
-    await new OpenTerminalCommand().run({
+    const terminalPanels = {
+      panelFor: vi.fn(() => undefined),
+      preserveFocusOnNextActivation: vi.fn(),
+    };
+
+    await new OpenTerminalCommand({ terminalPanels }).run({
       terminal: { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
       worktreePath: '/work/alpha-main',
     });
 
+    expect(terminalPanels.preserveFocusOnNextActivation).toHaveBeenCalledWith(
+      'wt-_work_alpha-main__term-1',
+    );
     expect(vscodeState.executeCommand).toHaveBeenCalledWith(
       'vscode.openWith',
       {
@@ -54,6 +62,7 @@ describe('OpenTerminalCommand', () => {
     const panel = { reveal: vi.fn() };
     const terminalPanels = {
       panelFor: vi.fn(() => panel),
+      preserveFocusOnNextActivation: vi.fn(),
     };
 
     await new OpenTerminalCommand({ terminalPanels }).run({
@@ -62,6 +71,9 @@ describe('OpenTerminalCommand', () => {
     });
 
     expect(terminalPanels.panelFor).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
+    expect(terminalPanels.preserveFocusOnNextActivation).toHaveBeenCalledWith(
+      'wt-_work_alpha-main__term-1',
+    );
     expect(panel.reveal).toHaveBeenCalledWith(undefined, true);
     expect(vscodeState.executeCommand).not.toHaveBeenCalled();
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();

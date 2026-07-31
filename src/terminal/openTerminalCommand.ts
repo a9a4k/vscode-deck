@@ -17,6 +17,7 @@ interface TerminalEditorPanelLike {
 
 interface TerminalEditorPanelRegistryLike {
   panelFor(sessionName: string): TerminalEditorPanelLike | undefined;
+  preserveFocusOnNextActivation(sessionName: string): void;
 }
 
 interface OpenTerminalCommandOptions {
@@ -37,6 +38,7 @@ export class OpenTerminalCommand {
     // Clicking into the Terminal focuses it for typing.
     const existing = this.options.terminalPanels?.panelFor(node.terminal.sessionName);
     if (existing) {
+      this.options.terminalPanels?.preserveFocusOnNextActivation(node.terminal.sessionName);
       existing.reveal(undefined, true);
       return;
     }
@@ -47,6 +49,7 @@ export class OpenTerminalCommand {
     const term = terminalSessionNumber(cwd, node.terminal.sessionName);
     if (!term) return;
 
+    this.options.terminalPanels?.preserveFocusOnNextActivation(node.terminal.sessionName);
     await vscode.commands.executeCommand(
       'vscode.openWith',
       this.sessionUriCodec.encode({ worktreePath: cwd, term }),
