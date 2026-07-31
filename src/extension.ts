@@ -855,17 +855,17 @@ async function openAgentStatusTerminal(
   sessionName: string,
 ): Promise<void> {
   try {
-    const observedSession = terminalModel.find(sessionName);
-    const liveSession = observedSession === undefined
-      ? await tmux.terminalSession(sessionName)
-      : undefined;
-    if (observedSession === undefined && liveSession === undefined) {
-      await vscode.window.showInformationMessage('This Terminal is no longer running.');
-      return;
+    let terminalNode: RepositoryTreeNode | undefined;
+    if (terminalModel.find(sessionName) !== undefined) {
+      terminalNode = await tree.findTerminalBySessionName(sessionName);
+    } else {
+      const liveSession = await tmux.terminalSession(sessionName);
+      if (liveSession === undefined) {
+        await vscode.window.showInformationMessage('This Terminal is no longer running.');
+        return;
+      }
+      terminalNode = await tree.findTerminalBySessionName(sessionName, liveSession);
     }
-    const terminalNode = liveSession === undefined
-      ? await tree.findTerminalBySessionName(sessionName)
-      : await tree.findTerminalBySessionName(sessionName, liveSession);
     if (!terminalNode || !('terminal' in terminalNode)) {
       // Status files are machine-global; this window's tree only shows
       // registered repositories (e.g. another VS Code install owns this one).

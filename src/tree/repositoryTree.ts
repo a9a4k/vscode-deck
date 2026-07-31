@@ -356,13 +356,13 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     sessionName: string,
     liveSession?: TmuxSession,
   ): Promise<RepositoryTreeNode | undefined> {
-    if (this.terminalModel.find(sessionName) === undefined) {
-      if (liveSession === undefined) return undefined;
-      const worktree = this.findWorktreeNodeForSession(sessionName);
-      if (worktree === undefined) return undefined;
-      return this.toTerminalNode(worktree, liveSession);
+    if (this.terminalModel.find(sessionName) !== undefined) {
+      return this.findTerminalNode(sessionName);
     }
-    return this.findTerminalNode(sessionName);
+    if (liveSession === undefined) return undefined;
+    const worktree = this.findWorktreeNodeForSession(sessionName);
+    if (worktree === undefined) return undefined;
+    return this.toTerminalNode(worktree, liveSession);
   }
 
   async describeSession(sessionName: string): Promise<{ repo: string; branch: string } | undefined> {
