@@ -460,8 +460,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       showWarningMessage: (message, ...items) => vscode.window.showWarningMessage(message, ...items),
       showInformationMessage: (message, ...items) => vscode.window.showInformationMessage(message, ...items),
     },
-    openTerminal: (sessionName) => openAgentStatusTerminal(tree, treeView, openTerminal, sessionName),
-    resolveTerminalSession: async (sessionName) => terminalModel.find(sessionName),
+    openTerminal: (sessionName) => openAgentStatusTerminal(
+      tree,
+      treeView,
+      openTerminal,
+      terminalModel,
+      tmux,
+      sessionName,
+    ),
+    resolveTerminalSession: async (sessionName) =>
+      terminalModel.find(sessionName) ?? await tmux.terminalSession(sessionName),
     describeSession: (sessionName) => tree.describeSession(sessionName),
   }).start();
   const addRepository = new AddRepositoryCommand(
@@ -842,10 +850,22 @@ async function openAgentStatusTerminal(
   tree: RepositoryTreeProvider,
   treeView: vscode.TreeView<RepositoryTreeNode>,
   openTerminal: OpenTerminalCommand,
+  terminalModel: TerminalModel,
+  tmux: TmuxCli,
   sessionName: string,
 ): Promise<void> {
   try {
-    const terminalNode = await tree.findTerminalBySessionName(sessionName);
+    const observedSession = terminalModel.find(sessionName);
+    const liveSession = observedSession === undefined
+      ? await tmux.terminalSession(sessionName)
+      : undefined;
+    if (observedSession === undefined && liveSession === undefined) {
+      await vscode.window.showInformationMessage('This Terminal is no longer running.');
+      return;
+    }
+    const terminalNode = liveSession === undefined
+      ? await tree.findTerminalBySessionName(sessionName)
+      : await tree.findTerminalBySessionName(sessionName, liveSession);
     if (!terminalNode || !('terminal' in terminalNode)) {
       // Status files are machine-global; this window's tree only shows
       // registered repositories (e.g. another VS Code install owns this one).

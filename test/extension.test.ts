@@ -123,6 +123,7 @@ const vscodeState = vi.hoisted(() => ({
     sendCommandLine: ReturnType<typeof vi.fn>;
     serverStartTime: ReturnType<typeof vi.fn>;
     setOption: ReturnType<typeof vi.fn>;
+    terminalSession: ReturnType<typeof vi.fn>;
     unsetOption: ReturnType<typeof vi.fn>;
   }>,
   terminalSnapshotRuntimeInstances: [] as Array<{
@@ -1431,6 +1432,60 @@ describe('activate', () => {
       terminalNode,
       { select: true, focus: false },
     );
+  });
+
+  it.each([
+    ['completed', 'finished'],
+    ['needsInput', 'needs input'],
+  ] as const)('identifies a %s Terminal created while the window was unfocused before polling it', async (
+    status,
+    detail,
+  ) => {
+    const context = createContext();
+    const sessionName = 'wt-_work_alpha-feature__term-1';
+    const terminalNode = {
+      terminal: { sessionName, windowName: 'claude' },
+      worktreePath: '/work/alpha-feature',
+    };
+    vscodeState.windowFocused = false;
+    vscodeState.tmuxSessions = [{
+      sessionName,
+      windowName: 'claude',
+      paneTitle: '✳ fix issue 169',
+    }];
+    vscodeState.showInformationMessage.mockResolvedValue('Open Terminal');
+    vscodeState.showWarningMessage.mockResolvedValue('Open Terminal');
+
+    await activate(context as never);
+    vscodeState.repositoryTreeInstances[0].findTerminalBySessionName.mockResolvedValue(terminalNode);
+    vscodeState.repositoryTreeInstances[0].describeSession.mockResolvedValue({
+      repo: 'alpha-main',
+      branch: 'feature',
+    });
+    vscodeState.agentStatusStoreEntries = [[sessionName, {
+      status,
+      statusAt: 1710000000,
+      agent: 'claude',
+    }]];
+    vscodeState.agentStatusStoreChangeListeners.at(-1)?.();
+
+    await vi.waitFor(() => {
+      const showStatusMessage = status === 'completed'
+        ? vscodeState.showInformationMessage
+        : vscodeState.showWarningMessage;
+      expect(showStatusMessage).toHaveBeenCalledWith(
+        `alpha-main/feature · fix issue 169 · ${detail}`,
+        'Open Terminal',
+      );
+    });
+    expect(vscodeState.tmuxInstances[0].terminalSession).toHaveBeenCalledWith(sessionName);
+    await vi.waitFor(() => {
+      expect(vscodeState.repositoryTreeInstances[0].findTerminalBySessionName).toHaveBeenCalledWith(
+        sessionName,
+        vscodeState.tmuxSessions[0],
+      );
+    });
+    expect(vscodeState.openTerminalRun).toHaveBeenCalledWith(terminalNode);
   });
 
   it('explains instead of silently no-opping when the notified Terminal is not in this window', async () => {

@@ -1577,6 +1577,33 @@ describe('RepositoryTreeProvider', () => {
     expect(listWorktrees).not.toHaveBeenCalled();
   });
 
+  it('finds a live Terminal under its registered Worktree before the TerminalModel observes it', async () => {
+    const model = new TerminalModel();
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      model,
+      true,
+    );
+    const session = {
+      sessionName: 'wt-_work_alpha-feature__term-1',
+      windowName: 'claude',
+      paneTitle: '✳ fix issue 169',
+    };
+
+    const terminal = await provider.findTerminalBySessionName(session.sessionName, session);
+
+    expect(terminal).toMatchObject({
+      id: 'terminal::wt-_work_alpha-feature__term-1',
+      worktreePath: '/work/alpha-feature',
+      terminal: session,
+    });
+    expect(model.find(session.sessionName)).toBeUndefined();
+  });
+
   it('describes a session from the TerminalModel and cached Worktree', async () => {
     const model = observedModel([
       { sessionName: 'wt-_work_alpha-feature__term-1', windowName: 'claude' },
@@ -1599,6 +1626,22 @@ describe('RepositoryTreeProvider', () => {
 
     expect(description).toEqual({ repo: 'alpha-main', branch: 'feature' });
     expect(listWorktrees).not.toHaveBeenCalled();
+  });
+
+  it('describes a session from its registered Worktree before the TerminalModel observes it', async () => {
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      new TerminalModel(),
+      true,
+    );
+
+    const description = await provider.describeSession('wt-_work_alpha-feature__term-1');
+
+    expect(description).toEqual({ repo: 'alpha-main', branch: 'feature' });
   });
 
   it('describes a detached session by folder name, matching its tree label', async () => {

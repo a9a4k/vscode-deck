@@ -352,13 +352,20 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     );
   }
 
-  async findTerminalBySessionName(sessionName: string): Promise<RepositoryTreeNode | undefined> {
-    if (this.terminalModel.find(sessionName) === undefined) return undefined;
+  async findTerminalBySessionName(
+    sessionName: string,
+    liveSession?: TmuxSession,
+  ): Promise<RepositoryTreeNode | undefined> {
+    if (this.terminalModel.find(sessionName) === undefined) {
+      if (liveSession === undefined) return undefined;
+      const worktree = this.findWorktreeNodeForSession(sessionName);
+      if (worktree === undefined) return undefined;
+      return this.toTerminalNode(worktree, liveSession);
+    }
     return this.findTerminalNode(sessionName);
   }
 
   async describeSession(sessionName: string): Promise<{ repo: string; branch: string } | undefined> {
-    if (this.terminalModel.find(sessionName) === undefined) return undefined;
     const worktree = this.findWorktreeNodeForSession(sessionName);
     if (worktree === undefined) return undefined;
     return {
@@ -566,27 +573,31 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   }
 
   private toTerminalNodes(element: WorktreeNode, terminals: readonly TerminalModelSession[]): RepositoryTreeNode[] {
-    const isActiveWorktree = this.isCurrentWorktree(element.worktree.path);
     const liveSessionNames = new Set(terminals.map((terminal) => terminal.sessionName));
-    const nodes = terminals.map(
-      (terminal) => {
-        const status = this.agentStatuses?.get(terminal.sessionName);
-        const existing = this.renderedTerminals.get(terminal.sessionName);
-        if (existing) {
-          existing.update(terminal, element, isActiveWorktree, status);
-          return existing;
-        }
-        const node = new TerminalNode(terminal, element, isActiveWorktree, status);
-        this.renderedTerminals.set(terminal.sessionName, node);
-        return node;
-      },
-    );
+    const nodes = terminals.map((terminal) => this.toTerminalNode(element, terminal));
     for (const [sessionName, node] of this.renderedTerminals) {
       if (node.worktreePath === element.worktree.path && !liveSessionNames.has(sessionName)) {
         this.renderedTerminals.delete(sessionName);
       }
     }
     return nodes;
+  }
+
+  private toTerminalNode(element: WorktreeNode, terminal: TmuxSession): TerminalNode {
+    const status = this.agentStatuses?.get(terminal.sessionName);
+    const existing = this.renderedTerminals.get(terminal.sessionName);
+    if (existing !== undefined) {
+      existing.update(terminal, element, this.isCurrentWorktree(element.worktree.path), status);
+      return existing;
+    }
+    const node = new TerminalNode(
+      terminal,
+      element,
+      this.isCurrentWorktree(element.worktree.path),
+      status,
+    );
+    this.renderedTerminals.set(terminal.sessionName, node);
+    return node;
   }
 
   private toWorktreeNode(

@@ -33,9 +33,10 @@ e.g.  vscode-deck/main · fix-dlq-requeue-uploads-deadline · Claude needs your 
 ```
 
 1. **AgentTitle** is resolved through ADR-0039's `resolveTerminalLabel(windowName,
-   paneTitle)`; `paneTitle` comes from a **single-session, ungated** tmux read
-   keyed by the `sessionName` (the same read ADR-0039 adds for the tab path). It
-   falls back to the agent identity name when the agent has no title yet.
+   paneTitle)`; `paneTitle` comes from the TerminalModel when it already knows
+   the session, or from a **single-session, ungated** tmux read keyed by the
+   `sessionName` on a model miss. It falls back to the agent identity name when
+   the agent has no title yet.
 
 2. **detail** is the agent's hook `message` when present — shown **alongside** the
    AgentTitle, not in place of it — else a synthesized `needs input` / `finished`.
@@ -43,10 +44,11 @@ e.g.  vscode-deck/main · fix-dlq-requeue-uploads-deadline · Claude needs your 
    lookup.
 
 3. **Repository + branch** are resolved by a **narrow Worktree-level resolve**
-   (`describeSession`): match the `sessionName` prefix against the live worktree
-   list and stop at the matched Worktree, reading its `branch` and Repository. It
-   **does not descend into the terminal list**, so it never `await`s the restore
-   gate. Branch is therefore read **live** and is always current.
+   (`describeSession`): match the `sessionName` prefix against the registered
+   Repositories' reconciled Worktree lists and stop at the matched Worktree,
+   reading its `branch` and Repository. It **does not descend into the terminal
+   list**, so a Terminal created while the window is unfocused can still be
+   described before the TerminalPoll observes it.
 
 4. **On a resolve miss** (transient git-list failure, or a Worktree hidden by the
    optimistic-removal filter), fall back **per field**: drop the
@@ -89,9 +91,10 @@ e.g.  vscode-deck/main · fix-dlq-requeue-uploads-deadline · Claude needs your 
 
 ## Consequences
 
-- The notifier gains a dependency on ADR-0039's `resolveTerminalLabel` and a small,
-  ungated single-session pane-title tmux read. Branch stays live via the narrow
-  `describeSession`.
+- The notifier gains a dependency on ADR-0039's `resolveTerminalLabel`. The
+  TerminalModel is the normal path; a model miss performs one small, ungated
+  single-session pane-title tmux read. Repository and branch stay available via
+  the narrow `describeSession` even while the focus-gated poll is paused.
 - In the collapsed toast the line ellipsises at the toast's pixel width (no
   character budget). Identity-first ordering keeps *which agent / where* in the
   always-visible prefix; the verbatim ask is the tail that clips, recoverable by

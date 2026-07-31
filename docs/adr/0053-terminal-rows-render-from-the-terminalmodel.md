@@ -45,14 +45,19 @@ entries changed.** (Domain terms: CONTEXT.md **TerminalModel**,
    verbatim); single writer — only the reconciler writes, Deck's own commands
    trigger re-observation (`poll.wake()`) instead of editing entries, so no
    invalidation seam exists; tmux stays the source of truth — the model is a
-   bounded-staleness read replica (≤1 tick, ≤2s focused). The tab-navigation
-   walks (`findTerminal`, `describeSession`) become model lookups.
+   bounded-staleness read replica (≤1 tick, ≤2s focused). Tab-navigation
+   uses model lookups. AgentStatus notifications also use the model normally,
+   but on a miss may read one exact tmux session and match its name against the
+   registered Worktrees. This notification-only fallback handles a Terminal
+   created while the focus-gated poll is paused and never writes to the model.
 
 2. **The TerminalPoll tick is the reconciler.** One unprefixed
    `list-sessions` per tick, partitioned by Deck's session-name grammar,
    diffed against the model. The tree's per-worktree listing path is deleted.
    The diff drives targeted relabels (ADR-0046) and structural add/remove;
-   subprocess load becomes the tick rate and nothing else.
+   render-time subprocess load becomes zero. The poll remains the only
+   `list-sessions` feed; a model-miss notification may additionally issue the
+   exact-session lookup described above.
 
 3. **Removals require a trusted observation.** The restore coordinator's
    taxonomy is computed from the tick's own data (0 sessions = down; only the
