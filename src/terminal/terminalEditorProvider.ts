@@ -191,7 +191,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     }
 
     this.panels.set(document.sessionName, panel);
-    if (panel.visible) this.pendingPreserveFocus.delete(document.sessionName);
     this.activePanel = panel;
     const transport = this.transportFactory();
     const transportDisposables: vscode.Disposable[] = [];
@@ -227,8 +226,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       // tab switch does no work when nothing changed while the tab was hidden.
       panel.onDidChangeViewState(() => {
         if (panel.visible && this.staleDecorations.has(document.sessionName)) applyTabDecoration();
-        const preserveFocus = panel.visible && this.pendingPreserveFocus.delete(document.sessionName);
-        if (panel.active && !preserveFocus) {
+        if (this.consumeActiveFocusIntent(document.sessionName, panel)) {
           this.focusTerminal(document.sessionName);
         }
       }),
@@ -236,7 +234,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
           this.readyPanels.add(panel);
-          if (this.pendingTerminalFocus.delete(document.sessionName)) {
+          const focusRequested = this.pendingTerminalFocus.delete(document.sessionName);
+          const activeFocus = this.consumeActiveFocusIntent(document.sessionName, panel);
+          if (focusRequested || activeFocus) {
             void panel.webview.postMessage({ type: 'focus' });
           }
           void this.beforeReattach().then(() => {
@@ -269,6 +269,11 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       transport.dispose();
       for (const disposable of transportDisposables.splice(0)) disposable.dispose();
     });
+  }
+
+  private consumeActiveFocusIntent(sessionName: string, panel: vscode.WebviewPanel): boolean {
+    const preserveFocus = panel.visible && this.pendingPreserveFocus.delete(sessionName);
+    return panel.active && !preserveFocus;
   }
 
   private applyTabDecoration(sessionName: string, panel: vscode.WebviewPanel): void {

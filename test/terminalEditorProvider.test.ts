@@ -119,10 +119,35 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
   });
 
-  it('does not focus a ready webview without an explicit request', () => {
+  it('does not focus an inactive webview when it becomes ready', () => {
     const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
 
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    terminalPanel.webview.postMessage.mockClear();
+
+    ready();
+
+    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('focuses a Terminal that is active when its webview becomes ready', () => {
+    const { terminalPanel, ready } = focusLifecycle(true);
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    terminalPanel.webview.postMessage.mockClear();
+
+    ready();
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
+  });
+
+  it('does not focus an active Terminal with pending preserve-focus intent at ready time', () => {
+    const { terminalPanel, ready } = focusLifecycle(true);
+    const { provider, document } = providerDocument();
+
+    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
     provider.resolveCustomEditor(document, terminalPanel as never);
     terminalPanel.webview.postMessage.mockClear();
 
