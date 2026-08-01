@@ -17,6 +17,12 @@ vi.mock('vscode', () => ({
       get: (key: string, defaultValue: unknown) => cfg[section]?.[key] ?? defaultValue,
     }),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    fs: {
+      readFile: vi.fn(),
+    },
+  },
+  window: {
+    showErrorMessage: vi.fn(),
   },
 }));
 
@@ -30,6 +36,8 @@ function panel() {
     dispose: vi.fn(),
     title: '',
     visible: true,
+    viewColumn: 1,
+    reveal: vi.fn(),
     webview: {
       options: {},
       html: '',
@@ -720,6 +728,114 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("navigator.clipboard.read()");
     expect(terminalPanel.webview.html).toContain("item.types.some((type) => type.startsWith('image/'))");
     expect(terminalPanel.webview.html).toContain("navigator.clipboard.readText()");
+  });
+
+  it('renders image drop attachment without letting VS Code open the dropped file', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    expect(terminalPanel.webview.html).toContain("terminalElement.addEventListener('dragover'");
+    expect(terminalPanel.webview.html).toContain("terminalElement.addEventListener('drop'");
+    expect(terminalPanel.webview.html).toContain("item.type === '' || item.type.startsWith('image/')");
+    expect(terminalPanel.webview.html).toContain("includes('Files')");
+    expect(terminalPanel.webview.html).toContain("filesFromDrop(event.dataTransfer).filter(isImageFile)");
+    expect(terminalPanel.webview.html).toContain("imageFilePattern.test(file.name)");
+    expect(terminalPanel.webview.html).toContain("navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])");
+    expect(terminalPanel.webview.html).toContain("type: 'imageDrop', payload: btoa(binary)");
+    expect(terminalPanel.webview.html).toContain("void attachDroppedImage(images[0])");
+  });
+
+  it('uses the native clipboard fallback before forwarding the agent image-attach key', async () => {
+    let receiveMessage: ((message: { type: string; payload: string }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string; payload: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const terminalBridge = bridge();
+    const writeImage = vi.fn(async () => undefined);
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => terminalBridge,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      writeImage,
+    );
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    receiveMessage?.({ type: 'imageDrop', payload: png.toString('base64') });
+    await flush();
+
+    expect(writeImage).toHaveBeenCalledWith(png);
+    expect(terminalBridge.write).toHaveBeenCalledWith('\x16');
+  });
+
+  it('recovers an external PNG opened by VS Code and attaches it to the target terminal', async () => {
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(png);
+    const terminalBridge = bridge();
+    const writeImage = vi.fn(async () => undefined);
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => terminalBridge,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      writeImage,
+    );
+    const terminalPanel = panel();
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const attached = await provider.attachImageFile(
+      'wt-_work_alpha-main__term-1',
+      { scheme: 'file', fsPath: '/tmp/Screenshot.png' } as never,
+    );
+
+    expect(attached).toBe(true);
+    expect(writeImage).toHaveBeenCalledWith(png);
+    expect(terminalPanel.reveal).toHaveBeenCalledWith(1, false);
+    expect(terminalBridge.write).toHaveBeenCalledWith('\x16');
+  });
+
+  it('shows a visible error when a dropped image cannot be attached', () => {
+    let receiveMessage: ((message: { type: string; payload: string }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string; payload: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    receiveMessage?.({ type: 'imageDropError', payload: 'clipboard denied' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      'Deck could not attach the dropped image: clipboard denied',
+    );
   });
 
   it('maps Shift+Enter to an ESC+CR newline sequence', () => {

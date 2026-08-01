@@ -1,4 +1,9 @@
 import * as vscode from 'vscode';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { resolveTerminalTabIcon } from '../agent/agentIconResolver';
 import type { AgentName } from '../agent/agentTypes';
 import { SessionUriCodec } from './sessionUriCodec';
@@ -48,6 +53,16 @@ interface ClearHistoryMessage {
   type: 'clearHistory';
 }
 
+interface ImageDropErrorMessage {
+  type: 'imageDropError';
+  payload: string;
+}
+
+interface ImageDropMessage {
+  type: 'imageDrop';
+  payload: string;
+}
+
 interface TerminalConfig {
   fontFamily: string;
   fontSize: number;
@@ -60,7 +75,9 @@ type TerminalWebviewMessage =
   | ResizeMessage
   | ExitMessage
   | FocusedMessage
-  | ClearHistoryMessage;
+  | ClearHistoryMessage
+  | ImageDropMessage
+  | ImageDropErrorMessage;
 
 type TerminalTabIconPath = vscode.IconPath;
 
@@ -78,9 +95,35 @@ export interface TerminalTransportLike {
 export type TerminalTransportFactory = () => TerminalTransportLike;
 export type TerminalEditorDisposeHandler = (sessionName: string) => Promise<void> | void;
 export type TerminalEditorTitleChangeHandler = (sessionName: string) => Promise<void> | void;
+export type ImageClipboardWriter = (png: Uint8Array) => Promise<void>;
+
+const execFileAsync = promisify(execFile);
+
+async function writePngToSystemClipboard(png: Uint8Array): Promise<void> {
+  if (process.platform !== 'darwin') {
+    throw new Error('native image clipboard fallback is currently available only on macOS');
+  }
+  const directory = await mkdtemp(join(tmpdir(), 'deck-image-drop-'));
+  const imagePath = join(directory, 'image.png');
+  try {
+    await writeFile(imagePath, png);
+    await execFileAsync('/usr/bin/osascript', [
+      '-e',
+      'on run argv',
+      '-e',
+      'set the clipboard to (read POSIX file (item 1 of argv) as «class PNGf»)',
+      '-e',
+      'end run',
+      imagePath,
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvider<TerminalDocument> {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
+  private readonly transports = new Map<string, TerminalTransportLike>();
   private readonly readyPanels = new Set<vscode.WebviewPanel>();
   private readonly pendingTerminalFocus = new Set<string>();
   // Sessions whose decoration we skipped while hidden — re-applied when shown.
@@ -106,6 +149,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     private readonly beforeReattach: () => Promise<void> = () => Promise.resolve(),
     private readonly resolveTerminalAgentName: (sessionName: string) => Promise<AgentName | undefined> = async () =>
       undefined,
+    private readonly writeImageToClipboard: ImageClipboardWriter = writePngToSystemClipboard,
   ) {
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       const fontKeys = [
@@ -150,6 +194,34 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     return this.panels.get(sessionName);
   }
 
+  async attachImageFile(sessionName: string, uri: vscode.Uri): Promise<boolean> {
+    const panel = this.panels.get(sessionName);
+    const transport = this.transports.get(sessionName);
+    if (!panel || !transport) return false;
+
+    try {
+      const png = await vscode.workspace.fs.readFile(uri);
+      const encodedLimit = 44 * 1024 * 1024;
+      if (png.length * 4 / 3 > encodedLimit) {
+        throw new Error('the image is too large');
+      }
+      const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+      if (png.length < signature.length || signature.some((byte, index) => png[index] !== byte)) {
+        throw new Error('invalid PNG data');
+      }
+
+      await this.writeImageToClipboard(png);
+      panel.reveal(panel.viewColumn, false);
+      transport.write('\x16');
+      this.focusTerminal(sessionName);
+      return true;
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(`Deck could not attach the dropped image: ${detail}`);
+      return false;
+    }
+  }
+
   focusTerminal(sessionName: string): void {
     const panel = this.panels.get(sessionName);
     if (!panel) return;
@@ -183,6 +255,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     this.panels.set(document.sessionName, panel);
     this.activePanel = panel;
     const transport = this.transportFactory();
+    this.transports.set(document.sessionName, transport);
     const transportDisposables: vscode.Disposable[] = [];
 
     panel.webview.options = {
@@ -236,6 +309,28 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
         if (message.type === 'resize') transport.resize(message.cols, message.rows);
         if (message.type === 'clearHistory') transport.clearHistory();
+        if (message.type === 'imageDrop') {
+          const encodedLimit = 44 * 1024 * 1024;
+          if (message.payload.length > encodedLimit) {
+            void vscode.window.showErrorMessage('Deck could not attach the dropped image: the image is too large');
+            return;
+          }
+          const png = Buffer.from(message.payload, 'base64');
+          const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+          if (png.length < signature.length || signature.some((byte, index) => png[index] !== byte)) {
+            void vscode.window.showErrorMessage('Deck could not attach the dropped image: invalid PNG data');
+            return;
+          }
+          void this.writeImageToClipboard(png)
+            .then(() => transport.write('\x16'))
+            .catch((error: unknown) => {
+              const detail = error instanceof Error ? error.message : String(error);
+              void vscode.window.showErrorMessage(`Deck could not attach the dropped image: ${detail}`);
+            });
+        }
+        if (message.type === 'imageDropError') {
+          void vscode.window.showErrorMessage(`Deck could not attach the dropped image: ${message.payload}`);
+        }
         if (message.type === 'focused') this.activePanel = panel;
         if (message.type === 'exit') panel.dispose();
       }),
@@ -244,6 +339,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     panel.onDidDispose(() => {
       if (this.panels.get(document.sessionName) === panel) {
         this.panels.delete(document.sessionName);
+        this.transports.delete(document.sessionName);
         this.staleDecorations.delete(document.sessionName);
         this.pendingTerminalFocus.delete(document.sessionName);
       }
@@ -654,6 +750,77 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (text) vscode.postMessage({ type: 'input', payload: text });
       }
 
+      async function imageAsClipboardPng(file) {
+        if (file.type === 'image/png') return file;
+        const bitmap = await createImageBitmap(file);
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('the browser could not create an image canvas');
+          context.drawImage(bitmap, 0, 0);
+          const png = await new Promise((resolve, reject) => {
+            canvas.toBlob(
+              (blob) => blob ? resolve(blob) : reject(new Error('the browser could not convert the image to PNG')),
+              'image/png',
+            );
+          });
+          return png;
+        } finally {
+          bitmap.close();
+        }
+      }
+
+      async function attachDroppedImage(file) {
+        try {
+          const png = await imageAsClipboardPng(file);
+          if (navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+            try {
+              await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+              // Codex and Claude Code both use Ctrl+V as their native image-attach
+              // action. Keeping that final hop native preserves their validation,
+              // resizing and prompt rendering instead of teaching Deck either
+              // agent's attachment protocol.
+              vscode.postMessage({ type: 'input', payload: '\\x16' });
+              return;
+            } catch (_) {
+              // VS Code webviews can reject Clipboard.write when the outer
+              // document owns focus. The extension host fallback below is not
+              // focus-gated and preserves the same native agent attach hop.
+            }
+          }
+          const bytes = new Uint8Array(await png.arrayBuffer());
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+          }
+          vscode.postMessage({ type: 'imageDrop', payload: btoa(binary) });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.postMessage({ type: 'imageDropError', payload: message });
+        }
+      }
+
+      const imageFilePattern = /\\.(?:png|jpe?g|gif|webp|bmp|tiff?|heic|heif|avif)$/i;
+
+      function isImageFile(file) {
+        return file.type.startsWith('image/') || imageFilePattern.test(file.name);
+      }
+
+      function filesFromDrop(dataTransfer) {
+        const files = Array.from(dataTransfer?.files || []);
+        for (const item of Array.from(dataTransfer?.items || [])) {
+          if (item.kind !== 'file') continue;
+          const file = item.getAsFile();
+          if (file && !files.some((candidate) => candidate === file || (
+            candidate.name === file.name && candidate.size === file.size
+          ))) files.push(file);
+        }
+        return files;
+      }
+
       function openFindWidget() {
         findWidget.style.display = 'flex';
         findInput.focus();
@@ -695,6 +862,33 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         // Claude Code's clipboard fallback turns into a second image.
         event.stopPropagation();
         vscode.postMessage({ type: 'input', payload: '\\x16' });
+      }, true);
+      terminalElement.addEventListener('dragover', (event) => {
+        const items = Array.from(event.dataTransfer?.items || []);
+        // Fresh macOS screenshots arrive as promised files. During dragover
+        // their MIME type is often blank and their filename is not exposed yet,
+        // so the image MIME prefix alone misses the exact drop Deck needs to claim.
+        const hasPossibleImage = items.some((item) => item.kind === 'file' && (
+          item.type === '' || item.type.startsWith('image/')
+        )) || Array.from(event.dataTransfer?.types || []).includes('Files');
+        if (!hasPossibleImage) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }, true);
+      terminalElement.addEventListener('drop', (event) => {
+        const images = filesFromDrop(event.dataTransfer).filter(isImageFile);
+        if (images.length === 0) return;
+        event.preventDefault();
+        // Keep VS Code from treating the same drop as an editor-open request.
+        event.stopPropagation();
+        if (images.length > 1) {
+          vscode.postMessage({
+            type: 'imageDropError',
+            payload: 'drop one image at a time',
+          });
+          return;
+        }
+        void attachDroppedImage(images[0]);
       }, true);
       document.addEventListener('click', hideContextMenu);
       document.addEventListener('keydown', (event) => {

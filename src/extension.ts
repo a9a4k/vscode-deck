@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import * as vscode from 'vscode';
 import { listWorktrees } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
@@ -489,6 +489,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   let lastRevealedActiveTerminalSessionName: string | undefined;
+  let activeTerminalBeforeTabChange = activeDeckTerminal();
   const revealActiveTerminalAfterNavigation = async () => {
     const activeTerminalSessionName = activeDeckTerminal()?.sessionName;
     // VS Code also emits tab changes for Deck's agent icon/title churn, not
@@ -566,11 +567,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await writeDeckConf(context, tmuxOptions);
       await applyDeckTmuxOptionsIfServerRunning(tmux, tmuxOptions, tmuxAvailability.available);
     }),
-    vscode.window.tabGroups.onDidChangeTabs(async () => {
+    vscode.window.tabGroups.onDidChangeTabs(async (event) => {
+      const previousTerminal = activeTerminalBeforeTabChange
+        ?? event.changed.map(deckTerminalFromTab).find((terminal) => terminal !== undefined);
+      activeTerminalBeforeTabChange = activeDeckTerminal();
+
+      if (previousTerminal) {
+        const openedImageTab = event.opened.find((tab) => externalPngUri(tab) !== undefined);
+        const imageUri = openedImageTab && externalPngUri(openedImageTab);
+        if (openedImageTab && imageUri) {
+          const attached = await terminalEditorProvider.attachImageFile(previousTerminal.sessionName, imageUri);
+          if (attached) await vscode.window.tabGroups.close(openedImageTab, true);
+          activeTerminalBeforeTabChange = activeDeckTerminal();
+        }
+      }
+
       await markActiveTerminalRead(agentStatuses);
       await revealActiveTerminalAfterNavigation();
     }),
     vscode.window.tabGroups.onDidChangeTabGroups(async () => {
+      activeTerminalBeforeTabChange = activeDeckTerminal();
       await markActiveTerminalRead(agentStatuses);
       await revealActiveTerminalAfterNavigation();
     }),
@@ -883,7 +899,11 @@ async function openAgentStatusTerminal(
 
 function activeDeckTerminal(): { sessionName: string; worktreePath: string } | undefined {
   const activeTab = vscode.window.tabGroups.activeTabGroup.activeTab;
-  const input = activeTab?.input as { viewType?: unknown; uri?: vscode.Uri } | undefined;
+  return activeTab ? deckTerminalFromTab(activeTab) : undefined;
+}
+
+function deckTerminalFromTab(tab: vscode.Tab): { sessionName: string; worktreePath: string } | undefined {
+  const input = tab.input as { viewType?: unknown; uri?: vscode.Uri } | undefined;
   if (input?.viewType !== terminalEditorViewType || !input.uri) return undefined;
 
   try {
@@ -891,6 +911,13 @@ function activeDeckTerminal(): { sessionName: string; worktreePath: string } | u
   } catch {
     return undefined;
   }
+}
+
+function externalPngUri(tab: vscode.Tab): vscode.Uri | undefined {
+  const uri = (tab.input as { uri?: vscode.Uri } | undefined)?.uri;
+  if (!uri || uri.scheme !== 'file' || extname(uri.fsPath).toLowerCase() !== '.png') return undefined;
+  if (vscode.workspace.getWorkspaceFolder(uri)) return undefined;
+  return uri;
 }
 
 async function markActiveTerminalRead(

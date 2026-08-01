@@ -82,6 +82,7 @@ const vscodeState = vi.hoisted(() => ({
   onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   onDidChangeTabGroups: vi.fn(() => ({ dispose: vi.fn() })),
   onDidChangeTabs: vi.fn(() => ({ dispose: vi.fn() })),
+  closeTab: vi.fn(async () => true),
   onDidChangeWindowState: vi.fn(() => ({ dispose: vi.fn() })),
   windowFocused: true,
   onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
@@ -157,6 +158,7 @@ const vscodeState = vi.hoisted(() => ({
   ),
   showTextDocument: vi.fn(),
   workspaceFsStat: vi.fn(async () => ({})),
+  workspaceFsReadFile: vi.fn(async () => new Uint8Array()),
   treeViewSelection: [] as unknown[],
 }));
 
@@ -225,6 +227,7 @@ vi.mock('vscode', () => ({
         activeTabGroup: { activeTab: vscodeState.activeTab },
         onDidChangeTabGroups: vscodeState.onDidChangeTabGroups,
         onDidChangeTabs: vscodeState.onDidChangeTabs,
+        close: vscodeState.closeTab,
       };
     },
   },
@@ -253,7 +256,12 @@ vi.mock('vscode', () => ({
     }),
     fs: {
       stat: vscodeState.workspaceFsStat,
+      readFile: vscodeState.workspaceFsReadFile,
     },
+    getWorkspaceFolder: (uri: { fsPath?: string }) =>
+      vscodeState.workspaceFolders.find((folder) =>
+        uri.fsPath === folder.uri.fsPath || uri.fsPath?.startsWith(`${folder.uri.fsPath}/`),
+      ),
     onDidChangeConfiguration: (listener: (event: { affectsConfiguration(section: string): boolean }) => unknown) => {
       vscodeState.onDidChangeConfiguration(listener);
       vscodeState.configListeners.push(listener);
@@ -670,6 +678,7 @@ describe('activate', () => {
     }]);
     vscodeState.onDidChangeTabGroups.mockClear();
     vscodeState.onDidChangeTabs.mockClear();
+    vscodeState.closeTab.mockClear();
     vscodeState.onDidChangeWindowState.mockClear();
     vscodeState.windowFocused = true;
     vscodeState.tabGroups = [];
