@@ -1533,6 +1533,35 @@ describe('activate', () => {
     );
   });
 
+  it('reports a failed active Terminal reveal and retries it on the next tab event', async () => {
+    const context = createContext();
+    const terminalNode = {
+      terminal: { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+      worktreePath: '/work/alpha-main',
+    };
+    const activeTab = terminalEditorTab('/work/alpha-main', 1);
+    const revealError = new Error('Cannot resolve tree item');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await activate(context as never);
+      vscodeState.repositoryTreeInstances[0].findTerminal.mockResolvedValue(terminalNode);
+      const reveal = vscodeState.createTreeView.mock.results[0].value.reveal;
+      reveal.mockRejectedValueOnce(revealError);
+      vscodeState.activeTab = activeTab;
+      const tabChangeHandler = vscodeState.onDidChangeTabs.mock.calls[0]?.[0];
+      if (!tabChangeHandler) throw new Error('missing tab change listener');
+
+      await tabChangeHandler({ opened: [], closed: [], changed: [activeTab] });
+      expect(warn).toHaveBeenCalledWith('Deck: revealing the active terminal failed', revealError);
+
+      await tabChangeHandler({ opened: [], closed: [], changed: [activeTab] });
+      expect(reveal).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('reveals a newly created Terminal after the poll observes its row', async () => {
     const context = createContext(['/work/alpha-main']);
     const sessionName = 'wt-_work_alpha-main__term-1';

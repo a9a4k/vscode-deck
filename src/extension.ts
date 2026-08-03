@@ -230,7 +230,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       && !newlyObservedTerminals.some(({ sessionName }) => sessionName === activeTerminal.sessionName)
     ) return;
     if (!treeView) return;
-    const revealed = await revealActiveTerminalInTree(tree, treeView);
+    const revealed = await revealActiveTerminalInTree(tree, treeView, activeTerminal);
     if (revealed) lastRevealedActiveTerminalSessionName = activeTerminal.sessionName;
   };
   const terminalReconciler = new TerminalReconciler({
@@ -247,7 +247,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     wakeAgentExitSweep,
     refreshWorktree: (worktreePath) => tree.refreshWorktree(worktreePath),
     refreshTerminalDisplays: (sessions) => tree.refreshTerminalDisplays(sessions),
-    onDidAddTerminals: (terminals) => revealActiveTerminalIfNeeded(terminals),
+    onDidAddTerminals: revealActiveTerminalIfNeeded,
   });
   const worktreeReconciler = new WorktreeReconciler({
     repositories: repositoryRegistry,
@@ -835,14 +835,14 @@ async function confirmTerminalRemoval(label: string): Promise<boolean> {
 async function revealActiveTerminalInTree(
   tree: RepositoryTreeProvider,
   treeView: vscode.TreeView<RepositoryTreeNode>,
+  activeTerminal: { sessionName: string; worktreePath: string },
 ): Promise<boolean> {
-  const decoded = activeDeckTerminal();
-  if (!decoded) return false;
-
   let terminalNode: RepositoryTreeNode | undefined;
   try {
-    // A tab event must not surface a lookup failure as an unhandled rejection.
-    terminalNode = await tree.findTerminal(decoded.sessionName, decoded.worktreePath);
+    terminalNode = await tree.findTerminal(
+      activeTerminal.sessionName,
+      activeTerminal.worktreePath,
+    );
   } catch (error) {
     console.warn('Deck: finding the active terminal failed', error);
     return false;
