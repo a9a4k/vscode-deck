@@ -181,12 +181,7 @@ describe('TerminalReconciler', () => {
 
   it('reports added Terminals once after refreshing every affected Worktree', async () => {
     const model = new TerminalModel();
-    const refreshWorktree = vi.fn();
-    let finishReveal!: () => void;
-    const revealPending = new Promise<void>((resolve) => {
-      finishReveal = resolve;
-    });
-    const onDidAddTerminals = vi.fn(() => revealPending);
+    const effects: unknown[][] = [];
     const reconciler = new TerminalReconciler({
       model,
       restoreTerminalSnapshot: vi.fn(async () => undefined),
@@ -200,28 +195,22 @@ describe('TerminalReconciler', () => {
       ],
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
-      refreshWorktree,
+      refreshWorktree: (worktreePath) => effects.push(['refresh', worktreePath]),
       refreshTerminalDisplays: vi.fn(),
-      onDidAddTerminals,
+      onDidAddTerminals: (terminals) => effects.push(['add', terminals]),
     });
     const addedTerminals = [
       { sessionName: 'wt-_work_alpha__term-1', n: 1, windowName: 'one' },
       { sessionName: 'wt-_work_beta__term-1', n: 1, windowName: 'one' },
     ];
 
-    const reconciliation = reconciler.reconcile(addedTerminals);
-    await vi.waitFor(() => expect(onDidAddTerminals).toHaveBeenCalledOnce());
+    await reconciler.reconcile(addedTerminals);
 
-    try {
-      expect(refreshWorktree.mock.calls).toEqual([
-        ['/work/alpha'],
-        ['/work/beta'],
-      ]);
-      expect(onDidAddTerminals).toHaveBeenCalledWith(addedTerminals);
-    } finally {
-      finishReveal();
-      await reconciliation;
-    }
+    expect(effects).toEqual([
+      ['refresh', '/work/alpha'],
+      ['refresh', '/work/beta'],
+      ['add', addedTerminals],
+    ]);
   });
 
   it('restores once throughout a down-to-bare untrusted episode', async () => {
