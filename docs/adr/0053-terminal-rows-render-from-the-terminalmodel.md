@@ -132,12 +132,22 @@ entries changed.** (Domain terms: CONTEXT.md **TerminalModel**,
 - A Switch reloads the window (`vscode.openFolder`), so no live
   active-worktree transition exists; active-repository resolution fires the
   affected RepositoryNodes only.
-- `revealWithRetry` was removed after verification showed zero retries. A
-  newly created Terminal is now revealed from its model-addition diff, once
-  its stable tree node can be resolved.
-- Verification: fresh instrumentation is added after implementation + QA,
-  one comparable-workload day is traced against the table above, then the
-  instrumentation is removed.
+- `revealWithRetry` was removed because it became unreachable for the case it
+  guarded, not because retries were measured. It existed for `reveal()`
+  rejecting with "Cannot resolve tree item" before the tree model was
+  populated; the model gate in the active-Terminal lookup now returns undefined
+  one level earlier, so `reveal()` is only reached once the session is known and
+  its node comes from the identity registry. That short-circuit had also
+  silently dropped the behavior the retries protected — a newly created
+  Terminal's row was never selected — so the reveal is now triggered from the
+  model-addition diff, where the row becomes resolvable (#173).
+- Verification was by manual QA, not instrumentation. Eight scenario groups
+  were exercised by hand against the measured table above, including fires into
+  collapsed subtrees, commit bursts, and a real `kill-server` with 87 live
+  sessions; nine issues came out of it (#162–#173). A trace pass was planned and
+  deliberately dropped: the async fetch path it would have measured no longer
+  exists, and excess full-tree fires can no longer produce the spinner, so the
+  remaining numbers would not have protected anything a user feels.
 
 ## Refines / supersedes
 
