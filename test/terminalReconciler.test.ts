@@ -26,6 +26,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -75,6 +76,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -128,6 +130,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree,
       refreshTerminalDisplays,
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -164,6 +167,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree,
       refreshTerminalDisplays,
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -173,6 +177,51 @@ describe('TerminalReconciler', () => {
 
     expect(refreshWorktree.mock.calls).toEqual([['/work/alpha']]);
     expect(refreshTerminalDisplays).not.toHaveBeenCalled();
+  });
+
+  it('reports added Terminals once after refreshing every affected Worktree', async () => {
+    const model = new TerminalModel();
+    const refreshWorktree = vi.fn();
+    let finishReveal!: () => void;
+    const revealPending = new Promise<void>((resolve) => {
+      finishReveal = resolve;
+    });
+    const onDidAddTerminals = vi.fn(() => revealPending);
+    const reconciler = new TerminalReconciler({
+      model,
+      restoreTerminalSnapshot: vi.fn(async () => undefined),
+      terminalOrders: {
+        get: vi.fn(),
+        set: vi.fn(async () => undefined),
+      },
+      listTerminalLocations: () => [
+        { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
+        { repositoryPath: '/work/beta', worktreePath: '/work/beta' },
+      ],
+      updateTerminalDecorations: vi.fn(),
+      wakeAgentExitSweep: vi.fn(),
+      refreshWorktree,
+      refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals,
+    });
+    const addedTerminals = [
+      { sessionName: 'wt-_work_alpha__term-1', n: 1, windowName: 'one' },
+      { sessionName: 'wt-_work_beta__term-1', n: 1, windowName: 'one' },
+    ];
+
+    const reconciliation = reconciler.reconcile(addedTerminals);
+    await vi.waitFor(() => expect(onDidAddTerminals).toHaveBeenCalledOnce());
+
+    try {
+      expect(refreshWorktree.mock.calls).toEqual([
+        ['/work/alpha'],
+        ['/work/beta'],
+      ]);
+      expect(onDidAddTerminals).toHaveBeenCalledWith(addedTerminals);
+    } finally {
+      finishReveal();
+      await reconciliation;
+    }
   });
 
   it('restores once throughout a down-to-bare untrusted episode', async () => {
@@ -189,6 +238,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree: vi.fn(),
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -219,6 +269,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree: vi.fn(),
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([]);
@@ -246,6 +297,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: vi.fn(),
       refreshWorktree: vi.fn(),
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await expect(reconciler.reconcile([])).rejects.toThrow('restore lock timed out');
@@ -276,6 +328,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile([
@@ -314,6 +367,7 @@ describe('TerminalReconciler', () => {
       wakeAgentExitSweep: wakeExitSweep,
       refreshWorktree: fireTree,
       refreshTerminalDisplays: vi.fn(),
+      onDidAddTerminals: vi.fn(),
     });
 
     await reconciler.reconcile(sessions);

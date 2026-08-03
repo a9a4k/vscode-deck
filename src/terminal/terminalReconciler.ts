@@ -24,7 +24,7 @@ interface TerminalReconcilerOptions {
   wakeAgentExitSweep(): void;
   refreshWorktree(worktreePath: string): void;
   refreshTerminalDisplays(sessions: readonly TerminalModelSession[]): void;
-  onDidAddTerminals?(terminals: readonly TerminalModelSession[]): Promise<void> | void;
+  onDidAddTerminals(terminals: readonly TerminalModelSession[]): Promise<void> | void;
 }
 
 export class TerminalReconciler {
@@ -63,6 +63,7 @@ export class TerminalReconciler {
     const worktreePathsBySessionPrefix = new Map(
       locations.map((location) => [terminalSessionPrefix(location.worktreePath), location.worktreePath]),
     );
+    const addedTerminals: TerminalModelSession[] = [];
     for (const worktreeDiff of worktreeDiffs) {
       const worktreePath = worktreePathsBySessionPrefix.get(worktreeDiff.sessionPrefix);
       if (worktreePath === undefined) continue;
@@ -71,12 +72,13 @@ export class TerminalReconciler {
       // re-render — re-rendering restarts their animated agent icons.
       if (worktreeDiff.added.length > 0 || worktreeDiff.removed.length > 0) {
         this.options.refreshWorktree(worktreePath);
-        if (worktreeDiff.added.length > 0) {
-          await this.options.onDidAddTerminals?.(worktreeDiff.added);
-        }
+        addedTerminals.push(...worktreeDiff.added);
       } else if (worktreeDiff.relabeled.length > 0) {
         this.options.refreshTerminalDisplays(worktreeDiff.relabeled);
       }
+    }
+    if (addedTerminals.length > 0) {
+      await this.options.onDidAddTerminals(addedTerminals);
     }
   }
 

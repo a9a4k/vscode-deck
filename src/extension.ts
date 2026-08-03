@@ -230,8 +230,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       && !newlyObservedTerminals.some(({ sessionName }) => sessionName === activeTerminal.sessionName)
     ) return;
     if (!treeView) return;
-    const revealed = await revealActiveTerminalInTree(tree, treeView, activeTerminal);
-    if (revealed) lastRevealedActiveTerminalSessionName = activeTerminal.sessionName;
+    const revealResult = await revealActiveTerminalInTree(tree, treeView, activeTerminal);
+    if (revealResult === 'missing' && newlyObservedTerminals !== undefined) {
+      console.warn(
+        `Deck: newly added active Terminal ${activeTerminal.sessionName} was not found in the tree`,
+      );
+    }
+    if (revealResult === 'revealed') {
+      lastRevealedActiveTerminalSessionName = activeTerminal.sessionName;
+    }
   };
   const terminalReconciler = new TerminalReconciler({
     model: terminalModel,
@@ -836,7 +843,7 @@ async function revealActiveTerminalInTree(
   tree: RepositoryTreeProvider,
   treeView: vscode.TreeView<RepositoryTreeNode>,
   activeTerminal: { sessionName: string; worktreePath: string },
-): Promise<boolean> {
+): Promise<'revealed' | 'missing' | 'failed'> {
   let terminalNode: RepositoryTreeNode | undefined;
   try {
     terminalNode = await tree.findTerminal(
@@ -845,16 +852,16 @@ async function revealActiveTerminalInTree(
     );
   } catch (error) {
     console.warn('Deck: finding the active terminal failed', error);
-    return false;
+    return 'failed';
   }
-  if (!terminalNode) return false;
+  if (!terminalNode) return 'missing';
 
   try {
     await treeView.reveal(terminalNode, { select: true, focus: false });
-    return true;
+    return 'revealed';
   } catch (error) {
     console.warn('Deck: revealing the active terminal failed', error);
-    return false;
+    return 'failed';
   }
 }
 
