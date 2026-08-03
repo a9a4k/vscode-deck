@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { listWorktrees } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
-import { revealWithRetry } from './tree/revealWithRetry';
 import { ActiveWorktreeStore } from './switch/activeWorktreeStore';
 import { DetachedOpener } from './switch/detachedOpener';
 import { WorktreeSwitcher } from './switch/worktreeSwitcher';
@@ -213,6 +212,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentStatuses,
     terminalOrders,
   );
+  let lastRevealedActiveTerminalSessionName: string | undefined;
+  const revealActiveTerminalIfNeeded = async (
+    newlyObservedTerminals?: readonly { sessionName: string }[],
+  ) => {
+    const activeTerminal = activeDeckTerminal();
+    if (!activeTerminal) {
+      lastRevealedActiveTerminalSessionName = undefined;
+      return;
+    }
+    // VS Code also emits tab changes for Deck's agent icon/title churn, not
+    // just navigation. Only reselect the tree row when the active Terminal
+    // identity changes, so status/title updates don't steal manual selection.
+    if (activeTerminal.sessionName === lastRevealedActiveTerminalSessionName) return;
+    if (
+      newlyObservedTerminals !== undefined
+      && !newlyObservedTerminals.some(({ sessionName }) => sessionName === activeTerminal.sessionName)
+    ) return;
+    if (!treeView) return;
+    const revealed = await revealActiveTerminalInTree(tree, treeView);
+    if (revealed) lastRevealedActiveTerminalSessionName = activeTerminal.sessionName;
+  };
   const terminalReconciler = new TerminalReconciler({
     model: terminalModel,
     restoreTerminalSnapshot: ensureSnapshotRestored,
@@ -227,6 +247,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     wakeAgentExitSweep,
     refreshWorktree: (worktreePath) => tree.refreshWorktree(worktreePath),
     refreshTerminalDisplays: (sessions) => tree.refreshTerminalDisplays(sessions),
+    onDidAddTerminals: (terminals) => revealActiveTerminalIfNeeded(terminals),
   });
   const worktreeReconciler = new WorktreeReconciler({
     repositories: repositoryRegistry,
@@ -488,17 +509,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repositoryCommonDirCache,
   );
 
-  let lastRevealedActiveTerminalSessionName: string | undefined;
-  const revealActiveTerminalAfterNavigation = async () => {
-    const activeTerminalSessionName = activeDeckTerminal()?.sessionName;
-    // VS Code also emits tab changes for Deck's agent icon/title churn, not
-    // just navigation. Only reselect the tree row when the active Terminal
-    // identity changes, so status/title updates don't steal manual selection.
-    if (activeTerminalSessionName === lastRevealedActiveTerminalSessionName) return;
-    lastRevealedActiveTerminalSessionName = activeTerminalSessionName;
-    await revealActiveTerminalInTree(tree, treeView);
-  };
-
   context.subscriptions.push(
     treeView,
     agentStatusWatch,
@@ -568,11 +578,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.tabGroups.onDidChangeTabs(async () => {
       await markActiveTerminalRead(agentStatuses);
-      await revealActiveTerminalAfterNavigation();
+      await revealActiveTerminalIfNeeded();
     }),
     vscode.window.tabGroups.onDidChangeTabGroups(async () => {
       await markActiveTerminalRead(agentStatuses);
-      await revealActiveTerminalAfterNavigation();
+      await revealActiveTerminalIfNeeded();
     }),
     // Focusing back with the agent's tab active is when you actually read it —
     // markActiveTerminalRead no-ops while unfocused, so re-run it on refocus.
@@ -825,9 +835,9 @@ async function confirmTerminalRemoval(label: string): Promise<boolean> {
 async function revealActiveTerminalInTree(
   tree: RepositoryTreeProvider,
   treeView: vscode.TreeView<RepositoryTreeNode>,
-): Promise<void> {
+): Promise<boolean> {
   const decoded = activeDeckTerminal();
-  if (!decoded) return;
+  if (!decoded) return false;
 
   let terminalNode: RepositoryTreeNode | undefined;
   try {
@@ -835,15 +845,17 @@ async function revealActiveTerminalInTree(
     terminalNode = await tree.findTerminal(decoded.sessionName, decoded.worktreePath);
   } catch (error) {
     console.warn('Deck: finding the active terminal failed', error);
-    return;
+    return false;
   }
-  if (!terminalNode) return;
+  if (!terminalNode) return false;
 
-  const node = terminalNode;
-  const revealed = await revealWithRetry(() =>
-    treeView.reveal(node, { select: true, focus: false }),
-  );
-  if (!revealed) console.warn('Deck: revealing the active terminal failed after retries');
+  try {
+    await treeView.reveal(terminalNode, { select: true, focus: false });
+    return true;
+  } catch (error) {
+    console.warn('Deck: revealing the active terminal failed', error);
+    return false;
+  }
 }
 
 async function openAgentStatusTerminal(

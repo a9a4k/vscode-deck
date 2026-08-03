@@ -132,9 +132,9 @@ entries changed.** (Domain terms: CONTEXT.md **TerminalModel**,
 - A Switch reloads the window (`vscode.openFolder`), so no live
   active-worktree transition exists; active-repository resolution fires the
   affected RepositoryNodes only.
-- `revealWithRetry` likely becomes removable (reveal failures traced to
-  freshly-constructed node identity); keep it until verification shows zero
-  retries.
+- `revealWithRetry` was removed after verification showed zero retries. A
+  newly created Terminal is now revealed from its model-addition diff, once
+  its stable tree node can be resolved.
 - Verification: fresh instrumentation is added after implementation + QA,
   one comparable-workload day is traced against the table above, then the
   instrumentation is removed.

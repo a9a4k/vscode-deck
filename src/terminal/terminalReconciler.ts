@@ -24,6 +24,7 @@ interface TerminalReconcilerOptions {
   wakeAgentExitSweep(): void;
   refreshWorktree(worktreePath: string): void;
   refreshTerminalDisplays(sessions: readonly TerminalModelSession[]): void;
+  onDidAddTerminals?(terminals: readonly TerminalModelSession[]): Promise<void> | void;
 }
 
 export class TerminalReconciler {
@@ -70,6 +71,9 @@ export class TerminalReconciler {
       // re-render — re-rendering restarts their animated agent icons.
       if (worktreeDiff.added.length > 0 || worktreeDiff.removed.length > 0) {
         this.options.refreshWorktree(worktreePath);
+        if (worktreeDiff.added.length > 0) {
+          await this.options.onDidAddTerminals?.(worktreeDiff.added);
+        }
       } else if (worktreeDiff.relabeled.length > 0) {
         this.options.refreshTerminalDisplays(worktreeDiff.relabeled);
       }
