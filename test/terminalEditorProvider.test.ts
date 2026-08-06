@@ -887,11 +887,14 @@ describe('TerminalEditorProvider', () => {
     provider.resolveCustomEditor(document, terminalPanel as never);
 
     const html = terminalPanel.webview.html;
-    expect(html).toContain(`const files = Array.from(event.dataTransfer.items)
-          .filter((item) => item.type.startsWith('image/') && item.kind === 'file')
-          .map((item) => item.getAsFile())
-          .filter((file) => file);`);
-    expect(html).toContain('Promise.all(files.map(async (file) =>');
+    const dropHandler = html.slice(
+      html.indexOf('async function dropImages(event)'),
+      html.indexOf('function openFindWidget()'),
+    );
+    const filesAcquired = dropHandler.indexOf('item.getAsFile()');
+    const firstAwait = dropHandler.indexOf('await ');
+    expect(filesAcquired).toBeGreaterThan(-1);
+    expect(filesAcquired).toBeLessThan(firstAwait);
   });
 
   it('clears the image-drop overlay when a drag is cancelled', () => {
@@ -1040,9 +1043,9 @@ describe('TerminalEditorProvider', () => {
       { name: 'after.png', mime: 'image/png', bytes: new Uint8Array([3]) },
     ]);
     await flush();
-    releaseWrite.get(3)?.();
-    releaseWrite.get(2)?.();
-    releaseWrite.get(1)?.();
+    releaseWrite.get(3)!();
+    releaseWrite.get(2)!();
+    releaseWrite.get(1)!();
     await handled;
 
     expect(completedWrites).toEqual([3, 2, 1]);

@@ -101,7 +101,7 @@ describe('materializeImageDrop', () => {
     expect(result.filePath).toBe('/tmp/deck-drops/42-diagram-1.png');
   });
 
-  it('rejects after bounded filename collision retries', async () => {
+  it('rejects after 100 filename collision attempts', async () => {
     let attempts = 0;
     const materialization = materializeImageDrop(
       '/tmp/deck-drops',
@@ -109,14 +109,14 @@ describe('materializeImageDrop', () => {
       dependencies({
         writeFileExclusively: async () => {
           attempts += 1;
-          if (attempts > 1_000) throw new Error('collision retries were not bounded');
+          if (attempts > 100) throw new Error('collision retries exceeded the documented limit');
           throw Object.assign(new Error('already exists'), { code: 'EEXIST' });
         },
       }),
     );
 
     await expect(materialization).rejects.toThrow('Could not materialize dropped image');
-    expect(attempts).toBeLessThan(1_000);
+    expect(attempts).toBe(100);
   });
 
   it('propagates a target-directory creation failure without collision retries', async () => {

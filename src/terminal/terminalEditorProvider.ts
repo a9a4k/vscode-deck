@@ -263,9 +263,11 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (message.type === 'input') transport.write(message.payload);
         if (message.type === 'dropImages') {
           try {
-            const imageDrops = await Promise.all(message.images.map((image) =>
-              materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
-            ));
+            const imageDrops = await Promise.all(
+              message.images.map((image) =>
+                materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
+              ),
+            );
             for (const imageDrop of imageDrops) transport.write(imageDrop.terminalInput);
           } catch (error) {
             void vscode.window.showErrorMessage(`Cannot attach dropped images: ${errorMessage(error)}`);
