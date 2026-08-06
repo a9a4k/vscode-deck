@@ -43,7 +43,10 @@ keystroke.
    `\x16`; otherwise the existing `readText()` text paste. Both routes behave
    identically.
 
-4. **Drag-and-drop is out of scope and not planned** (see Considered Options).
+4. **ImageDrop is a separate gesture and transport** (ADR-0054). Clipboard
+   paste remains the one-byte forward described here; a dropped file is not in
+   the pasteboard, so ImageDrop must materialize its bytes and bracketed-paste a
+   path.
 
 This is **agent-agnostic by construction**: Claude, Codex, and pi all read the
 pasteboard on Ctrl+V, so the same forwarded keystroke serves every agent — and a
@@ -51,12 +54,13 @@ plain shell simply receives `^V` (harmless).
 
 ## Considered Options
 
-- **Webview reads image bytes → host writes a temp PNG → inject the file path** —
-  rejected. It works as an attachment **only in Claude Code**, which uniquely
-  auto-ingests a typed image path; Codex (explicitly: "path-based image reading is
-  unreliable — use `--image`") and pi/opencode do not. It also adds a second input
-  channel, temp-file lifecycle, and clipboard-byte plumbing — to deliver *less*
-  than the one-byte forward.
+- **Webview reads clipboard image bytes → host writes a temp file → inject the
+  file path** — rejected for paste. The image is already in the OS pasteboard,
+  so copying it through Deck adds a second input channel and temp-file lifecycle
+  where a one-byte Ctrl+V forward works. This rejection does not apply to
+  ImageDrop: a dropped file is absent from the pasteboard, and live-agent tests
+  found that a bracketed raw path attaches in both Claude Code and Codex
+  (ADR-0054).
 - **The `tmux-paste-image` plugin model** (a tmux keybinding runs a script that
   reads the clipboard and `send-keys` a path / `/image`) — rejected. It is
   Linux-only (`xclip`/`wl-paste`), it binds a **prefix** key (the DeckSocket sets
@@ -73,11 +77,10 @@ plain shell simply receives `^V` (harmless).
 - **Deck stays a dumb pipe for paste.** It owns no image format/size policy — the
   agent's own clipboard reader does (PNG/JPEG/WebP/GIF, conversion, limits). One
   fewer thing to maintain.
-- **Drag-drop is intentionally unsupported.** VS Code's workbench intercepts a
-  file drop and opens the image in an editor tab before the webview sees it (QA-
-  confirmed) — a reasonable default. Overriding it would mean fighting the
-  workbench *and* falling back to Claude-only path injection (a dropped file isn't
-  in the pasteboard, so `\x16` can't serve it), so we decline it.
+- **ImageDrop is supported through ADR-0054.** VS Code's webview host yields an
+  unclaimed all-file drag to the workbench, but explicitly keeps a drag that
+  extension content claims with `preventDefault()`. Deck uses that path only for
+  images; non-image files retain VS Code's editor-open behavior.
 - **Linux/Windows caveat, unverified.** There the browser paste shortcut *is*
   Ctrl+V, which can race xterm's own `^V` from the keydown. The handler guards on
   an image being present and `preventDefault`s; Linux/Windows behavior is a

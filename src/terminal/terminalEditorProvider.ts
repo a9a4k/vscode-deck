@@ -1,6 +1,9 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveTerminalTabIcon } from '../agent/agentIconResolver';
 import type { AgentName } from '../agent/agentTypes';
+import { materializeImageDrop } from './imageDrop';
 import { SessionUriCodec } from './sessionUriCodec';
 import { TERMINAL_SCROLLBACK_LINES } from './terminalScrollback';
 import { TerminalTransport } from './terminalTransport';
@@ -23,6 +26,13 @@ interface ReadyMessage {
 interface InputMessage {
   type: 'input';
   payload: string;
+}
+
+interface DropImageMessage {
+  type: 'dropImage';
+  name: string;
+  mime: string;
+  bytes: Uint8Array;
 }
 
 interface OpenExternalMessage {
@@ -56,6 +66,7 @@ interface TerminalConfig {
 type TerminalWebviewMessage =
   | ReadyMessage
   | InputMessage
+  | DropImageMessage
   | OpenExternalMessage
   | ResizeMessage
   | ExitMessage
@@ -107,6 +118,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     private readonly beforeReattach: () => Promise<void> = () => Promise.resolve(),
     private readonly resolveTerminalAgentName: (sessionName: string) => Promise<AgentName | undefined> = async () =>
       undefined,
+    private readonly imageDropDirectory: string = join(tmpdir(), 'deck-drops'),
   ) {
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       const fontKeys = [
@@ -230,7 +242,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           this.focusTerminal(document.sessionName);
         }
       }),
-      panel.webview.onDidReceiveMessage((message: TerminalWebviewMessage) => {
+      panel.webview.onDidReceiveMessage(async (message: TerminalWebviewMessage) => {
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
           this.readyPanels.add(panel);
@@ -246,6 +258,10 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
 
         if (message.type === 'input') transport.write(message.payload);
+        if (message.type === 'dropImage') {
+          const imageDrop = await materializeImageDrop(this.imageDropDirectory, message);
+          transport.write(imageDrop.terminalInput);
+        }
         if (message.type === 'openExternal') {
           void vscode.env.openExternal(vscode.Uri.parse(message.payload));
         }
@@ -389,6 +405,21 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       background: var(--vscode-menu-selectionBackground);
       color: var(--vscode-menu-selectionForeground);
     }
+    #image-drop-overlay {
+      position: fixed;
+      inset: 8px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      background: var(--vscode-editorWidget-background);
+      color: var(--vscode-editorWidget-foreground);
+      border: 1px dashed var(--vscode-focusBorder);
+      z-index: 30;
+    }
+    #image-drop-overlay.visible {
+      display: flex;
+    }
     #find-widget {
       position: fixed;
       top: 8px;
@@ -423,6 +454,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 </head>
 <body>
   <div id="terminal"></div>
+  <div id="image-drop-overlay">Drop image to attach</div>
   <div id="find-widget">
     <input id="find-input" type="text">
     <button id="find-prev" type="button">Prev</button>
@@ -637,6 +669,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 
       const contextMenu = document.getElementById('context-menu');
       const copyLinkButton = contextMenu.querySelector('[data-action="copy-link"]');
+      const imageDropOverlay = document.getElementById('image-drop-overlay');
       const findWidget = document.getElementById('find-widget');
       const findInput = document.getElementById('find-input');
       const findOptions = {
@@ -673,6 +706,40 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
         const text = await navigator.clipboard.readText();
         if (text) vscode.postMessage({ type: 'input', payload: text });
+      }
+
+      function claimImageDrag(event) {
+        const items = Array.from(event.dataTransfer?.items || []);
+        if (!items.some((item) => item.type.startsWith('image/'))) return false;
+        event.preventDefault();
+        // VS Code forwards dragover from a webview in the bubble phase even when
+        // defaultPrevented. Stop it here or the host disables this iframe and its
+        // editor-area drop overlay steals the drop before Deck receives it.
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'copy';
+        return true;
+      }
+
+      function showImageDrop(event) {
+        if (claimImageDrag(event)) imageDropOverlay.classList.add('visible');
+      }
+
+      async function dropImages(event) {
+        if (!claimImageDrag(event)) return;
+        imageDropOverlay.classList.remove('visible');
+        const items = Array.from(event.dataTransfer.items);
+        for (const item of items.filter(
+          (item) => item.type.startsWith('image/') && item.kind === 'file'
+        )) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          vscode.postMessage({
+            type: 'dropImage',
+            name: file.name,
+            mime: file.type,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+          });
+        }
       }
 
       function openFindWidget() {
@@ -716,6 +783,12 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         // Claude Code's clipboard fallback turns into a second image.
         event.stopPropagation();
         vscode.postMessage({ type: 'input', payload: '\\x16' });
+      }, true);
+      document.addEventListener('dragenter', showImageDrop, true);
+      document.addEventListener('dragover', showImageDrop, true);
+      document.addEventListener('drop', dropImages, true);
+      document.addEventListener('dragleave', (event) => {
+        if (!event.relatedTarget) imageDropOverlay.classList.remove('visible');
       }, true);
       document.addEventListener('click', hideContextMenu);
       document.addEventListener('keydown', (event) => {

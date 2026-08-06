@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 const cfg = vi.hoisted(() => ({
@@ -814,6 +817,27 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("navigator.clipboard.readText()");
   });
 
+  it('wires image-only drop capture and raw image forwarding', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const html = terminalPanel.webview.html;
+    expect(html).toContain('id="image-drop-overlay"');
+    expect(html).toContain('function claimImageDrag(event)');
+    expect(html).toContain("if (!items.some((item) => item.type.startsWith('image/'))) return false");
+    expect(html).toContain('event.preventDefault()');
+    expect(html).toContain('event.stopPropagation()');
+    expect(html).toContain("event.dataTransfer.dropEffect = 'copy'");
+    expect(html).toContain("document.addEventListener('dragenter', showImageDrop, true)");
+    expect(html).toContain("document.addEventListener('dragover', showImageDrop, true)");
+    expect(html).toContain("document.addEventListener('drop', dropImages, true)");
+    expect(html).toContain("item.type.startsWith('image/') && item.kind === 'file'");
+    expect(html).toContain('new Uint8Array(await file.arrayBuffer())');
+    expect(html).toContain("type: 'dropImage'");
+  });
+
   it('maps Shift+Enter to an ESC+CR newline sequence', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
@@ -876,6 +900,57 @@ describe('TerminalEditorProvider', () => {
     // Clear must reach tmux (clear-history) so it survives reload, not just
     // clear the local xterm buffer.
     expect(terminalBridge.clearHistory).toHaveBeenCalledOnce();
+  });
+
+  it('writes a dropped image and sends its bracketed path to the Terminal', async () => {
+    const dropDir = await mkdtemp(join(tmpdir(), 'deck-provider-image-drop-'));
+    try {
+      let receiveMessage:
+        | ((message: {
+            type: string;
+            name: string;
+            mime: string;
+            bytes: Uint8Array;
+          }) => Promise<void> | void)
+        | undefined;
+      const terminalPanel = panel();
+      terminalPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof receiveMessage) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      });
+      const terminalBridge = bridge();
+      const provider = new TerminalEditorProvider(
+        { fsPath: '/extension' } as never,
+        '/extension/resources/deck.conf',
+        undefined,
+        () => terminalBridge,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        dropDir,
+      );
+      const document = provider.openCustomDocument({
+        scheme: 'deck-terminal',
+        path: '/work/alpha-main/term-1',
+      } as never);
+
+      provider.resolveCustomEditor(document, terminalPanel as never);
+      await receiveMessage?.({
+        type: 'dropImage',
+        name: 'diagram.png',
+        mime: 'image/png',
+        bytes: new Uint8Array([1, 2, 3]),
+      });
+
+      const terminalInput = terminalBridge.write.mock.calls[0]?.[0];
+      expect(terminalInput).toMatch(/^\x1b\[200~.+\x1b\[201~$/);
+      const imagePath = terminalInput?.slice('\x1b[200~'.length, -'\x1b[201~'.length);
+      expect(await readFile(imagePath)).toEqual(Buffer.from([1, 2, 3]));
+    } finally {
+      await rm(dropDir, { recursive: true, force: true });
+    }
   });
 
   it('does not use webview scrollback snapshots and renders a debounced fit resize observer before ready', () => {

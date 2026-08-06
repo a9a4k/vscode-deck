@@ -1,5 +1,5 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { listWorktrees } from './git/worktrees';
@@ -339,6 +339,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     (sessionName) => tmux.terminalSession(sessionName),
     ensureSnapshotRestored,
     resolveAgentName,
+    join(tmpdir(), 'deck-drops'),
   );
   const focusTerminal = (sessionName: string) =>
     terminalEditorProvider.focusTerminal(sessionName);
