@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveTerminalTabIcon } from '../agent/agentIconResolver';
 import type { AgentName } from '../agent/agentTypes';
-import { materializeImageDrop } from './imageDrop';
+import {
+  materializeImageDrop,
+  type ImageDropDependencies,
+  type ImageDropPayload,
+} from './imageDrop';
 import { SessionUriCodec } from './sessionUriCodec';
 import { TERMINAL_SCROLLBACK_LINES } from './terminalScrollback';
 import { TerminalTransport } from './terminalTransport';
@@ -28,11 +32,9 @@ interface InputMessage {
   payload: string;
 }
 
-interface DropImageMessage {
-  type: 'dropImage';
-  name: string;
-  mime: string;
-  bytes: Uint8Array;
+interface DropImagesMessage {
+  type: 'dropImages';
+  images: ImageDropPayload[];
 }
 
 interface OpenExternalMessage {
@@ -66,7 +68,7 @@ interface TerminalConfig {
 type TerminalWebviewMessage =
   | ReadyMessage
   | InputMessage
-  | DropImageMessage
+  | DropImagesMessage
   | OpenExternalMessage
   | ResizeMessage
   | ExitMessage
@@ -119,6 +121,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     private readonly resolveTerminalAgentName: (sessionName: string) => Promise<AgentName | undefined> = async () =>
       undefined,
     private readonly imageDropDirectory: string = join(tmpdir(), 'deck-drops'),
+    private readonly imageDropDependencies?: ImageDropDependencies,
   ) {
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       const fontKeys = [
@@ -258,9 +261,15 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
 
         if (message.type === 'input') transport.write(message.payload);
-        if (message.type === 'dropImage') {
-          const imageDrop = await materializeImageDrop(this.imageDropDirectory, message);
-          transport.write(imageDrop.terminalInput);
+        if (message.type === 'dropImages') {
+          try {
+            const imageDrops = await Promise.all(message.images.map((image) =>
+              materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
+            ));
+            for (const imageDrop of imageDrops) transport.write(imageDrop.terminalInput);
+          } catch (error) {
+            void vscode.window.showErrorMessage(`Cannot attach dropped images: ${errorMessage(error)}`);
+          }
         }
         if (message.type === 'openExternal') {
           void vscode.env.openExternal(vscode.Uri.parse(message.payload));
@@ -724,22 +733,23 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (claimImageDrag(event)) imageDropOverlay.classList.add('visible');
       }
 
+      function hideImageDrop() {
+        imageDropOverlay.classList.remove('visible');
+      }
+
       async function dropImages(event) {
         if (!claimImageDrag(event)) return;
-        imageDropOverlay.classList.remove('visible');
-        const items = Array.from(event.dataTransfer.items);
-        for (const item of items.filter(
-          (item) => item.type.startsWith('image/') && item.kind === 'file'
-        )) {
-          const file = item.getAsFile();
-          if (!file) continue;
-          vscode.postMessage({
-            type: 'dropImage',
-            name: file.name,
-            mime: file.type,
-            bytes: new Uint8Array(await file.arrayBuffer()),
-          });
-        }
+        hideImageDrop();
+        const files = Array.from(event.dataTransfer.items)
+          .filter((item) => item.type.startsWith('image/') && item.kind === 'file')
+          .map((item) => item.getAsFile())
+          .filter((file) => file);
+        const images = await Promise.all(files.map(async (file) => ({
+          name: file.name,
+          mime: file.type,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        })));
+        vscode.postMessage({ type: 'dropImages', images });
       }
 
       function openFindWidget() {
@@ -788,8 +798,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       document.addEventListener('dragover', showImageDrop, true);
       document.addEventListener('drop', dropImages, true);
       document.addEventListener('dragleave', (event) => {
-        if (!event.relatedTarget) imageDropOverlay.classList.remove('visible');
+        if (!event.relatedTarget) hideImageDrop();
       }, true);
+      document.addEventListener('dragend', hideImageDrop, true);
       document.addEventListener('click', hideContextMenu);
       document.addEventListener('keydown', (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
@@ -851,4 +862,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 </body>
 </html>`;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

@@ -1,5 +1,17 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { materializeImageDrop } from '../src/terminal/imageDrop';
+import { materializeImageDrop, type ImageDropDependencies } from '../src/terminal/imageDrop';
+
+function dependencies(overrides: Partial<ImageDropDependencies> = {}): ImageDropDependencies {
+  return {
+    now: () => 42,
+    createDirectory: async () => undefined,
+    writeFileExclusively: async () => undefined,
+    ...overrides,
+  };
+}
 
 describe('materializeImageDrop', () => {
   it('writes an image and returns its bracketed path as Terminal input', async () => {
@@ -9,12 +21,12 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: 'diagram.png', mime: 'image/png', bytes },
-      {
+      dependencies({
         now: () => 1_700_000_000_000,
         writeFileExclusively: async (path, writtenBytes) => {
           writes.push({ path, bytes: writtenBytes });
         },
-      },
+      }),
     );
 
     expect(writes).toEqual([{
@@ -31,7 +43,7 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: 'diagram.jpeg', mime: 'image/png', bytes: new Uint8Array() },
-      { now: () => 42, writeFileExclusively: async () => undefined },
+      dependencies(),
     );
 
     expect(result.filePath).toBe('/tmp/deck-drops/42-diagram.png');
@@ -41,7 +53,7 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: 'camera.download', mime: 'image/jpeg', bytes: new Uint8Array() },
-      { now: () => 42, writeFileExclusively: async () => undefined },
+      dependencies(),
     );
 
     expect(result.filePath).toBe('/tmp/deck-drops/42-camera.jpg');
@@ -51,7 +63,7 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: 'camera.HEIC', mime: 'image/heic', bytes: new Uint8Array() },
-      { now: () => 42, writeFileExclusively: async () => undefined },
+      dependencies(),
     );
 
     expect(result.filePath).toBe('/tmp/deck-drops/42-camera.heic');
@@ -61,7 +73,7 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: '../../My diagram (final).jpeg', mime: 'image/png', bytes: new Uint8Array() },
-      { now: () => 42, writeFileExclusively: async () => undefined },
+      dependencies(),
     );
 
     expect(result.filePath).toBe('/tmp/deck-drops/42-My-diagram-final.png');
@@ -72,15 +84,14 @@ describe('materializeImageDrop', () => {
     const result = await materializeImageDrop(
       '/tmp/deck-drops',
       { name: 'diagram.png', mime: 'image/png', bytes: new Uint8Array() },
-      {
-        now: () => 42,
+      dependencies({
         writeFileExclusively: async (path) => {
           attemptedPaths.push(path);
           if (attemptedPaths.length === 1) {
             throw Object.assign(new Error('already exists'), { code: 'EEXIST' });
           }
         },
-      },
+      }),
     );
 
     expect(attemptedPaths).toEqual([
@@ -88,5 +99,38 @@ describe('materializeImageDrop', () => {
       '/tmp/deck-drops/42-diagram-1.png',
     ]);
     expect(result.filePath).toBe('/tmp/deck-drops/42-diagram-1.png');
+  });
+
+  it('rejects after bounded filename collision retries', async () => {
+    let attempts = 0;
+    const materialization = materializeImageDrop(
+      '/tmp/deck-drops',
+      { name: 'diagram.png', mime: 'image/png', bytes: new Uint8Array() },
+      dependencies({
+        writeFileExclusively: async () => {
+          attempts += 1;
+          if (attempts > 1_000) throw new Error('collision retries were not bounded');
+          throw Object.assign(new Error('already exists'), { code: 'EEXIST' });
+        },
+      }),
+    );
+
+    await expect(materialization).rejects.toThrow('Could not materialize dropped image');
+    expect(attempts).toBeLessThan(1_000);
+  });
+
+  it('propagates a target-directory creation failure without collision retries', async () => {
+    const parentDirectory = await mkdtemp(join(tmpdir(), 'deck-image-drop-'));
+    const targetDirectory = join(parentDirectory, 'deck-drops');
+    await writeFile(targetDirectory, 'not a directory');
+
+    try {
+      await expect(materializeImageDrop(
+        targetDirectory,
+        { name: 'diagram.png', mime: 'image/png', bytes: new Uint8Array() },
+      )).rejects.toMatchObject({ code: 'EEXIST' });
+    } finally {
+      await rm(parentDirectory, { recursive: true, force: true });
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 
 const IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
   'image/apng': '.apng',
@@ -14,6 +14,7 @@ const IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
   'image/webp': '.webp',
   'image/x-icon': '.ico',
 };
+const MAX_WRITE_ATTEMPTS = 100;
 
 export interface ImageDropPayload {
   name: string;
@@ -23,6 +24,7 @@ export interface ImageDropPayload {
 
 export interface ImageDropDependencies {
   now(): number;
+  createDirectory(path: string): Promise<void>;
   writeFileExclusively(path: string, bytes: Uint8Array): Promise<void>;
 }
 
@@ -33,8 +35,10 @@ export interface MaterializedImageDrop {
 
 const nodeDependencies: ImageDropDependencies = {
   now: Date.now,
+  createDirectory: async (path) => {
+    await mkdir(path, { recursive: true });
+  },
   writeFileExclusively: async (path, bytes) => {
-    await mkdir(dirname(path), { recursive: true });
     await writeFile(path, bytes, { flag: 'wx' });
   },
 };
@@ -44,6 +48,7 @@ export async function materializeImageDrop(
   payload: ImageDropPayload,
   dependencies: ImageDropDependencies = nodeDependencies,
 ): Promise<MaterializedImageDrop> {
+  await dependencies.createDirectory(targetDirectory);
   const droppedName = basename(payload.name);
   const droppedExtension = extname(droppedName);
   const extension = IMAGE_EXTENSIONS[payload.mime.toLowerCase()] ?? droppedExtension.toLowerCase();
@@ -51,8 +56,7 @@ export async function materializeImageDrop(
     .replace(/[^a-zA-Z0-9_-]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'image';
   const timestamp = dependencies.now();
-  let collision = 0;
-  while (true) {
+  for (let collision = 0; collision < MAX_WRITE_ATTEMPTS; collision += 1) {
     const suffix = collision === 0 ? '' : `-${collision}`;
     const filePath = join(targetDirectory, `${timestamp}-${stem}${suffix}${extension}`);
     try {
@@ -63,9 +67,9 @@ export async function materializeImageDrop(
       };
     } catch (error) {
       if (errorCode(error) !== 'EEXIST') throw error;
-      collision += 1;
     }
   }
+  throw new Error(`Could not materialize dropped image after ${MAX_WRITE_ATTEMPTS} filename collisions.`);
 }
 
 function errorCode(error: unknown): string | undefined {

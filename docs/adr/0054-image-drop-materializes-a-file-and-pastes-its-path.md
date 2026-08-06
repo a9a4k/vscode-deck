@@ -107,6 +107,15 @@ machine.
    the image, so a keystroke suffices; a dropped file does not, so someone must
    materialize it.
 
+8. **Multi-image drops are one ordered batch (#177).** The drop handler acquires
+   every `File` synchronously while the drag data store is readable, then reads
+   their bytes and posts one message. The host may materialize those images
+   concurrently, but sends pane input only after every write succeeds and in
+   drag order. A failure shows a VS Code error notification and sends no partial
+   pane input. Directory creation happens before the exclusive-create retry;
+   only a target-file `EEXIST` advances the suffix, and 100 failed attempts
+   reject. The overlay also clears on `dragend`, including Escape cancellation.
+
 ## Considered Options
 
 - **Host-side path recovery** — let the workbench keep the drop, then correlate
@@ -163,4 +172,5 @@ machine.
 
 ## Status
 
-Accepted — implemented in #176.
+Accepted — implemented in #176; multi-image and failure handling corrected in
+#177.

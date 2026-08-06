@@ -21,9 +21,13 @@ vi.mock('vscode', () => ({
     }),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   },
+  window: {
+    showErrorMessage: vi.fn(),
+  },
 }));
 
 import * as vscode from 'vscode';
+import type { ImageDropDependencies, ImageDropPayload } from '../src/terminal/imageDrop';
 import { TerminalEditorProvider } from '../src/terminal/terminalEditorProvider';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -103,6 +107,44 @@ function providerDocument(
       scheme: 'deck-terminal',
       path: '/work/alpha-main/term-1',
     } as never),
+  };
+}
+
+function imageDropLifecycle(dependencies: ImageDropDependencies) {
+  let receiveMessage:
+    | ((message: { type: 'dropImages'; images: ImageDropPayload[] }) => Promise<void> | void)
+    | undefined;
+  const terminalPanel = panel();
+  terminalPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof receiveMessage) => {
+    receiveMessage = handler;
+    return { dispose: vi.fn() };
+  });
+  const terminalBridge = bridge();
+  const provider = new TerminalEditorProvider(
+    { fsPath: '/extension' } as never,
+    '/extension/resources/deck.conf',
+    undefined,
+    () => terminalBridge,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    '/tmp/deck-drops',
+    dependencies,
+  );
+  const document = provider.openCustomDocument({
+    scheme: 'deck-terminal',
+    path: '/work/alpha-main/term-1',
+  } as never);
+  provider.resolveCustomEditor(document, terminalPanel as never);
+
+  return {
+    terminalBridge,
+    async drop(images: ImageDropPayload[]): Promise<void> {
+      if (!receiveMessage) throw new Error('Webview message handler is not registered');
+      await receiveMessage({ type: 'dropImages', images });
+    },
   };
 }
 
@@ -835,7 +877,32 @@ describe('TerminalEditorProvider', () => {
     expect(html).toContain("document.addEventListener('drop', dropImages, true)");
     expect(html).toContain("item.type.startsWith('image/') && item.kind === 'file'");
     expect(html).toContain('new Uint8Array(await file.arrayBuffer())');
-    expect(html).toContain("type: 'dropImage'");
+    expect(html).toContain("type: 'dropImages'");
+  });
+
+  it('acquires every dropped image before reading its bytes', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const html = terminalPanel.webview.html;
+    expect(html).toContain(`const files = Array.from(event.dataTransfer.items)
+          .filter((item) => item.type.startsWith('image/') && item.kind === 'file')
+          .map((item) => item.getAsFile())
+          .filter((file) => file);`);
+    expect(html).toContain('Promise.all(files.map(async (file) =>');
+  });
+
+  it('clears the image-drop overlay when a drag is cancelled', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const html = terminalPanel.webview.html;
+    expect(html).toContain('function hideImageDrop()');
+    expect(html).toContain("document.addEventListener('dragend', hideImageDrop, true)");
   });
 
   it('maps Shift+Enter to an ESC+CR newline sequence', () => {
@@ -908,9 +975,7 @@ describe('TerminalEditorProvider', () => {
       let receiveMessage:
         | ((message: {
             type: string;
-            name: string;
-            mime: string;
-            bytes: Uint8Array;
+            images: Array<{ name: string; mime: string; bytes: Uint8Array }>;
           }) => Promise<void> | void)
         | undefined;
       const terminalPanel = panel();
@@ -938,10 +1003,12 @@ describe('TerminalEditorProvider', () => {
 
       provider.resolveCustomEditor(document, terminalPanel as never);
       await receiveMessage?.({
-        type: 'dropImage',
-        name: 'diagram.png',
-        mime: 'image/png',
-        bytes: new Uint8Array([1, 2, 3]),
+        type: 'dropImages',
+        images: [{
+          name: 'diagram.png',
+          mime: 'image/png',
+          bytes: new Uint8Array([1, 2, 3]),
+        }],
       });
 
       const terminalInput = terminalBridge.write.mock.calls[0]?.[0];
@@ -951,6 +1018,59 @@ describe('TerminalEditorProvider', () => {
     } finally {
       await rm(dropDir, { recursive: true, force: true });
     }
+  });
+
+  it('writes every dropped image to the Terminal in drag order', async () => {
+    const completedWrites: number[] = [];
+    const releaseWrite = new Map<number, () => void>();
+    const { terminalBridge, drop } = imageDropLifecycle({
+      now: () => 42,
+      createDirectory: async () => undefined,
+      writeFileExclusively: async (_path, bytes) => new Promise<void>((resolve) => {
+        const id = bytes[0];
+        releaseWrite.set(id, () => {
+          completedWrites.push(id);
+          resolve();
+        });
+      }),
+    });
+    const handled = drop([
+      { name: 'before.png', mime: 'image/png', bytes: new Uint8Array([1]) },
+      { name: 'middle.png', mime: 'image/png', bytes: new Uint8Array([2]) },
+      { name: 'after.png', mime: 'image/png', bytes: new Uint8Array([3]) },
+    ]);
+    await flush();
+    releaseWrite.get(3)?.();
+    releaseWrite.get(2)?.();
+    releaseWrite.get(1)?.();
+    await handled;
+
+    expect(completedWrites).toEqual([3, 2, 1]);
+    expect(terminalBridge.write.mock.calls.map(([input]) => input)).toEqual([
+      '\x1b[200~/tmp/deck-drops/42-before.png\x1b[201~',
+      '\x1b[200~/tmp/deck-drops/42-middle.png\x1b[201~',
+      '\x1b[200~/tmp/deck-drops/42-after.png\x1b[201~',
+    ]);
+  });
+
+  it('reports a failed image drop without writing to the Terminal', async () => {
+    const { terminalBridge, drop } = imageDropLifecycle({
+      now: () => 42,
+      createDirectory: async () => undefined,
+      writeFileExclusively: async () => {
+        throw new Error('disk full');
+      },
+    });
+    vi.mocked(vscode.window.showErrorMessage).mockClear();
+
+    await expect(drop([
+      { name: 'diagram.png', mime: 'image/png', bytes: new Uint8Array() },
+    ])).resolves.toBeUndefined();
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      'Cannot attach dropped images: disk full',
+    );
+    expect(terminalBridge.write).not.toHaveBeenCalled();
   });
 
   it('does not use webview scrollback snapshots and renders a debounced fit resize observer before ready', () => {
