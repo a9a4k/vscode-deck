@@ -114,7 +114,20 @@ machine.
    drag order. A failure shows a VS Code error notification and sends no partial
    pane input. Directory creation happens before the exclusive-create retry;
    only a target-file `EEXIST` advances the suffix, and 100 failed attempts
-   reject. The overlay also clears on `dragend`, including Escape cancellation.
+   reject.
+
+   **Consecutive pastes are separated by a single space** — not because the
+   agent needs it when it recognizes each paste (it replaces each with an
+   attachment chip), but because an agent that *declines* a format leaves the
+   path in the prompt as plain text, and two unseparated paths merge into one
+   unusable token. QA found this with an SVG in a multi-image drop. No trailing
+   space follows the last image, which would land in the TUI's input.
+
+   The overlay clears when a drag is cancelled with Escape — observed in QA. A
+   `dragend` listener is registered, but `dragend` fires at the drag's source
+   node and an OS-originated drag has none inside the webview, so the clearing
+   most likely comes from the cancel-time `dragleave` the spec fires at the
+   current target. The behaviour is verified; the mechanism is not.
 
 ## Considered Options
 
