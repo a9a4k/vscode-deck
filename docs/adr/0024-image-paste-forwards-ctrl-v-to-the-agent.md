@@ -35,9 +35,9 @@ keystroke.
    pasteboard itself. Text paste (no image present) falls through to xterm
    untouched.
 
-2. **Deck never reads, decodes, or stores the image.** No bytes cross the webview
-   boundary; no temp files; no file-path injection; no `/image`; no agent
-   detection. We forward a keystroke, nothing more.
+2. **For clipboard paste, Deck never reads, decodes, or stores the image.** No
+   bytes cross the webview boundary; no temp files; no file-path injection; no
+   `/image`; no agent detection. We forward a keystroke, nothing more.
 
 3. **The context-menu Paste is image-aware too** — same branch: image present →
    `\x16`; otherwise the existing `readText()` text paste. Both routes behave

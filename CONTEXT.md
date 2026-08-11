@@ -162,7 +162,7 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 - A **Worktree** hosts zero or more **Terminals**.
 - A **Terminal**'s AgentStatus change to NeedsInput/Completed raises one **AgentStatusNotification**.
 - A **Terminal** belongs to exactly one **Worktree** and lives on the one **DeckSocket**.
-- A **Terminal** accepts an **ImageDrop** on its tab; whatever runs in the pane — an **AgentSession** or a plain shell — receives the same pasted path.
+- An **ImageDrop** targets a **Terminal** without changing its ownership or AgentSession; whatever runs in the pane — an AgentSession or a plain shell — receives the same pasted path.
 - A **Worktree** row offers its Repository's **TerminalLaunchers** from three sources: the worktree's committed `.deck/launchers.json`, the Repository's user-local **RepositoryLaunchers** (`deck.repositoryLaunchers`), and the user's global ones (`deck.terminalLaunchers`).
 - **RepositoryLaunchers** reference a **Repository** by path but never register one; the **RepositoryRegistry** remains the sole source of which Repositories exist.
 - Creating a **Worktree** through Deck's Add command fires every **RunOnWorktreeCreate** TerminalLauncher, each into its own headless **Terminal**.
