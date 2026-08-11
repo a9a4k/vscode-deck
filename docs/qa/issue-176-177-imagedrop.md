@@ -189,13 +189,22 @@ Drag an image from **VS Code's own Explorer** onto a Terminal.
 
 ### Found by this QA run
 
-**Consecutive pasted paths had no separator.** Visible in a mixed batch as
-`…-diagram.svg[Image #2]` — the declined SVG's path abutting the next payload.
-Harmless while the agent recognizes every paste (each becomes a chip), but two
-declined formats in one drop would merge into a single unusable token. Fixed by
-joining a batch's pastes with one space (no trailing space); the ordering test now
-pins the separator too. Neither the unit suite nor design review caught this — the
-batch drag did.
+**A batch was pasted as one paste per image, and that is wrong twice over.**
+Visible first in a mixed batch as `…-diagram.svg[Image #2]` — a declined SVG's
+path abutting the next payload, which merges two declined paths into one unusable
+token. The first fix batched the pastes into a single write and made it worse: the
+agent then lost the *first* path's text entirely. Both failures and the measurements
+are in ADR-0054 §8; the shipped shape is **one bracketed paste carrying every path,
+space separated**, which attaches every recognized image and leaves every declined
+path readable.
+
+Re-verified after the fix: two dropped SVGs arrive as two whole paths, and a
+five-file drop (2 attachable images, 2 declined SVGs, 1 non-image) attaches two,
+leaves both SVG paths readable, and ignores the non-image.
+
+Neither the unit suite nor design review caught the original defect, and the first
+fix's regression was caught only by dragging again — the webview script is asserted
+as a rendered string, so nothing automated sees what reaches the pane.
 
 **Timestamps do not disambiguate a batch.** All images in one drop share a
 millisecond, so filename uniqueness comes from the stems, and the collision suffix
