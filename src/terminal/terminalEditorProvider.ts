@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { resolveTerminalTabIcon } from '../agent/agentIconResolver';
 import type { AgentName } from '../agent/agentTypes';
 import {
+  imageDropPasteInput,
   materializeImageDrop,
   type ImageDropDependencies,
   type ImageDropPayload,
@@ -268,12 +269,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
                 materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
               ),
             );
-            // Separate consecutive pastes: an agent that declines a format leaves
-            // its path in the prompt as text, and two unseparated paths merge into
-            // one unusable token.
-            if (imageDrops.length) {
-              transport.write(imageDrops.map((imageDrop) => imageDrop.terminalInput).join(' '));
-            }
+            transport.write(imageDropPasteInput(imageDrops.map((imageDrop) => imageDrop.filePath)));
           } catch (error) {
             void vscode.window.showErrorMessage(`Cannot attach dropped images: ${errorMessage(error)}`);
           }

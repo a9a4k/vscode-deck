@@ -1049,10 +1049,12 @@ describe('TerminalEditorProvider', () => {
     await handled;
 
     expect(completedWrites).toEqual([3, 2, 1]);
+    // One paste for the batch, in drag order. A paste per path loses the first
+    // path's text once the pastes reach the pane together.
     expect(terminalBridge.write.mock.calls.map(([input]) => input)).toEqual([
-      '\x1b[200~/tmp/deck-drops/42-before.png\x1b[201~'
-      + ' \x1b[200~/tmp/deck-drops/42-middle.png\x1b[201~'
-      + ' \x1b[200~/tmp/deck-drops/42-after.png\x1b[201~',
+      '\x1b[200~/tmp/deck-drops/42-before.png'
+      + ' /tmp/deck-drops/42-middle.png'
+      + ' /tmp/deck-drops/42-after.png\x1b[201~',
     ]);
   });
 

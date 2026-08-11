@@ -116,12 +116,28 @@ machine.
    only a target-file `EEXIST` advances the suffix, and 100 failed attempts
    reject.
 
-   **Consecutive pastes are separated by a single space** — not because the
-   agent needs it when it recognizes each paste (it replaces each with an
-   attachment chip), but because an agent that *declines* a format leaves the
-   path in the prompt as plain text, and two unseparated paths merge into one
-   unusable token. QA found this with an SVG in a multi-image drop. No trailing
-   space follows the last image, which would land in the TUI's input.
+   **A batch is one bracketed paste carrying every path, space separated** — not
+   a paste per image. Measured against a live agent by sending exact byte
+   sequences, after two wrong attempts shipped:
+
+   - *A paste per path, all reaching the pane together* → the agent **loses the
+     first path's text entirely**; only the last survives. This is what Deck
+     does whenever it issues several writes from one message handler, because
+     `sendKeys` puts them on the control client's stdin in the same tick and
+     tmux hands the pane one burst. Writing them as separate `transport.write`
+     calls does **not** separate them; only real elapsed time would, and timing
+     is not a contract worth depending on.
+   - *A paste per path with no separator* → two paths **merge into one unusable
+     token**, invisible while the agent recognizes every paste and replaces it
+     with a chip, silent garbage when it declines one.
+   - *One paste, paths space separated* → every recognized image attaches **and**
+     every declined path stays readable. No timing dependency.
+
+   The merge was found by QA (an SVG in a multi-image drop); the data loss was
+   introduced by the first fix for it and found by QA again. Both are recorded
+   because each looked like the tidy choice: the framing belongs to the batch,
+   not to each file, which is why materialization returns a path and the paste
+   input is built from the list.
 
    The overlay clears when a drag is cancelled with Escape — observed in QA. A
    `dragend` listener is registered, but `dragend` fires at the drag's source

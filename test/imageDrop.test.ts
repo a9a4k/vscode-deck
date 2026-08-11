@@ -2,7 +2,37 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { materializeImageDrop, type ImageDropDependencies } from '../src/terminal/imageDrop';
+import {
+  imageDropPasteInput,
+  materializeImageDrop,
+  type ImageDropDependencies,
+} from '../src/terminal/imageDrop';
+
+describe('imageDropPasteInput', () => {
+  it('wraps a single path in one bracketed paste', () => {
+    expect(imageDropPasteInput(['/tmp/deck-drops/42-diagram.png']))
+      .toBe('\x1b[200~/tmp/deck-drops/42-diagram.png\x1b[201~');
+  });
+
+  // One paste for the whole batch, space separated. Measured against a live
+  // agent: a paste per path loses the first path's text when the pastes reach
+  // the pane together, and unseparated paths merge into one unusable token.
+  it('carries every path in one bracketed paste, space separated', () => {
+    expect(imageDropPasteInput([
+      '/tmp/deck-drops/42-before.png',
+      '/tmp/deck-drops/42-middle.png',
+      '/tmp/deck-drops/42-after.png',
+    ])).toBe(
+      '\x1b[200~/tmp/deck-drops/42-before.png'
+      + ' /tmp/deck-drops/42-middle.png'
+      + ' /tmp/deck-drops/42-after.png\x1b[201~',
+    );
+  });
+
+  it('sends nothing for an empty drop', () => {
+    expect(imageDropPasteInput([])).toBe('');
+  });
+});
 
 function dependencies(overrides: Partial<ImageDropDependencies> = {}): ImageDropDependencies {
   return {
@@ -33,10 +63,7 @@ describe('materializeImageDrop', () => {
       path: '/tmp/deck-drops/1700000000000-diagram.png',
       bytes,
     }]);
-    expect(result).toEqual({
-      filePath: '/tmp/deck-drops/1700000000000-diagram.png',
-      terminalInput: '\x1b[200~/tmp/deck-drops/1700000000000-diagram.png\x1b[201~',
-    });
+    expect(result).toEqual({ filePath: '/tmp/deck-drops/1700000000000-diagram.png' });
   });
 
   it('derives the written extension from the image MIME type', async () => {
