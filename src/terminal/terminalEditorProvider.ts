@@ -268,7 +268,12 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
                 materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
               ),
             );
-            for (const imageDrop of imageDrops) transport.write(imageDrop.terminalInput);
+            // Separate consecutive pastes: an agent that declines a format leaves
+            // its path in the prompt as text, and two unseparated paths merge into
+            // one unusable token.
+            if (imageDrops.length) {
+              transport.write(imageDrops.map((imageDrop) => imageDrop.terminalInput).join(' '));
+            }
           } catch (error) {
             void vscode.window.showErrorMessage(`Cannot attach dropped images: ${errorMessage(error)}`);
           }

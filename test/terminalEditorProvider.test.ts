@@ -1023,7 +1023,7 @@ describe('TerminalEditorProvider', () => {
     }
   });
 
-  it('writes every dropped image to the Terminal in drag order', async () => {
+  it('writes every dropped image to the Terminal in drag order, separated so their paths cannot merge', async () => {
     const completedWrites: number[] = [];
     const releaseWrite = new Map<number, () => void>();
     const { terminalBridge, drop } = imageDropLifecycle({
@@ -1050,9 +1050,9 @@ describe('TerminalEditorProvider', () => {
 
     expect(completedWrites).toEqual([3, 2, 1]);
     expect(terminalBridge.write.mock.calls.map(([input]) => input)).toEqual([
-      '\x1b[200~/tmp/deck-drops/42-before.png\x1b[201~',
-      '\x1b[200~/tmp/deck-drops/42-middle.png\x1b[201~',
-      '\x1b[200~/tmp/deck-drops/42-after.png\x1b[201~',
+      '\x1b[200~/tmp/deck-drops/42-before.png\x1b[201~'
+      + ' \x1b[200~/tmp/deck-drops/42-middle.png\x1b[201~'
+      + ' \x1b[200~/tmp/deck-drops/42-after.png\x1b[201~',
     ]);
   });
 
