@@ -456,9 +456,6 @@ describe('DeckTreeDragAndDropController', () => {
   it('ignores an external uri-list drop carrying only files', async () => {
     const { activeWorktrees, controller, repositoryRegistry, refresh, reveal } = createController();
     vscodeState.discoverySeedsFromDrop.mockResolvedValueOnce([]);
-    vscodeState.getCommonDirSafe.mockImplementation(async (worktreePath: string) => (
-      worktreePath === '/dropped/photo.jpg' ? null : '/git/a'
-    ));
     const dataTransfer = new DataTransferMock();
     dataTransfer.set('text/uri-list', new vscode.DataTransferItem('file:///dropped/photo.jpg'));
 
