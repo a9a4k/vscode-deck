@@ -174,12 +174,38 @@ Drag an image from **VS Code's own Explorer** onto a Terminal.
 
 ### 12. Tree ignores a dropped file (#178)
 
-Drag `photo.jpg` from Finder onto a Terminal row in the Repositories & Worktrees
-tree.
+Six drags, because the guard filters by *payload* rather than by drop target — so
+proving the cause is fixed means checking rows the report never mentioned, and
+proving the guard is not over-reaching means checking that folder drops are
+untouched.
 
-- No notification appears, no editor tab opens, and no Repository is added.
-- The tree selection and expansion state stay unchanged.
-- Dropping a folder on the same row still registers it as a Repository.
+**Registration dedupes by git common dir**, so a repo that is already registered
+returns silently and looks exactly like a failure. Read the registry before
+choosing a folder to drag:
+
+```sh
+sqlite3 "$HOME/Library/Application Support/Code/User/globalStorage/state.vscdb" \
+  "select value from ItemTable where key='a9a4k.deck';" \
+  | python3 -c "import json,sys; print(*json.load(sys.stdin)['deck.repositoryRegistry'], sep='\n')"
+```
+
+- **12a** — drag `photo.jpg` from Finder onto a **Terminal row**: no notification
+  (in particular no "not a git repository"), no editor tab, no Repository added,
+  and tree selection and expansion unchanged.
+- **12b** — the same drag onto a **Repository row**, a **Worktree row**, and
+  **empty space** below the tree. Identical silence in all three. This is the half
+  a target-based guard would have missed; empty space is the least-exercised
+  branch, where the drop target is undefined.
+- **12c** — drag an **unregistered** git repo folder: it registers and shows
+  "Added repository *X*." with Switch / Open in New Window.
+- **12d** — drag a folder that is **not** a git repository (the fixtures directory
+  itself works, as long as it is not inside a repo). This **must still** error with
+  "Cannot add …: not a git repository." — that is the registration gesture failing
+  honestly, and its disappearance would mean the filter is over-reaching.
+- **12e** — drag a git repo folder **and** an image together: the folder registers,
+  the image is ignored, no error.
+- **12f** — drag `photo.jpg` onto an agent Terminal's **tab**: still attaches, since
+  #178 must not touch ImageDrop.
 
 ## Results — 2026-08-11, Claude Code v2.1.222 + Codex (gpt-5.6-sol), vsix build
 
@@ -198,7 +224,16 @@ tree.
 | 10 | Overlay clears on Escape | **PASS** |
 | 11 | Explorer drag is a no-op | **PASS** for the plain drag. The Shift variant has **no observable effect** and cannot have one: Deck does not claim URI-carrying drags, so "Shift restored the iframe and Deck ignored it" is indistinguishable from "Shift did nothing". Checking it would need the workbench's own overlay as a proxy, or webview instrumentation. |
 
-Scenario 12 is **pending merger verification** against a packaged build.
+### Results — #178, 2026-08-12, vsix build
+
+| # | Scenario | Result |
+| --- | --- | --- |
+| 12a | File on a Terminal row | **PASS** — silent; no notification, no tab, nothing registered |
+| 12b | File on Repository / Worktree rows and empty space | **PASS** — identically silent on all three |
+| 12c | Unregistered repo folder still registers | **PASS** — registered with the post-add prompt |
+| 12d | Non-repo folder still errors | **PASS** — "not a git repository" preserved, so the filter is not over-reaching |
+| 12e | Mixed folder + image drop | **PASS** — folder registered, image ignored, no error |
+| 12f | ImageDrop on the tab unaffected | **PASS** |
 
 ### Found by this QA run
 
