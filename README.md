@@ -66,7 +66,9 @@ Two gestures, both landing in the terminal you're already looking at:
 
 Deck takes no view on formats or file sizes — whether an agent ingests a given image is the agent's business. Drop **anything that isn't an image** and VS Code opens it in an editor tab exactly as before; a copy of a source file would not *be* that file, so Deck leaves those alone.
 
-Two limits worth knowing: dragging from VS Code's **own Explorer** onto a terminal does nothing — the workbench blocks drops into extension views, and no extension can opt out. And paste is verified on macOS; on Linux and Windows the browser's own Ctrl+V may compete with it.
+**Some drags need Shift held.** VS Code keeps extension views out of a drag unless you hold **Shift**, which affects two sources: dragging from VS Code's **own Explorer**, and dragging the **floating thumbnail** macOS shows just after a screenshot. Hold Shift for the thumbnail and it attaches normally; without it the image opens in an editor tab. (Explorer drags need Shift *and* don't attach yet.) Dragging a saved file from Finder needs nothing special.
+
+Paste is verified on macOS; on Linux and Windows the browser's own Ctrl+V may compete with it.
 
 ### One-click terminal launchers
 

@@ -183,10 +183,43 @@ machine.
   Linux/Windows behaviour ADR-0024 left unverified because it depends on
   pasteboard access and Ctrl+V racing xterm — drop involves no pasteboard at
   all.
-- **Dragging from VS Code's Explorer onto a Terminal remains a no-op** unless
-  the user holds Shift. That is a workbench-level block
-  (`WebviewWindowDragMonitor`) no extension can opt out of; Cline documents the
-  same requirement. Known limit, not a regression.
+- **Some drag sources are Shift-gated, and the gate is wider than the Explorer.**
+  A workbench-level block no extension can opt out of keeps webviews out of a
+  drag unless Shift is held; Cline documents the same requirement. Measured with
+  a temporary instrumented build that reported every drag phase: dragging the
+  **macOS screenshot floating thumbnail** — an OS-originated drag, not a
+  workbench one — delivers the webview **no drag events at all**, not even
+  `dragenter`. Hold Shift and the same drag arrives as `file:image/png` at
+  `dragenter` and attaches on the shipped predicate, unchanged. So Shift is the
+  mechanism for both blocked sources, and it is the platform's own
+  (microsoft/vscode#182449 → PR #209211), not a workaround Deck invented. Why an
+  OS drag is treated like an internal one is unresolved.
+
+  This also closes the question QA scenario 11 left open — whether Shift really
+  restores droppability. It does: the instrumentation logged events only with
+  Shift held. Explorer drags still do not attach even so, because they carry
+  `uri-list` rather than `image/*` file items, which is the remaining follow-up
+  and the one route that would hand Deck real paths.
+
+- **A blank MIME type is not a signal Deck can use.** The same instrumentation
+  showed that a Finder drag of `notes.ts`, and of a file with no extension at
+  all, arrives with an **empty** `type` at every phase — a filename appears only
+  at `drop`. So a blank type at `dragenter` is indistinguishable between an image
+  and a source file, and claiming blank types would silently swallow exactly the
+  non-images §6 leaves to the workbench. The narrow `image/*` claim is load-bearing.
+
+- **Host-side recovery was reconsidered on evidence and re-rejected.** PR #171
+  implements it — watch for an opened image tab, attach the file, close the tab —
+  and running that branch confirmed both original objections in practice: it
+  attaches the no-Shift thumbnail (with a tab flash), but it also **hijacks any
+  external PNG opened by other means** while a Terminal was active, closing the
+  tab under the user. Its `.png`-only trigger drops `.jpg` drags entirely, and
+  because it claims on `dragover` rather than `dragenter` its in-webview path
+  never fires, leaving recovery as its only route. A Deck version could paste the
+  tab's real URI instead of routing bytes through the pasteboard, and could gate
+  on file freshness — but the freshness gate only fits screenshots, so covering
+  ordinary drags would need the wide trigger that misfires. Shift costs a
+  keystroke and no false positives.
 - **A file dropped on a Terminal row is deliberately inert.** The tree still
   routes external drops to Repository registration regardless of target, but a
   confirmed file carries no discovery seed and stops before registration. The

@@ -172,6 +172,27 @@ Drag an image from **VS Code's own Explorer** onto a Terminal.
   is the workbench-level block (microsoft/vscode#182449, #209211) and remains
   deferred.
 
+### 13. Shift-gated drag sources
+
+Every image fixture above comes from Finder, which is exactly the gap this
+scenario closes: a drag can be blocked before the webview sees it, and Finder
+drags never are.
+
+- **13a** — take a screenshot (⌘⇧4) and drag the **floating thumbnail** onto a
+  Terminal **without** Shift. The image opens in an editor tab and nothing
+  attaches. Expected, not a regression: the webview receives no drag events at
+  all for this source.
+- **13b** — repeat holding **Shift** from the start of the drag. It attaches
+  normally, and a file appears in the drops directory with the screenshot's
+  sanitized name.
+- **13c** — drag `photo.jpg` from Finder while holding Shift. Still attaches;
+  Shift must not disturb the sources that already work.
+
+Diagnosing 13a needs instrumentation, not observation — a build that reports each
+drag phase's `dataTransfer.types` and item `kind:type` to an output channel. Without
+it, "nothing happened" cannot be distinguished from "claimed but not attached",
+which is the same blind spot recorded in scenario 11.
+
 ### 12. Tree ignores a dropped file (#178)
 
 Six drags, because the guard filters by *payload* rather than by drop target — so
@@ -223,6 +244,14 @@ sqlite3 "$HOME/Library/Application Support/Code/User/globalStorage/state.vscdb" 
 | 9 | Wedged writer reports an error | **PASS** — "Cannot attach dropped images: EEXIST … mkdir '…/deck-drops'", nothing pasted, no hang |
 | 10 | Overlay clears on Escape | **PASS** |
 | 11 | Explorer drag is a no-op | **PASS** for the plain drag. The Shift variant has **no observable effect** and cannot have one: Deck does not claim URI-carrying drags, so "Shift restored the iframe and Deck ignored it" is indistinguishable from "Shift did nothing". Checking it would need the workbench's own overlay as a proxy, or webview instrumentation. |
+
+### Results — scenario 13, 2026-08-12, published 0.21.0
+
+| # | Scenario | Result |
+| --- | --- | --- |
+| 13a | Screenshot thumbnail, no Shift | **Blocked** — image opens in an editor tab; the webview receives no drag events (measured) |
+| 13b | Screenshot thumbnail + Shift | **PASS** — arrives as `file:image/png` at dragenter and attaches on the shipped predicate |
+| 13c | Finder drag + Shift | **PASS** — unaffected |
 
 ### Results — #178, 2026-08-12, vsix build
 
