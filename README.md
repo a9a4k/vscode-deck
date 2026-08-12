@@ -57,6 +57,17 @@ Each worktree gets its own terminals, opened as **editor tabs** (not in the bott
 
 Run a **coding agent** in a worktree's terminal and Deck reads its status straight from the agent — **working**, **needs input**, **done**, or **failed** — and shows it on the tree row, **labeled with what that agent is working on** (pulled from the agent's own task summary) so a dozen concurrent agents stay distinguishable at a glance. Run several at once and only step in when one actually needs you: optional notifications fire when an agent asks a question or finishes a turn, and stay quiet while you're already looking at that terminal's tab. Deck only *observes* — you start and drive the agents; it gives them a durable home and a status light. (The agent status and notification are shown in the demo at the top.)
 
+### Hand your agent an image
+
+Two gestures, both landing in the terminal you're already looking at:
+
+- **Paste** — copy a screenshot and press **Cmd+V** in a terminal running an agent. The agent attaches it. Deck forwards the keystroke and never touches the image; your agent reads the clipboard itself.
+- **Drag and drop** — drag an image file onto a terminal's **tab** from Finder (or any app outside VS Code). Deck saves a copy outside your worktrees and hands the agent that file's path, so nothing lands in your repo.
+
+Deck takes no view on formats or file sizes — whether an agent ingests a given image is the agent's business. Drop **anything that isn't an image** and VS Code opens it in an editor tab exactly as before; a copy of a source file would not *be* that file, so Deck leaves those alone.
+
+Two limits worth knowing: dragging from VS Code's **own Explorer** onto a terminal does nothing — the workbench blocks drops into extension views, and no extension can opt out. And paste is verified on macOS; on Linux and Windows the browser's own Ctrl+V may compete with it.
+
 ### One-click terminal launchers
 
 Save a command as a launcher — your agent with its usual flags, or a project bootstrap — and start a terminal running it in one click. Define launchers **per user** (global), **shared with your team** (committed to `<worktree>/.deck/launchers.json`), or **personal to one repo**. Flip **run on worktree create** and Deck fires them automatically when you add a worktree through it, so a fresh worktree can bootstrap itself and kick off an agent without you typing a thing.
