@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const vscodeState = vi.hoisted(() => ({
   repositories: ['/repo/a', '/repo/b', '/repo/c', '/repo/d'],
+  discoverySeedsFromDrop: vi.fn(async (uriList: string) => uriList
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'))
+    .map((uri) => decodeURIComponent(new URL(uri).pathname))),
   listWorktrees: vi.fn(),
   getCommonDirSafe: vi.fn(),
   listSessions: vi.fn(),
@@ -23,6 +28,10 @@ vi.mock('vscode', () => ({
 vi.mock('../src/git/worktrees', () => ({
   getCommonDirSafe: vscodeState.getCommonDirSafe,
   listWorktrees: vscodeState.listWorktrees,
+}));
+
+vi.mock('../src/tree/discoverySeedsFromDrop', () => ({
+  discoverySeedsFromDrop: vscodeState.discoverySeedsFromDrop,
 }));
 
 import * as vscode from 'vscode';
@@ -442,6 +451,29 @@ describe('DeckTreeDragAndDropController', () => {
       'Open in New Window',
     );
     expect(switcher.switchTo).toHaveBeenCalledWith('/dropped/main');
+  });
+
+  it('ignores an external uri-list drop carrying only files', async () => {
+    const { activeWorktrees, controller, repositoryRegistry, refresh, reveal } = createController();
+    vscodeState.discoverySeedsFromDrop.mockResolvedValueOnce([]);
+    vscodeState.getCommonDirSafe.mockImplementation(async (worktreePath: string) => (
+      worktreePath === '/dropped/photo.jpg' ? null : '/git/a'
+    ));
+    const dataTransfer = new DataTransferMock();
+    dataTransfer.set('text/uri-list', new vscode.DataTransferItem('file:///dropped/photo.jpg'));
+
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-main', 'wt-_repo_a-main__term-1'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(repositoryRegistry.append).not.toHaveBeenCalled();
+    expect(activeWorktrees.set).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(reveal).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 
   it('registers multiple external uri-list folder drops silently and reveals the last', async () => {

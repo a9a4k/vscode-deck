@@ -187,11 +187,14 @@ machine.
   the user holds Shift. That is a workbench-level block
   (`WebviewWindowDragMonitor`) no extension can opt out of; Cline documents the
   same requirement. Known limit, not a regression.
-- **The Terminal *row* in the tree is untouched** and still routes an external
-  drop to `dropRepositorySeeds`, so an image dropped on a row fails with a "not
-  a git repository" message. The row — and the Shift + `uri-list` path on the
-  tab — are where VS Code *does* hand Deck real paths; both are deferred to one
-  follow-up rather than split across this change.
+- **A file dropped on a Terminal row is deliberately inert.** The tree still
+  routes external drops to Repository registration regardless of target, but a
+  confirmed file carries no discovery seed and stops before registration. The
+  row is the one Terminal surface where VS Code gives Deck the real path, so it
+  could instead paste any dropped path without making a temp copy and even while
+  the tab is closed. That remains deferred: it would change what a folder drop
+  on the row means and needs a paste route that does not append Enter. The Shift
+  + `uri-list` path on the tab remains a no-op too.
 - **Watch for a double overlay.** Because the dragover forward ignores
   `defaultPrevented`, VS Code's own editor drop overlay flashing alongside
   Deck's is the first symptom that `stopPropagation` lost the race.
@@ -202,4 +205,4 @@ machine.
 ## Status
 
 Accepted — implemented in #176; multi-image and failure handling corrected in
-#177.
+#177; tree file drops made inert in #178.

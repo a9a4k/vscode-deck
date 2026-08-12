@@ -1,4 +1,4 @@
-# Manual QA — #176 + #177: ImageDrop
+# Manual QA — #176 + #177 + #178: ImageDrop
 
 Verifies that an image dragged from **outside VS Code** onto a Terminal tab is
 attached to whatever runs in the pane, instead of being opened in an editor tab —
@@ -14,6 +14,8 @@ the agent's TUI does with the pasted path.
   bracketed-paste the raw path (ADR-0054).
 - **#177** — multi-image drops attach every image in drag order; failures surface;
   a stray file at the drops path no longer wedges the writer.
+- **#178** — a file dropped on the tree is ignored instead of being reported as
+  a failed Repository registration.
 
 ## Preconditions
 
@@ -167,8 +169,17 @@ Drag an image from **VS Code's own Explorer** onto a Terminal.
 - Nothing happens (the file does not attach, no editor tab opens).
 - Hold **Shift** while dragging and the webview becomes droppable again — Deck
   does not yet read the URI that drag carries, so it still will not attach. This
-  is the workbench-level block (microsoft/vscode#182449, #209211), deferred with
-  the Terminal-row work.
+  is the workbench-level block (microsoft/vscode#182449, #209211) and remains
+  deferred.
+
+### 12. Tree ignores a dropped file (#178)
+
+Drag `photo.jpg` from Finder onto a Terminal row in the Repositories & Worktrees
+tree.
+
+- No notification appears, no editor tab opens, and no Repository is added.
+- The tree selection and expansion state stay unchanged.
+- Dropping a folder on the same row still registers it as a Repository.
 
 ## Results — 2026-08-11, Claude Code v2.1.222 + Codex (gpt-5.6-sol), vsix build
 
@@ -186,6 +197,8 @@ Drag an image from **VS Code's own Explorer** onto a Terminal.
 | 9 | Wedged writer reports an error | **PASS** — "Cannot attach dropped images: EEXIST … mkdir '…/deck-drops'", nothing pasted, no hang |
 | 10 | Overlay clears on Escape | **PASS** |
 | 11 | Explorer drag is a no-op | **PASS** for the plain drag. The Shift variant has **no observable effect** and cannot have one: Deck does not claim URI-carrying drags, so "Shift restored the iframe and Deck ignored it" is indistinguishable from "Shift did nothing". Checking it would need the workbench's own overlay as a proxy, or webview instrumentation. |
+
+Scenario 12 is **pending merger verification** against a packaged build.
 
 ### Found by this QA run
 

@@ -18,6 +18,7 @@ import { terminalSessionPrefix } from '../terminal/tmuxSafe';
 import { WorktreeOrderStore } from '../worktree/worktreeOrderStore';
 import { reconcileTerminalOrder } from './reconcileTerminalOrder';
 import { reconcileWorktreeOrder } from './reconcileWorktreeOrder';
+import { discoverySeedsFromDrop } from './discoverySeedsFromDrop';
 import { DropPosition, reorderArray } from './reorderArray';
 
 const DECK_TREE_MIME = 'application/vnd.code.tree.deck.repositories';
@@ -158,7 +159,7 @@ export class DeckTreeDragAndDropController
     const { activeWorktrees, detachedOpener, reveal, switcher } = this;
     if (!activeWorktrees || !switcher || !detachedOpener || !reveal) return;
 
-    const seedPaths = parseUriList(uriList);
+    const seedPaths = await discoverySeedsFromDrop(uriList);
     if (seedPaths.length === 0) return;
 
     const registerSeed = (
@@ -299,13 +300,4 @@ function dropPosition(
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
-function parseUriList(uriList: string): string[] {
-  return uriList
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map((uri) => vscode.Uri.parse(uri).fsPath)
-    .filter((path) => path.length > 0);
 }
