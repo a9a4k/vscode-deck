@@ -199,7 +199,10 @@ machine.
   restores droppability. It does: the instrumentation logged events only with
   Shift held. Explorer drags still do not attach even so, because they carry
   `uri-list` rather than `image/*` file items, which is the remaining follow-up
-  and the one route that would hand Deck real paths.
+  and the one route that would hand Deck real paths. **Taken up in ADR-0055**,
+  which also resolves the mechanism above: the block is a window-level monitor
+  that is blind to a drag's origin, so an OS drag is not "treated like an
+  internal one" — what differs is only which element the drag crosses first.
 
 - **A blank MIME type is not a signal Deck can use.** The same instrumentation
   showed that a Finder drag of `notes.ts`, and of a file with no extension at
@@ -226,8 +229,9 @@ machine.
   row is the one Terminal surface where VS Code gives Deck the real path, so it
   could instead paste any dropped path without making a temp copy and even while
   the tab is closed. That remains deferred: it would change what a folder drop
-  on the row means and needs a paste route that does not append Enter. The Shift
-  + `uri-list` path on the tab remains a no-op too.
+  on the row means and needs a paste route that does not append Enter. (The
+  Shift + `uri-list` path *on the tab* was a no-op when this was written; ADR-0055
+  implements it, so only the row remains deferred.)
 - **Watch for a double overlay.** Because the dragover forward ignores
   `defaultPrevented`, VS Code's own editor drop overlay flashing alongside
   Deck's is the first symptom that `stopPropagation` lost the race.
@@ -238,4 +242,6 @@ machine.
 ## Status
 
 Accepted — implemented in #176; multi-image and failure handling corrected in
-#177; tree file drops made inert in #178.
+#177; tree file drops made inert in #178. **Narrowed by ADR-0055** (#179): §6
+leaves non-images to the workbench only for the bytes route; a drag that carries
+a path pastes the real one, whatever the file type.
