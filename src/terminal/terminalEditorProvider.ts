@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveTerminalTabIcon } from '../agent/agentIconResolver';
 import type { AgentName } from '../agent/agentTypes';
+import { fileDropPasteInput, filePathsFromUriList } from './fileDrop';
 import {
-  imageDropPasteInput,
   materializeImageDrop,
   type ImageDropDependencies,
   type ImageDropPayload,
@@ -36,6 +36,11 @@ interface InputMessage {
 interface DropImagesMessage {
   type: 'dropImages';
   images: ImageDropPayload[];
+}
+
+interface DropPathsMessage {
+  type: 'dropPaths';
+  uriList: string;
 }
 
 interface OpenExternalMessage {
@@ -70,6 +75,7 @@ type TerminalWebviewMessage =
   | ReadyMessage
   | InputMessage
   | DropImagesMessage
+  | DropPathsMessage
   | OpenExternalMessage
   | ResizeMessage
   | ExitMessage
@@ -262,6 +268,10 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
 
         if (message.type === 'input') transport.write(message.payload);
+        if (message.type === 'dropPaths') {
+          const filePaths = filePathsFromUriList(message.uriList);
+          if (filePaths.length > 0) transport.write(fileDropPasteInput(filePaths));
+        }
         if (message.type === 'dropImages') {
           try {
             const imageDrops = await Promise.all(
@@ -269,7 +279,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
                 materializeImageDrop(this.imageDropDirectory, image, this.imageDropDependencies),
               ),
             );
-            transport.write(imageDropPasteInput(imageDrops.map((imageDrop) => imageDrop.filePath)));
+            transport.write(fileDropPasteInput(imageDrops.map((imageDrop) => imageDrop.filePath)));
           } catch (error) {
             void vscode.window.showErrorMessage(`Cannot attach dropped images: ${errorMessage(error)}`);
           }
@@ -417,7 +427,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       background: var(--vscode-menu-selectionBackground);
       color: var(--vscode-menu-selectionForeground);
     }
-    #image-drop-overlay {
+    #file-drop-overlay {
       position: fixed;
       inset: 8px;
       display: none;
@@ -429,7 +439,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       border: 1px dashed var(--vscode-focusBorder);
       z-index: 30;
     }
-    #image-drop-overlay.visible {
+    #file-drop-overlay.visible {
       display: flex;
     }
     #find-widget {
@@ -466,7 +476,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 </head>
 <body>
   <div id="terminal"></div>
-  <div id="image-drop-overlay">Drop image to attach</div>
+  <div id="file-drop-overlay">Drop files into Terminal</div>
   <div id="find-widget">
     <input id="find-input" type="text">
     <button id="find-prev" type="button">Prev</button>
@@ -681,7 +691,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 
       const contextMenu = document.getElementById('context-menu');
       const copyLinkButton = contextMenu.querySelector('[data-action="copy-link"]');
-      const imageDropOverlay = document.getElementById('image-drop-overlay');
+      const fileDropOverlay = document.getElementById('file-drop-overlay');
       const findWidget = document.getElementById('find-widget');
       const findInput = document.getElementById('find-input');
       const findOptions = {
@@ -720,9 +730,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (text) vscode.postMessage({ type: 'input', payload: text });
       }
 
-      function claimImageDrag(event) {
+      function claimFileDrag(event) {
         const items = Array.from(event.dataTransfer?.items || []);
-        if (!items.some((item) => item.type.startsWith('image/'))) return false;
+        const types = Array.from(event.dataTransfer?.types || []);
+        const carriesPaths = types.some(
+          (type) => type === 'resourceurls' || type === 'text/uri-list'
+        );
+        if (!carriesPaths && !items.some((item) => item.type.startsWith('image/'))) return false;
         event.preventDefault();
         // VS Code forwards dragover from a webview in the bubble phase even when
         // defaultPrevented. Stop it here or the host disables this iframe and its
@@ -732,17 +746,23 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         return true;
       }
 
-      function showImageDrop(event) {
-        if (claimImageDrag(event)) imageDropOverlay.classList.add('visible');
+      function showFileDrop(event) {
+        if (claimFileDrag(event)) fileDropOverlay.classList.add('visible');
       }
 
-      function hideImageDrop() {
-        imageDropOverlay.classList.remove('visible');
+      function hideFileDrop() {
+        fileDropOverlay.classList.remove('visible');
       }
 
-      async function dropImages(event) {
-        if (!claimImageDrag(event)) return;
-        hideImageDrop();
+      async function dropFiles(event) {
+        if (!claimFileDrag(event)) return;
+        hideFileDrop();
+        const uriList = event.dataTransfer.getData('resourceurls')
+          || event.dataTransfer.getData('text/uri-list');
+        if (uriList) {
+          vscode.postMessage({ type: 'dropPaths', uriList });
+          return;
+        }
         const files = Array.from(event.dataTransfer.items)
           .filter((item) => item.type.startsWith('image/') && item.kind === 'file')
           .map((item) => item.getAsFile())
@@ -797,13 +817,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         event.stopPropagation();
         vscode.postMessage({ type: 'input', payload: '\\x16' });
       }, true);
-      document.addEventListener('dragenter', showImageDrop, true);
-      document.addEventListener('dragover', showImageDrop, true);
-      document.addEventListener('drop', dropImages, true);
+      document.addEventListener('dragenter', showFileDrop, true);
+      document.addEventListener('dragover', showFileDrop, true);
+      document.addEventListener('drop', dropFiles, true);
       document.addEventListener('dragleave', (event) => {
-        if (!event.relatedTarget) hideImageDrop();
+        if (!event.relatedTarget) hideFileDrop();
       }, true);
-      document.addEventListener('dragend', hideImageDrop, true);
+      document.addEventListener('dragend', hideFileDrop, true);
       document.addEventListener('click', hideContextMenu);
       document.addEventListener('keydown', (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {

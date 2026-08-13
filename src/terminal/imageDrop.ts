@@ -32,18 +32,6 @@ export interface MaterializedImageDrop {
   filePath: string;
 }
 
-/**
- * One bracketed paste carrying every dropped path, space separated. Measured
- * against a live agent: one paste per path loses the first path's text when the
- * pastes reach the pane together, and unseparated paths merge into one unusable
- * token. A single paste attaches every recognized image and leaves every
- * declined path readable.
- */
-export function imageDropPasteInput(filePaths: readonly string[]): string {
-  if (filePaths.length === 0) return '';
-  return `\x1b[200~${filePaths.join(' ')}\x1b[201~`;
-}
-
 const nodeDependencies: ImageDropDependencies = {
   now: Date.now,
   createDirectory: async (path) => {

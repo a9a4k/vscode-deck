@@ -57,16 +57,17 @@ Each worktree gets its own terminals, opened as **editor tabs** (not in the bott
 
 Run a **coding agent** in a worktree's terminal and Deck reads its status straight from the agent — **working**, **needs input**, **done**, or **failed** — and shows it on the tree row, **labeled with what that agent is working on** (pulled from the agent's own task summary) so a dozen concurrent agents stay distinguishable at a glance. Run several at once and only step in when one actually needs you: optional notifications fire when an agent asks a question or finishes a turn, and stay quiet while you're already looking at that terminal's tab. Deck only *observes* — you start and drive the agents; it gives them a durable home and a status light. (The agent status and notification are shown in the demo at the top.)
 
-### Hand your agent an image
+### Hand your agent a file
 
-Two gestures, both landing in the terminal you're already looking at:
+Drop a file onto the terminal you're already looking at and Deck hands its path to whatever runs in the pane:
 
-- **Paste** — copy a screenshot and press **Cmd+V** in a terminal running an agent. The agent attaches it. Deck forwards the keystroke and never touches the image; your agent reads the clipboard itself.
-- **Drag and drop** — drag an image file onto a terminal's **tab** from Finder (or any app outside VS Code). Deck saves a copy outside your worktrees and hands the agent that file's path, so nothing lands in your repo.
+- **From VS Code** — hold **Shift** and drag one or more files, a folder, or an editor tab onto a Terminal tab. Deck pastes each real absolute path in drag order. Nothing is copied, so an agent reads or edits the file in your worktree.
+- **From Finder** — drag an image onto a Terminal tab without Shift. Finder does not expose its path to the webview, so Deck saves a copy outside your worktrees and pastes the copy's path. Non-image Finder drags remain with VS Code because a copy of a source file would not be that file.
+- **Paste an image** — copy a screenshot and press **Cmd+V** in a Terminal running an agent. Deck forwards the keystroke and never touches the image; your agent reads the clipboard itself.
 
-Deck takes no view on formats or file sizes — whether an agent ingests a given image is the agent's business. Drop **anything that isn't an image** and VS Code opens it in an editor tab exactly as before; a copy of a source file would not *be* that file, so Deck leaves those alone.
+The paths arrive as one bracketed paste, ready for you to keep typing. Deck does not guess whether the pane contains an agent or a plain shell, and takes no view on image formats or file sizes.
 
-**Some drags need Shift held.** VS Code keeps extension views out of a drag unless you hold **Shift**, which affects two sources: dragging from VS Code's **own Explorer**, and dragging the **floating thumbnail** macOS shows just after a screenshot. Hold Shift for the thumbnail and it attaches normally; without it the image opens in an editor tab. (Explorer drags need Shift *and* don't attach yet.) Dragging a saved file from Finder needs nothing special.
+**Shift is required for drags that start inside VS Code.** Without it, the workbench blocks every webview and opens a dragged file in an editor tab instead. Shift is VS Code's own escape hatch, not a Deck setting. It is also needed for the floating thumbnail macOS shows just after a screenshot; saved files dragged from Finder need nothing special.
 
 Paste is verified on macOS; on Linux and Windows the browser's own Ctrl+V may compete with it.
 

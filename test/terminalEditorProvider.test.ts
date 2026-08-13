@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
 const cfg = vi.hoisted(() => ({
@@ -14,6 +15,16 @@ vi.mock('vscode', () => ({
   },
   Uri: {
     joinPath: (base: unknown, ...paths: string[]) => ({ base, paths }),
+    parse: (value: string) => {
+      const url = new URL(value);
+      return {
+        scheme: url.protocol.slice(0, -1),
+        get fsPath() {
+          if (url.protocol !== 'file:') throw new Error('Only file URIs have filesystem paths');
+          return fileURLToPath(url);
+        },
+      };
+    },
   },
   workspace: {
     getConfiguration: (section: 'editor' | 'terminal.integrated') => ({
@@ -110,9 +121,12 @@ function providerDocument(
   };
 }
 
-function imageDropLifecycle(dependencies: ImageDropDependencies) {
+function dropLifecycle(dependencies: ImageDropDependencies) {
   let receiveMessage:
-    | ((message: { type: 'dropImages'; images: ImageDropPayload[] }) => Promise<void> | void)
+    | ((message:
+      | { type: 'dropImages'; images: ImageDropPayload[] }
+      | { type: 'dropPaths'; uriList: string }
+    ) => Promise<void> | void)
     | undefined;
   const terminalPanel = panel();
   terminalPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof receiveMessage) => {
@@ -141,9 +155,13 @@ function imageDropLifecycle(dependencies: ImageDropDependencies) {
 
   return {
     terminalBridge,
-    async drop(images: ImageDropPayload[]): Promise<void> {
+    async dropImages(images: ImageDropPayload[]): Promise<void> {
       if (!receiveMessage) throw new Error('Webview message handler is not registered');
       await receiveMessage({ type: 'dropImages', images });
+    },
+    async dropPaths(uriList: string): Promise<void> {
+      if (!receiveMessage) throw new Error('Webview message handler is not registered');
+      await receiveMessage({ type: 'dropPaths', uriList });
     },
   };
 }
@@ -859,25 +877,41 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("navigator.clipboard.readText()");
   });
 
-  it('wires image-only drop capture and raw image forwarding', () => {
+  it('wires file-drop capture, path forwarding, and raw image fallback', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
 
     const html = terminalPanel.webview.html;
-    expect(html).toContain('id="image-drop-overlay"');
-    expect(html).toContain('function claimImageDrag(event)');
-    expect(html).toContain("if (!items.some((item) => item.type.startsWith('image/'))) return false");
+    expect(html).toContain('id="file-drop-overlay"');
+    expect(html).toContain('Drop files into Terminal');
+    expect(html).toContain('function claimFileDrag(event)');
+    expect(html).toContain("type === 'resourceurls' || type === 'text/uri-list'");
+    expect(html).toContain("!items.some((item) => item.type.startsWith('image/'))");
     expect(html).toContain('event.preventDefault()');
     expect(html).toContain('event.stopPropagation()');
     expect(html).toContain("event.dataTransfer.dropEffect = 'copy'");
-    expect(html).toContain("document.addEventListener('dragenter', showImageDrop, true)");
-    expect(html).toContain("document.addEventListener('dragover', showImageDrop, true)");
-    expect(html).toContain("document.addEventListener('drop', dropImages, true)");
+    expect(html).toContain("document.addEventListener('dragenter', showFileDrop, true)");
+    expect(html).toContain("document.addEventListener('dragover', showFileDrop, true)");
+    expect(html).toContain("document.addEventListener('drop', dropFiles, true)");
+    expect(html).toContain("type: 'dropPaths'");
     expect(html).toContain("item.type.startsWith('image/') && item.kind === 'file'");
     expect(html).toContain('new Uint8Array(await file.arrayBuffer())');
     expect(html).toContain("type: 'dropImages'");
+  });
+
+  it('prefers the untruncated uri-list payload before the standard fallback', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const html = terminalPanel.webview.html;
+    const untruncated = html.indexOf("event.dataTransfer.getData('resourceurls')");
+    const standard = html.indexOf("event.dataTransfer.getData('text/uri-list')");
+    expect(untruncated).toBeGreaterThan(-1);
+    expect(untruncated).toBeLessThan(standard);
   });
 
   it('acquires every dropped image before reading its bytes', () => {
@@ -888,7 +922,7 @@ describe('TerminalEditorProvider', () => {
 
     const html = terminalPanel.webview.html;
     const dropHandler = html.slice(
-      html.indexOf('async function dropImages(event)'),
+      html.indexOf('async function dropFiles(event)'),
       html.indexOf('function openFindWidget()'),
     );
     const filesAcquired = dropHandler.indexOf('item.getAsFile()');
@@ -897,15 +931,15 @@ describe('TerminalEditorProvider', () => {
     expect(filesAcquired).toBeLessThan(firstAwait);
   });
 
-  it('clears the image-drop overlay when a drag is cancelled', () => {
+  it('clears the file-drop overlay when a drag is cancelled', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
 
     const html = terminalPanel.webview.html;
-    expect(html).toContain('function hideImageDrop()');
-    expect(html).toContain("document.addEventListener('dragend', hideImageDrop, true)");
+    expect(html).toContain('function hideFileDrop()');
+    expect(html).toContain("document.addEventListener('dragend', hideFileDrop, true)");
   });
 
   it('maps Shift+Enter to an ESC+CR newline sequence', () => {
@@ -972,6 +1006,34 @@ describe('TerminalEditorProvider', () => {
     expect(terminalBridge.clearHistory).toHaveBeenCalledOnce();
   });
 
+  it('sends dropped file paths to the Terminal as one bracketed paste in drag order', async () => {
+    const { terminalBridge, dropPaths } = dropLifecycle({
+      now: () => 42,
+      createDirectory: async () => undefined,
+      writeFileExclusively: async () => undefined,
+    });
+
+    await dropPaths('file:///work/first.ts\r\nfile:///work/second.ts');
+
+    expect(terminalBridge.write).toHaveBeenCalledWith(
+      '\x1b[200~/work/first.ts /work/second.ts\x1b[201~',
+    );
+  });
+
+  it('does nothing when a dropped uri-list has no usable file path', async () => {
+    const { terminalBridge, dropPaths } = dropLifecycle({
+      now: () => 42,
+      createDirectory: async () => undefined,
+      writeFileExclusively: async () => undefined,
+    });
+    vi.mocked(vscode.window.showErrorMessage).mockClear();
+
+    await expect(dropPaths('untitled:Untitled-1')).resolves.toBeUndefined();
+
+    expect(terminalBridge.write).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
   it('writes a dropped image and sends its bracketed path to the Terminal', async () => {
     const dropDir = await mkdtemp(join(tmpdir(), 'deck-provider-image-drop-'));
     try {
@@ -1026,7 +1088,7 @@ describe('TerminalEditorProvider', () => {
   it('writes every dropped image to the Terminal in drag order, separated so their paths cannot merge', async () => {
     const completedWrites: number[] = [];
     const releaseWrite = new Map<number, () => void>();
-    const { terminalBridge, drop } = imageDropLifecycle({
+    const { terminalBridge, dropImages } = dropLifecycle({
       now: () => 42,
       createDirectory: async () => undefined,
       writeFileExclusively: async (_path, bytes) => new Promise<void>((resolve) => {
@@ -1037,7 +1099,7 @@ describe('TerminalEditorProvider', () => {
         });
       }),
     });
-    const handled = drop([
+    const handled = dropImages([
       { name: 'before.png', mime: 'image/png', bytes: new Uint8Array([1]) },
       { name: 'middle.png', mime: 'image/png', bytes: new Uint8Array([2]) },
       { name: 'after.png', mime: 'image/png', bytes: new Uint8Array([3]) },
@@ -1059,7 +1121,7 @@ describe('TerminalEditorProvider', () => {
   });
 
   it('reports a failed image drop without writing to the Terminal', async () => {
-    const { terminalBridge, drop } = imageDropLifecycle({
+    const { terminalBridge, dropImages } = dropLifecycle({
       now: () => 42,
       createDirectory: async () => undefined,
       writeFileExclusively: async () => {
@@ -1068,7 +1130,7 @@ describe('TerminalEditorProvider', () => {
     });
     vi.mocked(vscode.window.showErrorMessage).mockClear();
 
-    await expect(drop([
+    await expect(dropImages([
       { name: 'diagram.png', mime: 'image/png', bytes: new Uint8Array() },
     ])).resolves.toBeUndefined();
 

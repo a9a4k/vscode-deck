@@ -1,14 +1,14 @@
-# Manual QA — #176 + #177 + #178: ImageDrop
+# Manual QA — #176 + #177 + #178 + #179: FileDrop
 
-Verifies that an image dragged from **outside VS Code** onto a Terminal tab is
-attached to whatever runs in the pane, instead of being opened in an editor tab —
-and that the #177 corrections hold (every image in a multi-image drop, in order;
-loud failures; no wedged writer).
+Verifies both FileDrop routes: a Shift-drag from **inside VS Code** pastes each
+real path, while an image dragged from **outside VS Code** still materializes a
+copy and pastes that path. It also retains the #177 corrections (every image in a
+multi-image drop, in order; loud failures; no wedged writer).
 
-Everything here needs a real OS drag, which is why none of it is automated. The
-unit suite covers the ImageDrop module and the host message handling; what it
-cannot cover is the webview's drag claim, the workbench's reaction to it, and what
-the agent's TUI does with the pasted path.
+Everything here needs a real drag, which is why none of it is automated. The unit
+suite covers URI-list parsing, ImageDrop materialization, and host message
+handling; what it cannot cover is the webview's drag claim, the workbench's
+reaction to it, and what the agent's TUI does with the pasted path.
 
 - **#176** — claim `image/*` drags in the Terminal webview, materialize the bytes,
   bracketed-paste the raw path (ADR-0054).
@@ -16,6 +16,8 @@ the agent's TUI does with the pasted path.
   a stray file at the drops path no longer wedges the writer.
 - **#178** — a file dropped on the tree is ignored instead of being reported as
   a failed Repository registration.
+- **#179** — Shift-drag a VS Code file, folder, or editor tab onto a Terminal and
+  paste its real path; keep ImageDrop as the bytes-only fallback.
 
 ## Preconditions
 
@@ -227,6 +229,37 @@ sqlite3 "$HOME/Library/Application Support/Code/User/globalStorage/state.vscdb" 
   the image is ignored, no error.
 - **12f** — drag `photo.jpg` onto an agent Terminal's **tab**: still attaches, since
   #178 must not touch ImageDrop.
+
+### 14. Shift-drag real paths from VS Code (#179)
+
+Use files inside the mounted Worktree so the pasted identity is visible. Hold
+**Shift from the start of every drag**; without it the workbench disables the
+Terminal webview.
+
+- **14a — one Explorer file:** Shift-drag `notes.ts` onto an agent Terminal. The
+  real absolute Worktree path appears in the prompt, no editor tab opens, and no
+  file appears under `deck-drops`.
+- **14b — ordered multi-selection:** select three files in a known order and
+  Shift-drag them together. One paste carries all three real paths in that order.
+- **14c — folder:** Shift-drag a folder from Explorer. Its real absolute path is
+  pasted; files inside it are not expanded.
+- **14d — editor tab:** Shift-drag a saved editor tab. Its real absolute path is
+  pasted. Repeat with an untitled editor: the hover overlay may appear because
+  drag data is protected until drop, but no path, notification, or editor tab
+  follows.
+- **14e — Explorer image:** Shift-drag `photo.jpg` from Explorer. The agent sees
+  the original Worktree path and can attach it; no copy appears under
+  `deck-drops`.
+- **14f — spaced path:** Shift-drag a file below a `My Documents` folder. The
+  whole raw path remains present in one bracketed paste. At a plain shell it is
+  visibly unquoted and nothing executes; this is the accepted contract.
+- **14g — unusable sources:** drag a browser link and a Deck Repository,
+  Worktree, or Terminal row onto the tab. Each is silent: no URL or decoration
+  identifier is pasted and no notification appears.
+- **14h — Finder regression:** repeat scenarios 1, 3, and 6 without Shift.
+  Images still materialize and attach; non-images still open in an editor tab.
+- **14i — Linux parity:** repeat 14a–14h on Linux. The route has no pasteboard or
+  platform branch, so results must match macOS.
 
 ## Results — 2026-08-11, Claude Code v2.1.222 + Codex (gpt-5.6-sol), vsix build
 
