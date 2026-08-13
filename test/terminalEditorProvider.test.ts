@@ -887,7 +887,7 @@ describe('TerminalEditorProvider', () => {
     expect(html).toContain('id="file-drop-overlay"');
     expect(html).toContain('Drop files into Terminal');
     expect(html).toContain('function claimFileDrag(event)');
-    expect(html).toContain("type === 'resourceurls' || type === 'text/uri-list'");
+    expect(html).toContain("type === 'application/vnd.code.uri-list' || type === 'text/uri-list'");
     expect(html).toContain("!items.some((item) => item.type.startsWith('image/'))");
     expect(html).toContain('event.preventDefault()');
     expect(html).toContain('event.stopPropagation()');
@@ -908,7 +908,7 @@ describe('TerminalEditorProvider', () => {
     provider.resolveCustomEditor(document, terminalPanel as never);
 
     const html = terminalPanel.webview.html;
-    const untruncated = html.indexOf("event.dataTransfer.getData('resourceurls')");
+    const untruncated = html.indexOf("event.dataTransfer.getData('application/vnd.code.uri-list')");
     const standard = html.indexOf("event.dataTransfer.getData('text/uri-list')");
     expect(untruncated).toBeGreaterThan(-1);
     expect(untruncated).toBeLessThan(standard);

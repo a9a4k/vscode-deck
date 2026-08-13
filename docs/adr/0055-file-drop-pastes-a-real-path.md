@@ -9,9 +9,18 @@ so ADR-0054 deliberately leaves non-image byte drags to the workbench.
 
 VS Code-originated drags cross a different boundary. Measurement in an
 instrumented Terminal webview found URI-list strings for Explorer files and
-folders, editor tabs, and multi-selection. The internal `resourceurls` variant
-preserves the full CRLF-separated selection; standard `text/uri-list` is
-truncated to one entry upstream. The workbench disables pointer events on
+folders, editor tabs, and multi-selection. Three keys carry the selection and
+they are not interchangeable:
+
+| Key | Payload | Limit |
+| --- | --- | --- |
+| `application/vnd.code.uri-list` | CRLF-separated URIs | internal type, no API contract |
+| `text/uri-list` | one URI | truncated to the first entry upstream, to dodge a Chromium bug |
+| `resourceurls` | **JSON array** of URI strings | omits directories entirely |
+
+Only the first preserves a whole selection, and only the first two are URI-list
+grammar at all — parsing the JSON array as a URI list yields the scheme `["file`
+and throws. The workbench disables pointer events on
 webviews during an internal drag unless Shift is held
 ([microsoft/vscode#182449](https://github.com/microsoft/vscode/issues/182449),
 [PR #209211](https://github.com/microsoft/vscode/pull/209211)).
@@ -23,15 +32,19 @@ webviews during an internal drag unless Shift is held
    preserves order, keeps only `file:` URIs, and asks VS Code for each filesystem
    path. Nothing is copied.
 
-2. **Prefer the complete payload.** The webview reads `resourceurls` before
-   `text/uri-list`. The standard key remains a degraded fallback. A generated
-   script test pins this order because host tests cannot observe truncation in
-   the browser payload.
+2. **Prefer the complete payload.** The webview reads
+   `application/vnd.code.uri-list` before `text/uri-list`. The standard key
+   remains a degraded fallback. A generated script test pins this order because
+   host tests cannot observe truncation in the browser payload. `resourceurls`
+   is not read at all: it is a different format, and it would silently drop a
+   folder from a mixed selection.
 
 3. **Only `file:` is usable.** Browser links, untitled editors, Deck tree
-   decoration URIs, and remote URIs yield no pane input and no notification.
-   Filtering happens before path extraction so unsupported schemes cannot crash
-   the message handler.
+   decoration URIs, and remote URIs yield no pane input and no notification. A
+   line that is not a URI is skipped rather than thrown, because `Uri.parse`
+   rejects arbitrary text and a drag source can put arbitrary text on a
+   uri-list key — one unusable line must not cost the batch or reject the
+   host's message handler.
 
 4. **Path and byte routes stay disjoint.** A drop checks for a URI list first and
    returns after posting it. Without one, the existing `image/*` byte route is

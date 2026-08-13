@@ -78,4 +78,13 @@ describe('filePathsFromUriList', () => {
   it('returns no paths for an empty uri-list', () => {
     expect(filePathsFromUriList('')).toEqual([]);
   });
+
+  // The measured `resourceurls` payload, which is a JSON array rather than a
+  // uri-list. Reading that key by mistake made every Explorer drop throw out of
+  // the host's message handler and paste nothing (#179).
+  it('yields no paths, and does not throw, for a payload that is not a uri-list', () => {
+    expect(filePathsFromUriList(
+      '["file:///work/first.ts","file:///work/second.ts"]',
+    )).toEqual([]);
+  });
 });

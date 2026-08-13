@@ -734,7 +734,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         const items = Array.from(event.dataTransfer?.items || []);
         const types = Array.from(event.dataTransfer?.types || []);
         const carriesPaths = types.some(
-          (type) => type === 'resourceurls' || type === 'text/uri-list'
+          (type) => type === 'application/vnd.code.uri-list' || type === 'text/uri-list'
         );
         if (!carriesPaths && !items.some((item) => item.type.startsWith('image/'))) return false;
         event.preventDefault();
@@ -757,7 +757,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       async function dropFiles(event) {
         if (!claimFileDrag(event)) return;
         hideFileDrop();
-        const uriList = event.dataTransfer.getData('resourceurls')
+        // The internal key carries the whole selection; the standard one is
+        // truncated to a single entry upstream, so it is only a fallback.
+        const uriList = event.dataTransfer.getData('application/vnd.code.uri-list')
           || event.dataTransfer.getData('text/uri-list');
         if (uriList) {
           vscode.postMessage({ type: 'dropPaths', uriList });

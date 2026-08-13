@@ -16,7 +16,20 @@ export function filePathsFromUriList(uriList: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map((uri) => vscode.Uri.parse(uri))
-    .filter((uri) => uri.scheme === 'file')
-    .map((uri) => uri.fsPath);
+    .map(filePath)
+    .filter((path): path is string => path !== undefined);
+}
+
+/**
+ * `Uri.parse` throws on anything that is not a URI, and a drag source can put
+ * arbitrary text on a uri-list key. Reading the wrong key once made every
+ * Explorer drop reject the host's message handler instead of pasting (#179).
+ */
+function filePath(line: string): string | undefined {
+  try {
+    const uri = vscode.Uri.parse(line);
+    return uri.scheme === 'file' ? uri.fsPath : undefined;
+  } catch {
+    return undefined;
+  }
 }
