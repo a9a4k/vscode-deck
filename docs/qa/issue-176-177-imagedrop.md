@@ -58,7 +58,7 @@ Confirmed absent before QA starts, so anything in it came from these scenarios.
 
 Drag `photo.jpg` from Finder onto the Claude Terminal's tab.
 
-- **While dragging:** Deck's overlay ("Drop image to attach") appears over the
+- **While dragging:** Deck's overlay ("Drop files into Terminal") appears over the
   terminal surface.
 - **On drop:** the prompt shows an attachment (`[Image #1]`), **not** a path as
   text, and **no editor tab opens**.
@@ -297,6 +297,31 @@ Terminal webview.
 | 12e | Mixed folder + image drop | **PASS** — folder registered, image ignored, no error |
 | 12f | ImageDrop on the tab unaffected | **PASS** |
 
+### Results — #179, 2026-08-13, vsix build (after the uri-list key fix)
+
+| # | Scenario | Result |
+| --- | --- | --- |
+| 14a | One Explorer file | **PASS** — real absolute path pasted, no editor tab, nothing written to the drops directory |
+| 14b | Ordered multi-selection | **PASS** — one paste, all three real paths, in drag order |
+| 14c | Folder | **PASS** — the folder's own path, contents not expanded |
+| 14c′ | Two folders together | **PASS** — both paths. Only the uri-list key can express this; `resourceurls` omits directories entirely |
+| 14d | Saved editor tab, then untitled | **PASS** — real path (a file *outside* the mounted Worktree, so the route is not workspace-scoped); untitled pastes nothing |
+| 14e | Explorer image | **PASS** — the agent attached it and reported the **original** repo path; no copy under `deck-drops` |
+| 14f | Spaced path | **PASS** — `…/My Documents/spaced notes.ts` whole and raw, spaces in both directory and filename |
+| 14g | Unusable sources | **PASS** — `https:` (link dragged from a page), `untitled:`, and `deck-status:` all silent. The overlay flashes on each, as designed: drag data is protected until drop, so the overlay promises Deck will take the drop, not that anything will attach |
+| 14h | Finder regression, no Shift | **PASS** — single image and three images still materialize copies and attach in drag order; `notes.ts` shows no overlay and opens an editor tab |
+| 14i | Linux parity | Not run |
+
+Dragging a browser **tab** cannot be tested: that is a window-detach gesture and
+delivers no payload. A link dragged from inside a page is the equivalent, and is
+what 14g used.
+
+Scenario 3's recorded baseline (red/green/blue) was taken with Finder sorted
+ascending; this run's Finder was sorted descending and the paste order matched
+the display order exactly. Deck preserves the order the OS hands it — the
+scenario's own note about checking Finder's selection order first is the reason
+this was not filed as a regression.
+
 ### Found by this QA run
 
 **A batch was pasted as one paste per image, and that is wrong twice over.**
@@ -327,3 +352,21 @@ design — the OS reaps them.
 **A declined format leaves a bare path in the prompt.** ADR-0024's no-format-policy
 stance means Deck cannot know what an agent ingests, so this stays. Milder than it
 looks: the path is still a working handle the agent can read.
+
+**#179 shipped reading the wrong key, and the whole feature was dead.** The webview
+read `resourceurls`, which carries a **JSON array** of URI strings rather than
+uri-list grammar. Parsed as a uri-list it gave `Uri.parse` the scheme `["file`,
+which throws, so every drag carrying that key — one file, several files, an editor
+tab, an Explorer image — rejected the host's message handler and pasted nothing.
+Only folder drags worked, by falling through to the truncated `text/uri-list`, and
+a multi-folder drag silently kept just the first.
+
+The full suite passed throughout. The unit tests fed only well-formed uri-lists,
+and the one generated-script assertion added specifically to guard the key
+preference had pinned the wrong key — so nothing anywhere saw the format the
+webview actually read. **A test that asserts a format should be fed the bytes the
+producer really emits**, which for a browser payload means the measured string,
+not a hand-written example of the format it was assumed to be.
+
+Agents attach a real path exactly as they attach a temp copy (14e), so routing
+Explorer images through the path route costs nothing and drops the copy entirely.
