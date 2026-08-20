@@ -82,6 +82,15 @@ Alternatives considered:
    an empty screen, and mixing snapshot + seed duplicates content (seen
    in QA). `deck.conf` sizes tmux's `history-limit` to the same cap so
    tmux does not retain pane history Deck can never surface.
+   The seed also replays the pane's terminal *modes* — mouse reporting
+   (`?1000/1002/1003/1006`), cursor visibility, application cursor
+   keys/keypad, bracketed paste — read from tmux's per-pane format flags
+   (`mouse_*_flag`, `cursor_flag`, …) in the same `list-panes -F` that
+   discovers the pane id. A fresh xterm starts with every mode off and a
+   running TUI sets them once at startup, so without the replay a
+   Terminal reattached after a Switch or reload keeps its process but
+   loses mouse input; the post-seed SIGWINCH repaint does not recover
+   them because TUIs do not re-send modes on redraw.
 
 6. **Exit semantics are preserved.** Child-process exit (and the
    preceding `%exit`) maps to `onExit(code)` exactly as node-pty's exit
