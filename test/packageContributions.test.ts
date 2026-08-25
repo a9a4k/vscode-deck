@@ -101,6 +101,13 @@ describe('package contributions', () => {
     });
   });
 
+  it('contributes the release-notice setting enabled by default', () => {
+    expect(pkg.contributes.configuration?.properties?.['deck.showReleaseNotes']).toMatchObject({
+      type: 'boolean',
+      default: true,
+    });
+  });
+
   it('contributes the curated safe automatic-rename-format setting only', () => {
     expect(pkg.contributes.configuration?.properties?.['deck.tmux.automaticRenameFormat']).toMatchObject({
       type: 'string',
@@ -216,6 +223,16 @@ describe('package contributions', () => {
     });
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.removeAgentHooks',
+    });
+  });
+
+  it("contributes What's New as a command-palette action", () => {
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.whatsNew',
+      title: "Deck: What's New",
+    });
+    expect(pkg.contributes.menus.commandPalette).toContainEqual({
+      command: 'deck.whatsNew',
     });
   });
 

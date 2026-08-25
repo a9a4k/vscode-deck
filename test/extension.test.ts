@@ -720,6 +720,7 @@ describe('activate', () => {
       subscriptions: [] as Array<{ dispose(): void }>,
       extensionPath: process.cwd(),
       extensionUri: { fsPath: process.cwd() },
+      extension: { packageJSON: { version: '0.22.0' } },
       globalStorageUri: { fsPath: globalStoragePath },
       values,
     };

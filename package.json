@@ -82,6 +82,11 @@
           "default": true,
           "description": "Show a notification when an agent completes a turn. Suppressed when you are already viewing that Terminal's tab."
         },
+        "deck.showReleaseNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when Deck updates."
+        },
         "deck.tmux.automaticRenameFormat": {
           "type": "string",
           "default": "",
@@ -277,6 +282,10 @@
         "title": "Deck: Uninstall Agent Hooks"
       },
       {
+        "command": "deck.whatsNew",
+        "title": "Deck: What's New"
+      },
+      {
         "command": "deck.refresh",
         "title": "Deck: Refresh",
         "icon": "$(refresh)"
@@ -374,6 +383,9 @@
         },
         {
           "command": "deck.removeAgentHooks"
+        },
+        {
+          "command": "deck.whatsNew"
         },
         {
           "command": "deck.switchWorktree",

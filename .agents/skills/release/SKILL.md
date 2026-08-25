@@ -27,7 +27,12 @@ Preconditions to check first (fail loudly if any miss):
    ```
    Summary is one line, often ends with issue refs like `(#151, #152, #153)`. Look at recent releases for tone. If the release has more nuance than one line can hold, ask if they want a longer commit body — otherwise the message is just the title + `Co-Authored-By` trailer.
 
-3. **Bump.**
+3. **Write the changelog entry.**
+   Add a user-facing `## X.Y.Z` entry to `CHANGELOG.md`, directly below the
+   title so entries remain newest-first. Summarize what changed as readable
+   release notes rather than copying commit messages.
+
+4. **Bump.**
    ```sh
    npm version <target> --no-git-tag-version
    ```
@@ -35,9 +40,9 @@ Preconditions to check first (fail loudly if any miss):
 
    Note: `npm version` may strip linux-only optional peer entries from `package-lock.json` on darwin. That's the accepted status quo — sandcastle's next merger detects the drift and auto-commits `fix: synchronize npm lockfile`. Don't try to regen the lockfile here (a fresh `rm -rf node_modules && npm install` can pull newer transitive deps, drifting the release from what was tested).
 
-4. **Commit.** Use a HEREDOC to preserve formatting:
+5. **Commit.** Use a HEREDOC to preserve formatting:
    ```sh
-   git add package.json package-lock.json
+   git add CHANGELOG.md package.json package-lock.json
    git commit -m "$(cat <<'EOF'
    chore(release): X.Y.Z — <summary>
 
@@ -47,19 +52,19 @@ Preconditions to check first (fail loudly if any miss):
    ```
    Attribution: use the current session's model name (e.g. `Claude Opus 4.7`, `Claude Fable 5`). Do not hardcode.
 
-5. **Tag.**
+6. **Tag.**
    ```sh
    git tag vX.Y.Z
    ```
    Lightweight tag (matches existing tag style).
 
-6. **Build vsix.**
+7. **Build vsix.**
    ```sh
    npx @vscode/vsce package
    ```
    Produces `deck-X.Y.Z.vsix` at repo root. If prompted about README/LICENSE, follow-through interactively.
 
-7. **Report.** Print:
+8. **Report.** Print:
    - The commit hash + title
    - The tag name
    - The absolute path to the `.vsix`

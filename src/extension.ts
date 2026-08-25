@@ -73,10 +73,41 @@ import { HookInstaller, type HookReconcileResult } from './agent/hookInstaller';
 import { rewriteTerminalSnapshotAgentSessions } from './agent/terminalSnapshotAgentSessions';
 import { ResumeTemplate } from './agent/resumeTemplate';
 import { SnapshotRewriter } from './agent/snapshotRewriter';
+import { ReleaseNoticeGate } from './releaseNoticeGate';
+import { ReleaseNoticeStore } from './releaseNoticeStore';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const showWhatsNew = () => vscode.commands.executeCommand(
+    'markdown.showPreview',
+    vscode.Uri.joinPath(context.extensionUri, 'CHANGELOG.md'),
+  );
+  const currentVersion = context.extension.packageJSON.version as string;
+  const releaseNotices = new ReleaseNoticeStore(context.globalState);
+  const shouldShowReleaseNotice = ReleaseNoticeGate.shouldShow({
+    previousVersion: releaseNotices.get(),
+    currentVersion,
+    enabled: vscode.workspace.getConfiguration('deck').get<boolean>('showReleaseNotes', true),
+  });
+  await releaseNotices.set(currentVersion);
+  if (shouldShowReleaseNotice) {
+    void vscode.window.showInformationMessage(
+      `Deck updated to ${currentVersion}`,
+      "What's New",
+      "Don't show again",
+    ).then(async (choice) => {
+      if (choice === "What's New") await showWhatsNew();
+      if (choice === "Don't show again") {
+        await vscode.workspace.getConfiguration('deck').update(
+          'showReleaseNotes',
+          false,
+          vscode.ConfigurationTarget.Global,
+        );
+      }
+    });
+  }
+
   const tmuxAvailability = await tmuxPreflight();
   await vscode.commands.executeCommand('setContext', 'deck.tmuxAvailable', tmuxAvailability.available);
   const initialTmuxOptions = deckTmuxOptionsFromSettings();
@@ -567,6 +598,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.reopenTerminals', () => disconnectedTabs.reopenUnwiredTabs()),
     vscode.commands.registerCommand('deck.installAgentHooks', () => agentSetupPrompt.run({ explicit: true })),
     vscode.commands.registerCommand('deck.removeAgentHooks', () => agentSetupPrompt.uninstall()),
+    vscode.commands.registerCommand('deck.whatsNew', showWhatsNew),
     vscode.commands.registerCommand('deck.removeRepository', (node) => removeRepository.run(node)),
     vscode.commands.registerCommand('deck.removeWorktree', (node) => removeWorktree.run(node)),
     vscode.commands.registerCommand('deck.openWorktreeInNewWindow', (node: { worktree: { path: string } }) =>
