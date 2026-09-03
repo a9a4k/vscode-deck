@@ -73,6 +73,8 @@ const vscodeState = vi.hoisted(() => ({
     },
   })),
   executeCommand: vi.fn(),
+  getCommands: vi.fn(async () => ['workbench.action.browser.open']),
+  openExternal: vi.fn(async () => true),
   terminalRemovalRun: vi.fn(),
   terminalRemovalArgs: undefined as unknown[] | undefined,
   lifecycleOrder: [] as string[],
@@ -196,15 +198,18 @@ vi.mock('vscode', () => ({
   },
   commands: {
     executeCommand: vscodeState.executeCommand,
+    getCommands: vscodeState.getCommands,
     registerCommand: vscodeState.registerCommand,
   },
   env: {
     clipboard: {
       readText: vi.fn(async () => vscodeState.clipboardText),
     },
+    openExternal: vscodeState.openExternal,
   },
   Uri: {
     file: (path: string) => ({ fsPath: path }),
+    parse: (value: string) => ({ value }),
     joinPath: (base: unknown, ...paths: string[]) => ({ base, paths }),
     from(value: { scheme: string; authority: string; path: string; query: string }) {
       return value;
@@ -1300,6 +1305,23 @@ describe('activate', () => {
     expect(context.values['deck.bookmarks']).toEqual({
       '/work/repo': [{ url: 'https://example.com/docs' }],
     });
+  });
+
+  it('opens a Bookmark row through the registered command', async () => {
+    const context = createContext();
+
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.openBookmark',
+    );
+    if (!registration) throw new Error('missing deck.openBookmark registration');
+    const node = { bookmark: { url: 'https://example.com/docs' } };
+    await registration[1](node);
+
+    expect(vscodeState.executeCommand).toHaveBeenCalledWith(
+      'workbench.action.browser.open',
+      { url: node.bookmark.url, reuseUrlFilter: node.bookmark.url },
+    );
   });
 
   it('registers deck.runLauncher through RunLauncherCommand', async () => {

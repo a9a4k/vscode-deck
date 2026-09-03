@@ -201,6 +201,27 @@ describe('package contributions', () => {
     });
   });
 
+  it('contributes a native external-link action on Bookmark rows', () => {
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.openBookmark',
+      title: 'Open Bookmark',
+    });
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.openBookmarkInDefaultBrowser',
+      title: 'Open in Default Browser',
+      icon: '$(link-external)',
+    });
+    expect(pkg.contributes.menus['view/item/context']).toContainEqual({
+      command: 'deck.openBookmarkInDefaultBrowser',
+      when: 'view == deck.repositories && viewItem == deck.bookmark',
+      group: 'inline',
+    });
+    expect(pkg.contributes.menus.commandPalette).toEqual(expect.arrayContaining([
+      { command: 'deck.openBookmark', when: 'false' },
+      { command: 'deck.openBookmarkInDefaultBrowser', when: 'false' },
+    ]));
+  });
+
   it('contributes Deck Terminal find command and keybindings', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.terminal.find',

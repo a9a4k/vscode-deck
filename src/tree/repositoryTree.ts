@@ -178,6 +178,11 @@ class BookmarkNode extends vscode.TreeItem {
     this.tooltip = bookmark.url;
     this.contextValue = 'deck.bookmark';
     this.iconPath = new vscode.ThemeIcon('deck-bookmark-globe');
+    this.command = {
+      command: 'deck.openBookmark',
+      title: 'Open Bookmark',
+      arguments: [this],
+    };
   }
 }
 

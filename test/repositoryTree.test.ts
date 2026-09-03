@@ -1064,7 +1064,7 @@ describe('RepositoryTreeProvider', () => {
         tooltip: 'https://github.com/org/repo/pull/186',
         contextValue: 'deck.bookmark',
         iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
-        command: undefined,
+        command: expect.objectContaining({ command: 'deck.openBookmark' }),
       }),
       expect.objectContaining({
         label: 'App',
@@ -1072,7 +1072,7 @@ describe('RepositoryTreeProvider', () => {
         tooltip: 'http://localhost:5173/',
         contextValue: 'deck.bookmark',
         iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
-        command: undefined,
+        command: expect.objectContaining({ command: 'deck.openBookmark' }),
       }),
     ]);
   });

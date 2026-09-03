@@ -261,6 +261,15 @@
         "icon": "$(globe)"
       },
       {
+        "command": "deck.openBookmark",
+        "title": "Open Bookmark"
+      },
+      {
+        "command": "deck.openBookmarkInDefaultBrowser",
+        "title": "Open in Default Browser",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "deck.runLauncher",
         "title": "Run Terminal Launcher",
         "icon": "$(play)"
@@ -372,6 +381,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "deck.openBookmarkInDefaultBrowser",
+          "when": "view == deck.repositories && viewItem == deck.bookmark",
+          "group": "inline"
+        },
+        {
           "command": "deck.removeRepository",
           "when": "view == deck.repositories && viewItem == deck.repository",
           "group": "navigation"
@@ -442,6 +456,14 @@
         },
         {
           "command": "deck.openTerminalInNewWindow",
+          "when": "false"
+        },
+        {
+          "command": "deck.openBookmark",
+          "when": "false"
+        },
+        {
+          "command": "deck.openBookmarkInDefaultBrowser",
           "when": "false"
         }
       ]
