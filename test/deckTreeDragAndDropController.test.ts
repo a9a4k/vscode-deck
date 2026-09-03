@@ -35,6 +35,7 @@ vi.mock('../src/tree/discoverySeedsFromDrop', () => ({
 }));
 
 import * as vscode from 'vscode';
+import { BookmarkStore } from '../src/bookmark/bookmarkStore';
 import { RepositoryRegistryStore } from '../src/repository/repositoryRegistryStore';
 import { TerminalOrderStore } from '../src/terminal/terminalOrderStore';
 import { DeckTreeDragAndDropController } from '../src/tree/deckTreeDragAndDropController';
@@ -109,6 +110,7 @@ function createController(refresh = vi.fn()) {
   };
   const bookmarks = {
     list: vi.fn(() => [{ url: 'http://localhost:5173/' }]),
+    move: vi.fn(async () => undefined),
   };
   const activeWorktrees = { set: vi.fn(async () => undefined) };
   const switcher = { switchTo: vi.fn(async () => undefined) };
@@ -137,6 +139,29 @@ function createController(refresh = vi.fn()) {
     terminalOrders,
     worktreeOrders,
   };
+}
+
+function createBookmarkMoveController() {
+  const values: Record<string, unknown> = {};
+  const memento = {
+    get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+    update: async (key: string, value: unknown) => {
+      values[key] = value;
+    },
+  };
+  const bookmarks = new BookmarkStore(memento);
+  const terminalOrders = new TerminalOrderStore(memento);
+  const refresh = vi.fn();
+  const controller = new DeckTreeDragAndDropController(
+    refresh,
+    new RepositoryRegistryStore(memento),
+    new WorktreeOrderStore(memento),
+    terminalOrders,
+    { listSessions: vscodeState.listSessions },
+    bookmarks,
+  );
+
+  return { bookmarks, controller, refresh, terminalOrders };
 }
 
 describe('DeckTreeDragAndDropController', () => {
@@ -326,6 +351,123 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-3',
     ]);
     expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
+  });
+
+  it('moves a Bookmark across Repositories onto a Worktree and appends it to its rows', async () => {
+    const { bookmarks, controller, refresh, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/192';
+    const moved = { url, label: 'PR 192' };
+    const targetBookmark = { url: 'https://example.com/target' };
+    await bookmarks.add('/repo/a-main', moved);
+    await bookmarks.add('/repo/b-main', targetBookmark);
+    await terminalOrders.set('/repo/a-main', ['wt-_repo_a-main__term-1', url]);
+    await terminalOrders.set('/repo/b-main', [
+      targetBookmark.url,
+      'wt-_repo_b-main__term-1',
+    ]);
+    vscodeState.listSessions.mockImplementation(async (prefix: string | undefined) => {
+      if (prefix === 'wt-_repo_a-main__term-') {
+        return [{ sessionName: 'wt-_repo_a-main__term-1', windowName: 'source' }];
+      }
+      return [{ sessionName: 'wt-_repo_b-main__term-1', windowName: 'target' }];
+    });
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      worktree('/repo/b', '/repo/b-main'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(bookmarks.list('/repo/a-main')).toEqual([]);
+    expect(bookmarks.list('/repo/b-main')).toEqual([targetBookmark, moved]);
+    expect(terminalOrders.get('/repo/a-main')).toEqual([
+      'wt-_repo_a-main__term-1',
+    ]);
+    expect(terminalOrders.get('/repo/b-main')).toEqual([
+      targetBookmark.url,
+      'wt-_repo_b-main__term-1',
+      url,
+    ]);
+    expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
+    expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/b-main' });
+  });
+
+  it('moves a Bookmark to a specific position among another Worktree rows', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/192';
+    await bookmarks.add('/repo/a-main', { url });
+    await terminalOrders.set('/repo/a-main', ['wt-_repo_a-main__term-1', url]);
+    await terminalOrders.set('/repo/a-feature', [
+      'wt-_repo_a-feature__term-1',
+      'wt-_repo_a-feature__term-2',
+    ]);
+    vscodeState.listSessions.mockImplementation(async (prefix: string | undefined) => (
+      prefix === 'wt-_repo_a-main__term-'
+        ? [{ sessionName: 'wt-_repo_a-main__term-1', windowName: 'source' }]
+        : [
+            { sessionName: 'wt-_repo_a-feature__term-1', windowName: 'first' },
+            { sessionName: 'wt-_repo_a-feature__term-2', windowName: 'second' },
+          ]
+    ));
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-feature', 'wt-_repo_a-feature__term-2'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(bookmarks.list('/repo/a-main')).toEqual([]);
+    expect(bookmarks.list('/repo/a-feature')).toEqual([{ url }]);
+    expect(terminalOrders.get('/repo/a-feature')).toEqual([
+      'wt-_repo_a-feature__term-1',
+      url,
+      'wt-_repo_a-feature__term-2',
+    ]);
+  });
+
+  it('does not duplicate a target Worktree row that already has the moved Bookmark URL', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/192';
+    await bookmarks.add('/repo/a-main', { url, label: 'Source label' });
+    await bookmarks.add('/repo/a-feature', { url, label: 'Target label' });
+    await terminalOrders.set('/repo/a-main', ['wt-_repo_a-main__term-1', url]);
+    await terminalOrders.set('/repo/a-feature', ['wt-_repo_a-feature__term-1', url]);
+    vscodeState.listSessions.mockImplementation(async (prefix: string | undefined) => (
+      prefix === 'wt-_repo_a-main__term-'
+        ? [{ sessionName: 'wt-_repo_a-main__term-1', windowName: 'source' }]
+        : [{ sessionName: 'wt-_repo_a-feature__term-1', windowName: 'target' }]
+    ));
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      worktree('/repo/a', '/repo/a-feature'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(bookmarks.list('/repo/a-main')).toEqual([]);
+    expect(bookmarks.list('/repo/a-feature')).toEqual([{ url, label: 'Source label' }]);
+    expect(terminalOrders.get('/repo/a-feature')).toEqual([
+      'wt-_repo_a-feature__term-1',
+      url,
+    ]);
   });
 
   it('reorders an internal Terminal drag even when VS Code also adds a resourceUri uri-list', async () => {

@@ -25,6 +25,13 @@ import { DropPosition, reorderArray } from './reorderArray';
 const DECK_TREE_MIME = 'application/vnd.code.tree.deck.repositories';
 const URI_LIST_MIME = 'text/uri-list';
 
+type RowDragPayload = {
+  kind: 'row';
+  rowKind: 'terminal' | 'bookmark';
+  sourceKey: string;
+  worktreePath: string;
+};
+
 type DragPayload =
   | {
       kind: 'repository';
@@ -35,11 +42,7 @@ type DragPayload =
       sourcePath: string;
       repositoryPath: string;
     }
-  | {
-      kind: 'row';
-      sourceKey: string;
-      worktreePath: string;
-    };
+  | RowDragPayload;
 
 interface DeckNodeLike {
   contextValue?: string;
@@ -103,7 +106,7 @@ export class DeckTreeDragAndDropController
     private readonly worktreeOrders: WorktreeOrderStore,
     private readonly terminalOrders: Pick<TerminalOrderStore, 'get' | 'set'>,
     private readonly tmux: TerminalSessionLister,
-    private readonly bookmarks: Pick<BookmarkStore, 'list'>,
+    private readonly bookmarks: Pick<BookmarkStore, 'list' | 'move'>,
     private readonly activeWorktrees?: ActiveWorktreeStoreLike,
     private readonly switcher?: SwitcherLike,
     private readonly detachedOpener?: DetachedOpenerLike,
@@ -234,6 +237,22 @@ export class DeckTreeDragAndDropController
     payload: Extract<DragPayload, { kind: 'row' }>,
     target: DeckNodeLike,
   ): Promise<void> {
+    const targetWorktreePath = isWorktreeNode(target)
+      ? target.worktree.path
+      : isRowNode(target) ? target.worktreePath : undefined;
+    if (
+      payload.rowKind === 'bookmark'
+      && targetWorktreePath !== undefined
+      && payload.worktreePath !== targetWorktreePath
+    ) {
+      await this.moveBookmark(
+        payload,
+        targetWorktreePath,
+        isRowNode(target) ? rowKey(target) : undefined,
+      );
+      return;
+    }
+
     if (!isRowNode(target) || payload.worktreePath !== target.worktreePath) return;
 
     const liveSessions = await this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath));
@@ -257,6 +276,45 @@ export class DeckTreeDragAndDropController
     await this.terminalOrders.set(payload.worktreePath, reordered);
     this.refresh({ worktreePath: payload.worktreePath });
   }
+
+  private async moveBookmark(
+    payload: RowDragPayload,
+    targetWorktreePath: string,
+    targetKey?: string,
+  ): Promise<void> {
+    const sourceBookmarks = this.bookmarks.list(payload.worktreePath);
+    if (!sourceBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) return;
+
+    const targetBookmarks = this.bookmarks.list(targetWorktreePath);
+    const [sourceSessions, targetSessions] = await Promise.all([
+      this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
+      this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
+    ]);
+    const sourceOrder = reconcileRowOrder(
+      this.terminalOrders.get(payload.worktreePath),
+      sourceSessions,
+      sourceBookmarks,
+    )
+      .map((row) => row.key)
+      .filter((key) => key !== payload.sourceKey);
+    let targetOrder = reconcileRowOrder(
+      this.terminalOrders.get(targetWorktreePath),
+      targetSessions,
+      targetBookmarks,
+    ).map((row) => row.key);
+    if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
+      targetOrder.push(payload.sourceKey);
+      if (targetKey !== undefined) {
+        targetOrder = reorderArray(targetOrder, payload.sourceKey, targetKey, 'above');
+      }
+    }
+
+    await this.bookmarks.move(payload.worktreePath, targetWorktreePath, payload.sourceKey);
+    await this.terminalOrders.set(payload.worktreePath, sourceOrder);
+    await this.terminalOrders.set(targetWorktreePath, targetOrder);
+    this.refresh({ worktreePath: payload.worktreePath });
+    this.refresh({ worktreePath: targetWorktreePath });
+  }
 }
 
 function toPayload(node: DeckNodeLike): DragPayload | undefined {
@@ -273,6 +331,7 @@ function toPayload(node: DeckNodeLike): DragPayload | undefined {
   if (isRowNode(node)) {
     return {
       kind: 'row',
+      rowKind: isTerminalNode(node) ? 'terminal' : 'bookmark',
       sourceKey: rowKey(node),
       worktreePath: node.worktreePath,
     };

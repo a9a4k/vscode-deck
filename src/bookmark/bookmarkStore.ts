@@ -26,6 +26,23 @@ export class BookmarkStore {
     return bookmark;
   }
 
+  async move(sourceWorktreePath: string, targetWorktreePath: string, url: string): Promise<void> {
+    if (sourceWorktreePath === targetWorktreePath) return;
+
+    const bookmark = this.list(sourceWorktreePath).find((candidate) => candidate.url === url);
+    if (!bookmark) return;
+
+    const targetBookmarks = this.list(targetWorktreePath);
+    await this.memento.update(BOOKMARKS_KEY, {
+      ...this.all(),
+      [sourceWorktreePath]: this.list(sourceWorktreePath)
+        .filter((candidate) => candidate.url !== url),
+      [targetWorktreePath]: targetBookmarks.some((candidate) => candidate.url === url)
+        ? targetBookmarks.map((candidate) => candidate.url === url ? bookmark : candidate)
+        : [...targetBookmarks, bookmark],
+    });
+  }
+
   async remove(worktreePath: string, url: string): Promise<void> {
     await this.memento.update(BOOKMARKS_KEY, {
       ...this.all(),
