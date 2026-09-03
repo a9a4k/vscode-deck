@@ -1386,6 +1386,28 @@ describe('activate', () => {
     );
   });
 
+  it('renames and refreshes a Bookmark through the registered row command', async () => {
+    const context = createContext();
+    const bookmark = { url: 'https://example.com/docs', label: 'Docs' };
+    context.values['deck.bookmarks'] = { '/work/repo': [bookmark] };
+    vscodeState.showInputBox.mockResolvedValue('API Docs');
+
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.renameBookmark',
+    );
+    if (!registration) throw new Error('missing deck.renameBookmark registration');
+    await registration[1]({
+      bookmark,
+      worktreeNode: { worktree: { path: '/work/repo' } },
+    });
+
+    expect(context.values['deck.bookmarks']).toEqual({
+      '/work/repo': [{ url: 'https://example.com/docs', label: 'API Docs' }],
+    });
+    expect(vscodeState.repositoryTreeInstances[0].refreshWorktree).toHaveBeenCalledWith('/work/repo');
+  });
+
   it('registers deck.runLauncher through RunLauncherCommand', async () => {
     const context = createContext();
 

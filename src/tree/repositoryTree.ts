@@ -170,7 +170,7 @@ class TerminalNode extends vscode.TreeItem {
 
 class BookmarkNode extends vscode.TreeItem {
   constructor(
-    public readonly bookmark: Bookmark,
+    public bookmark: Bookmark,
     public readonly worktreeNode: WorktreeNode,
   ) {
     super(bookmark.label ?? deriveBookmarkLabel(bookmark.url), vscode.TreeItemCollapsibleState.None);
@@ -191,6 +191,11 @@ class BookmarkNode extends vscode.TreeItem {
 
   get worktreePath(): string {
     return this.worktreeNode.worktree.path;
+  }
+
+  update(bookmark: Bookmark): void {
+    this.bookmark = bookmark;
+    this.label = bookmark.label ?? deriveBookmarkLabel(bookmark.url);
   }
 }
 
@@ -610,7 +615,10 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     const nodes = bookmarks.map((bookmark) => {
       const key = this.bookmarkKey(element.worktree.path, bookmark.url);
       const existing = this.renderedBookmarks.get(key);
-      if (existing) return existing;
+      if (existing) {
+        existing.update(bookmark);
+        return existing;
+      }
       const node = new BookmarkNode(bookmark, element);
       this.renderedBookmarks.set(key, node);
       return node;

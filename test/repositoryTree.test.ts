@@ -1087,6 +1087,55 @@ describe('RepositoryTreeProvider', () => {
     ]);
   });
 
+  it('updates cached Bookmark rows for custom and derived labels', async () => {
+    const values: Record<string, unknown> = {};
+    const bookmarks = new BookmarkStore({
+      get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+      update: async (key: string, value: unknown) => {
+        values[key] = value;
+      },
+    });
+    await bookmarks.add('/work/alpha-main', { url: 'https://example.com/products/one' });
+    await bookmarks.add('/work/alpha-main', { url: 'https://example.com/products/two' });
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      observedModel([]),
+      true,
+      new Set(),
+      undefined,
+      undefined,
+      bookmarks,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+    provider.getChildren(worktrees[0]);
+
+    await bookmarks.rename('/work/alpha-main', 'https://example.com/products/one', 'Frontend');
+    await bookmarks.rename('/work/alpha-main', 'https://example.com/products/two', 'Admin');
+    provider.refreshWorktree('/work/alpha-main');
+    let rows = provider.getChildren(worktrees[0]);
+
+    expect((rows as Array<{ label: string }>).map(({ label }) => label)).toEqual([
+      'Frontend',
+      'Admin',
+    ]);
+
+    await bookmarks.rename('/work/alpha-main', 'https://example.com/products/one', undefined);
+    provider.refreshWorktree('/work/alpha-main');
+    rows = provider.getChildren(worktrees[0]);
+
+    expect((rows as Array<{ label: string }>).map(({ label }) => label)).toEqual([
+      'products/one',
+      'Admin',
+    ]);
+  });
+
   it('relabels only the changed rendered Terminal row', () => {
     const model = observedModel([
       { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },

@@ -81,6 +81,7 @@ import { BookmarkOpener } from './bookmark/bookmarkOpener';
 import { appendBookmarkToRowOrder } from './tree/reconcileRowOrder';
 import { RemoveBookmarkCommand } from './bookmark/removeBookmarkCommand';
 import { BookmarkCascade } from './bookmark/bookmarkCascade';
+import { RenameBookmarkCommand } from './bookmark/renameBookmarkCommand';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -465,6 +466,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     terminalOrders,
     (worktreePath) => tree.refreshWorktree(worktreePath),
   );
+  const renameBookmark = new RenameBookmarkCommand(bookmarks, (worktreePath) => {
+    tree.refreshWorktree(worktreePath);
+  });
   const revealRepository = async (repositoryPath: string) => {
     const roots = tree.getChildren();
     if (!Array.isArray(roots)) return;
@@ -627,6 +631,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.openBookmarkInDefaultBrowser', (node) =>
       bookmarkOpener.openInDefaultBrowser(node)),
     vscode.commands.registerCommand('deck.removeBookmark', (node) => removeBookmark.run(node)),
+    vscode.commands.registerCommand('deck.renameBookmark', (node) => renameBookmark.run(node)),
     vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>
