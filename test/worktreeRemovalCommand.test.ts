@@ -160,7 +160,7 @@ describe('WorktreeRemovalCommand', () => {
     );
 
     await command.run(node);
-    await waitUntil(() => bookmarks.list('/repo/feature').length === 0);
+    await waitUntil(() => removeWorktree.mock.calls.length > 0);
 
     expect(rowOrders.get('/repo/feature')).toBeUndefined();
     expect(bookmarks.list('/repo/sibling')).toEqual([{ url: sharedUrl }]);

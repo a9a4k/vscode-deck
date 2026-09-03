@@ -228,6 +228,6 @@ async function bestEffort(action: () => Promise<void>): Promise<void> {
   try {
     await action();
   } catch {
-    // Row cleanup must not block git removal.
+    // Cascade cleanup must not block git removal.
   }
 }
