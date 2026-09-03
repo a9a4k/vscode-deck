@@ -35,7 +35,7 @@ describe('TmuxControlClient', () => {
       '/work/repo',
     ], { cwd: '/work/repo', stdio: 'pipe' });
     expect(child.writes).toEqual([
-      'list-panes -s -t "=wt-_work_repo__term-1" -F "#{pane_id} #{cursor_y} #{cursor_x} #{alternate_on}"\n',
+      'list-panes -s -t "=wt-_work_repo__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag}"\n',
       'capture-pane -p -e -q -J -N -S -5000\n',
     ]);
   });
@@ -54,7 +54,7 @@ describe('TmuxControlClient', () => {
     await started;
 
     expect(child.writes[0]).toBe(
-      'list-panes -s -t "=wt-_work_my \\"repo\\"\\\\branch__term-1" -F "#{pane_id} #{cursor_y} #{cursor_x} #{alternate_on}"\n',
+      'list-panes -s -t "=wt-_work_my \\"repo\\"\\\\branch__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag}"\n',
     );
   });
 
@@ -101,8 +101,8 @@ describe('TmuxControlClient', () => {
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
     child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
     await untilWrites(child, 1);
-    // pane id + cursor_y + cursor_x
-    child.emitStdout('%begin 1 2 1\n%0 3 7\n%end 1 2 1\n');
+    // pane id, cursor_y, cursor_x
+    child.emitStdout('%begin 1 2 1\n%0,3,7\n%end 1 2 1\n');
     await untilWrites(child, 2);
     child.emitStdout('%begin 1 3 1\nhistory\n%end 1 3 1\n');
     await started;
@@ -120,8 +120,8 @@ describe('TmuxControlClient', () => {
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
     child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
     await untilWrites(child, 1);
-    // pane id + cursor_y + cursor_x + alternate_on=1
-    child.emitStdout('%begin 1 2 1\n%0 3 7 1\n%end 1 2 1\n');
+    // pane id, cursor_y, cursor_x, alternate_on=1
+    child.emitStdout('%begin 1 2 1\n%0,3,7,1\n%end 1 2 1\n');
     await untilWrites(child, 2);
     child.emitStdout('%begin 1 3 1\nframe\n%end 1 3 1\n');
     await started;
@@ -129,6 +129,47 @@ describe('TmuxControlClient', () => {
     // Alt-screen enter first (so the captured frame fills xterm's alternate
     // buffer, not the normal one), then the frame, then the cursor reposition.
     expect(seeds).toEqual(['\x1b[?1049h\x1b[H', 'frame', '\x1b[4;8H']);
+  });
+
+  it('replays the pane terminal modes a running TUI set so a reattached tab keeps mouse reporting', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    const seeds: string[] = [];
+    client.onSeed((seed) => seeds.push(seed));
+
+    const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
+    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
+    await untilWrites(child, 1);
+    // alt screen on; mouse button+SGR tracking on (standard/all off); cursor
+    // hidden; application cursor keys + keypad on; bracketed paste on.
+    child.emitStdout('%begin 1 2 1\n%0,3,7,1,0,1,0,1,0,1,1,1\n%end 1 2 1\n');
+    await untilWrites(child, 2);
+    child.emitStdout('%begin 1 3 1\nframe\n%end 1 3 1\n');
+    await started;
+
+    expect(seeds).toEqual([
+      '\x1b[?1049h\x1b[H\x1b[?1002h\x1b[?1006h\x1b[?25l\x1b[?1h\x1b=\x1b[?2004h',
+      'frame',
+      '\x1b[4;8H',
+    ]);
+  });
+
+  it('tolerates a tmux that lacks a mode format (empty field) without shifting the others', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    const seeds: string[] = [];
+    client.onSeed((seed) => seeds.push(seed));
+
+    const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
+    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
+    await untilWrites(child, 1);
+    // Normal screen, SGR mouse on, cursor visible, bracket_paste_flag unknown.
+    child.emitStdout('%begin 1 2 1\n%0,0,0,0,1,0,0,1,1,0,0,\n%end 1 2 1\n');
+    await untilWrites(child, 2);
+    child.emitStdout('%begin 1 3 1\n$ \n%end 1 3 1\n');
+    await started;
+
+    expect(seeds).toEqual(['\x1b[?1000h\x1b[?1006h', '$ ', '\x1b[1;1H']);
   });
 
   it('opens the output gate even when the seed capture errors', async () => {

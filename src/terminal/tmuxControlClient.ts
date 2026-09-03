@@ -25,6 +25,29 @@ interface PendingReply {
   seed?: boolean;
 }
 
+// Terminal modes a TUI sets once at startup and that a freshly created xterm
+// starts without (mouse reporting, hidden cursor, application cursor keys /
+// keypad, bracketed paste). tmux tracks them per pane and exposes each as a
+// format flag; the seed replays the ones that are on so a reattached tab
+// behaves like the tab the TUI originally configured — a redraw (SIGWINCH)
+// alone does not make TUIs re-send them. Format name, flag value that needs
+// a replay, and the sequence that sets it.
+const PANE_MODES: ReadonlyArray<[format: string, whenFlagIs: '0' | '1', sequence: string]> = [
+  ['mouse_standard_flag', '1', '\x1b[?1000h'],
+  ['mouse_button_flag', '1', '\x1b[?1002h'],
+  ['mouse_all_flag', '1', '\x1b[?1003h'],
+  ['mouse_sgr_flag', '1', '\x1b[?1006h'],
+  ['cursor_flag', '0', '\x1b[?25l'],
+  ['keypad_cursor_flag', '1', '\x1b[?1h'],
+  ['keypad_flag', '1', '\x1b='],
+  ['bracket_paste_flag', '1', '\x1b[?2004h'],
+];
+
+// Comma-separated so a format tmux does not know (older than our preflight
+// floor may lack bracket_paste_flag) expands to an empty field instead of
+// shifting the ones after it.
+const PANE_STATE_FORMAT = ['#{pane_id}', '#{cursor_y}', '#{cursor_x}', '#{alternate_on}', ...PANE_MODES.map(([format]) => `#{${format}}`)].join(',');
+
 export class TmuxControlClient {
   private child: TmuxControlChild | undefined;
   private startPromise: Promise<void> | undefined;
@@ -97,14 +120,14 @@ export class TmuxControlClient {
     // without this the cursor sits at end-of-content until the next redraw. The
     // canonical control-mode client (iTerm2) likewise reads cursor_x/cursor_y as
     // pane state apart from the content.
-    const fields = (await this.command(`list-panes -s -t ${controlModeTarget(sessionName)} -F "#{pane_id} #{cursor_y} #{cursor_x} #{alternate_on}"`))
+    const fields = (await this.command(`list-panes -s -t ${controlModeTarget(sessionName)} -F "${PANE_STATE_FORMAT}"`))
       .trim()
       .split('\n')
       .filter(Boolean);
     if (fields.length !== 1) {
       throw new Error(`expected exactly one tmux pane, got ${fields.length}`);
     }
-    const [paneId, cursorRow, cursorColumn, alternateOn] = fields[0].split(/\s+/);
+    const [paneId, cursorRow, cursorColumn, alternateOn, ...modeFlags] = fields[0].split(',');
     this.paneId = paneId;
 
     // A full-screen TUI (Claude, vim, …) runs in the terminal's alternate screen.
@@ -113,8 +136,12 @@ export class TmuxControlClient {
     // fills xterm's alternate buffer; otherwise the snapshot lands in the normal
     // buffer and bleeds through (stale, with its colours) when the TUI exits the
     // alt screen. The matching exit (\x1b[?1049l) arrives live when the TUI quits.
-    if (alternateOn === '1') {
-      for (const handler of this.seedHandlers) handler('\x1b[?1049h\x1b[H');
+    // The pane's other modes ride along (see PANE_MODES); their matching resets
+    // likewise arrive live from the TUI.
+    const modes = (alternateOn === '1' ? '\x1b[?1049h\x1b[H' : '')
+      + PANE_MODES.map(([, whenFlagIs, sequence], i) => (modeFlags[i] === whenFlagIs ? sequence : '')).join('');
+    if (modes) {
+      for (const handler of this.seedHandlers) handler(modes);
     }
     // -q: a pane that died between attach and capture is not a startup error.
     // -N: preserve trailing spaces (tmux >= 3.1, our preflight floor).
