@@ -222,6 +222,22 @@ describe('package contributions', () => {
     ]));
   });
 
+  it('contributes Remove Bookmark as a Bookmark-only non-destructive action', () => {
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.removeBookmark',
+      title: 'Remove Bookmark',
+    });
+    expect(pkg.contributes.menus['view/item/context']).toContainEqual({
+      command: 'deck.removeBookmark',
+      when: 'view == deck.repositories && viewItem == deck.bookmark',
+      group: 'navigation',
+    });
+    expect(pkg.contributes.menus.commandPalette).toContainEqual({
+      command: 'deck.removeBookmark',
+      when: 'false',
+    });
+  });
+
   it('contributes Deck Terminal find command and keybindings', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.terminal.find',

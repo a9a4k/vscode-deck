@@ -270,6 +270,10 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "deck.removeBookmark",
+        "title": "Remove Bookmark"
+      },
+      {
         "command": "deck.runLauncher",
         "title": "Run Terminal Launcher",
         "icon": "$(play)"
@@ -396,6 +400,11 @@
           "group": "navigation"
         },
         {
+          "command": "deck.removeBookmark",
+          "when": "view == deck.repositories && viewItem == deck.bookmark",
+          "group": "navigation"
+        },
+        {
           "command": "deck.openTerminalInNewWindow",
           "when": "view == deck.repositories && viewItem == deck.terminal.foreign && deck.tmuxAvailable",
           "group": "navigation"
@@ -440,6 +449,10 @@
         },
         {
           "command": "deck.killTerminal",
+          "when": "false"
+        },
+        {
+          "command": "deck.removeBookmark",
           "when": "false"
         },
         {

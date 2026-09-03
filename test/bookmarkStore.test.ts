@@ -55,6 +55,24 @@ describe('BookmarkStore', () => {
     expect(store.list('/work/beta')).toEqual([bookmark]);
   });
 
+  it('removes one Bookmark without touching its siblings or another Worktree', async () => {
+    const { store, values } = createStore();
+    const removed = { url: 'https://example.com/shared' };
+    const kept = { url: 'https://example.com/kept' };
+    await store.add('/work/alpha', removed);
+    await store.add('/work/alpha', kept);
+    await store.add('/work/beta', removed);
+
+    await store.remove('/work/alpha', removed.url);
+
+    expect(store.list('/work/alpha')).toEqual([kept]);
+    expect(store.list('/work/beta')).toEqual([removed]);
+    expect(values[BOOKMARKS_KEY]).toEqual({
+      '/work/alpha': [kept],
+      '/work/beta': [removed],
+    });
+  });
+
   it('clears one Worktree without touching another', async () => {
     const { store, values } = createStore();
     await store.add('/work/alpha', { url: 'https://example.com/alpha' });
