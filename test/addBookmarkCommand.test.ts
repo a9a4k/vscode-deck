@@ -27,8 +27,21 @@ function createCommand() {
       values[key] = value;
     },
   });
+  const effects: string[] = [];
+  const appendToRowOrder = vi.fn(async () => {
+    effects.push('append');
+  });
   const reveal = vi.fn(async () => undefined);
-  return { bookmarks, command: new AddBookmarkCommand(bookmarks, reveal), reveal };
+  reveal.mockImplementation(async () => {
+    effects.push('reveal');
+  });
+  return {
+    appendToRowOrder,
+    bookmarks,
+    command: new AddBookmarkCommand(bookmarks, appendToRowOrder, reveal),
+    effects,
+    reveal,
+  };
 }
 
 describe('AddBookmarkCommand', () => {
@@ -55,6 +68,18 @@ describe('AddBookmarkCommand', () => {
     );
   });
 
+  it('appends a newly pinned Bookmark to the row order before revealing it', async () => {
+    const { appendToRowOrder, command, effects } = createCommand();
+
+    await command.run({ worktree: { path: '/work/alpha' } });
+
+    expect(appendToRowOrder).toHaveBeenCalledWith(
+      '/work/alpha',
+      { url: 'https://github.com/org/repo/pull/186' },
+    );
+    expect(effects).toEqual(['append', 'reveal']);
+  });
+
   it('does not pre-fill the input when the clipboard does not hold an http(s) URL', async () => {
     const { command } = createCommand();
     vscodeState.clipboardText = 'git@github.com:org/repo.git';
@@ -78,12 +103,13 @@ describe('AddBookmarkCommand', () => {
   });
 
   it('reveals the existing row when the URL is already pinned', async () => {
-    const { bookmarks, command, reveal } = createCommand();
+    const { appendToRowOrder, bookmarks, command, reveal } = createCommand();
     const existing = { url: 'https://github.com/org/repo/pull/186', label: 'PR 186' };
     await bookmarks.add('/work/alpha', existing);
 
     await command.run({ worktree: { path: '/work/alpha' } });
 
+    expect(appendToRowOrder).not.toHaveBeenCalled();
     expect(reveal).toHaveBeenCalledWith('/work/alpha', existing);
   });
 });

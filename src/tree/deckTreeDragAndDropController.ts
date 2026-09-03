@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { BookmarkStore } from '../bookmark/bookmarkStore';
 import { getCommonDirSafe, listWorktrees } from '../git/worktrees';
 import {
   ActiveWorktreeStoreLike,
@@ -16,7 +17,7 @@ import { TerminalOrderStore } from '../terminal/terminalOrderStore';
 import type { TmuxSession } from '../terminal/tmuxCli';
 import { terminalSessionPrefix } from '../terminal/tmuxSafe';
 import { WorktreeOrderStore } from '../worktree/worktreeOrderStore';
-import { reconcileTerminalOrder } from './reconcileTerminalOrder';
+import { reconcileRowOrder } from './reconcileRowOrder';
 import { reconcileWorktreeOrder } from './reconcileWorktreeOrder';
 import { discoverySeedsFromDrop } from './discoverySeedsFromDrop';
 import { DropPosition, reorderArray } from './reorderArray';
@@ -35,8 +36,8 @@ type DragPayload =
       repositoryPath: string;
     }
   | {
-      kind: 'terminal';
-      sourceSessionName: string;
+      kind: 'row';
+      sourceKey: string;
       worktreePath: string;
     };
 
@@ -49,6 +50,9 @@ interface DeckNodeLike {
   worktreePath?: string;
   terminal?: {
     sessionName: string;
+  };
+  bookmark?: {
+    url: string;
   };
 }
 
@@ -71,6 +75,14 @@ interface TerminalNodeLike extends DeckNodeLike {
   };
 }
 
+interface BookmarkNodeLike extends DeckNodeLike {
+  repositoryPath: string;
+  worktreePath: string;
+  bookmark: {
+    url: string;
+  };
+}
+
 interface TerminalSessionLister {
   listSessions(prefix?: string): Promise<TmuxSession[]>;
 }
@@ -89,8 +101,9 @@ export class DeckTreeDragAndDropController
     private readonly refresh: (scope?: TreeRefreshScope) => void,
     private readonly repositoryRegistry: Pick<RepositoryRegistryStore, 'list' | 'append' | 'replace'>,
     private readonly worktreeOrders: WorktreeOrderStore,
-    private readonly terminalOrders?: Pick<TerminalOrderStore, 'get' | 'set'>,
-    private readonly tmux?: TerminalSessionLister,
+    private readonly terminalOrders: Pick<TerminalOrderStore, 'get' | 'set'>,
+    private readonly tmux: TerminalSessionLister,
+    private readonly bookmarks: Pick<BookmarkStore, 'list'>,
     private readonly activeWorktrees?: ActiveWorktreeStoreLike,
     private readonly switcher?: SwitcherLike,
     private readonly detachedOpener?: DetachedOpenerLike,
@@ -132,9 +145,9 @@ export class DeckTreeDragAndDropController
       return;
     }
 
-    if (payload.kind === 'terminal') {
+    if (payload.kind === 'row') {
       if (!target) return;
-      await this.dropTerminal(payload, target);
+      await this.dropRow(payload, target);
       return;
     }
 
@@ -217,28 +230,29 @@ export class DeckTreeDragAndDropController
     this.refresh({ repositoryPath: payload.repositoryPath });
   }
 
-  private async dropTerminal(
-    payload: Extract<DragPayload, { kind: 'terminal' }>,
+  private async dropRow(
+    payload: Extract<DragPayload, { kind: 'row' }>,
     target: DeckNodeLike,
   ): Promise<void> {
-    if (!isTerminalNode(target) || payload.worktreePath !== target.worktreePath) return;
-    if (!this.terminalOrders || !this.tmux) return;
+    if (!isRowNode(target) || payload.worktreePath !== target.worktreePath) return;
 
     const liveSessions = await this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath));
-    const sessions = reconcileTerminalOrder(
+    const rows = reconcileRowOrder(
       this.terminalOrders.get(payload.worktreePath),
       liveSessions,
+      this.bookmarks.list(payload.worktreePath),
     );
-    const sessionNames = sessions.map((session) => session.sessionName);
-    const position = dropPosition(sessionNames, payload.sourceSessionName, target.terminal.sessionName);
+    const keys = rows.map((row) => row.key);
+    const targetKey = rowKey(target);
+    const position = dropPosition(keys, payload.sourceKey, targetKey);
     const reordered = reorderArray(
-      sessionNames,
-      payload.sourceSessionName,
-      target.terminal.sessionName,
+      keys,
+      payload.sourceKey,
+      targetKey,
       position,
     );
 
-    if (sameOrder(sessionNames, reordered)) return;
+    if (sameOrder(keys, reordered)) return;
 
     await this.terminalOrders.set(payload.worktreePath, reordered);
     this.refresh({ worktreePath: payload.worktreePath });
@@ -256,10 +270,10 @@ function toPayload(node: DeckNodeLike): DragPayload | undefined {
       repositoryPath: node.repositoryPath,
     };
   }
-  if (isTerminalNode(node)) {
+  if (isRowNode(node)) {
     return {
-      kind: 'terminal',
-      sourceSessionName: node.terminal.sessionName,
+      kind: 'row',
+      sourceKey: rowKey(node),
       worktreePath: node.worktreePath,
     };
   }
@@ -288,6 +302,23 @@ function isTerminalNode(node: DeckNodeLike): node is TerminalNodeLike {
     && node.worktreePath !== undefined
     && node.terminal !== undefined
   );
+}
+
+function isBookmarkNode(node: DeckNodeLike): node is BookmarkNodeLike {
+  return (
+    node.contextValue === 'deck.bookmark'
+    && node.repositoryPath !== undefined
+    && node.worktreePath !== undefined
+    && node.bookmark !== undefined
+  );
+}
+
+function isRowNode(node: DeckNodeLike): node is TerminalNodeLike | BookmarkNodeLike {
+  return isTerminalNode(node) || isBookmarkNode(node);
+}
+
+function rowKey(node: TerminalNodeLike | BookmarkNodeLike): string {
+  return isTerminalNode(node) ? node.terminal.sessionName : node.bookmark.url;
 }
 
 function dropPosition(

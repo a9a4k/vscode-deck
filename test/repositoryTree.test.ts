@@ -1023,7 +1023,7 @@ describe('RepositoryTreeProvider', () => {
     expect(terminalOrders.get).toHaveBeenCalledWith('/work/alpha-main');
   });
 
-  it('renders local Bookmarks after Terminals in store order with label-only globe rows', async () => {
+  it('renders Bookmarks and Terminals in one stored row order', async () => {
     const values: Record<string, unknown> = {};
     const bookmarks = new BookmarkStore({
       get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
@@ -1033,6 +1033,14 @@ describe('RepositoryTreeProvider', () => {
     });
     await bookmarks.add('/work/alpha-main', { url: 'https://github.com/org/repo/pull/186' });
     await bookmarks.add('/work/alpha-main', { url: 'http://localhost:5173/', label: 'App' });
+    const terminalOrders = {
+      get: vi.fn(() => [
+        'wt-_work_alpha-main__term-1',
+        'https://github.com/org/repo/pull/186',
+        'wt-_work_alpha-main__term-2',
+        'http://localhost:5173/',
+      ]),
+    } as unknown as TerminalOrderStore;
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
@@ -1041,11 +1049,12 @@ describe('RepositoryTreeProvider', () => {
       knownCommonDirs(),
       observedModel([
         { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+        { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'server' },
       ]),
       true,
       new Set(),
       undefined,
-      undefined,
+      terminalOrders,
       bookmarks,
     );
     const repositories = provider.getChildren();
@@ -1066,6 +1075,7 @@ describe('RepositoryTreeProvider', () => {
         iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
         command: expect.objectContaining({ command: 'deck.openBookmark' }),
       }),
+      expect.objectContaining({ label: 'server', contextValue: 'deck.terminal.foreign' }),
       expect.objectContaining({
         label: 'App',
         description: undefined,

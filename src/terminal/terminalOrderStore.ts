@@ -9,10 +9,10 @@ export class TerminalOrderStore {
     return this.all()[worktreePath];
   }
 
-  async set(worktreePath: string, sessionNames: readonly string[]): Promise<void> {
+  async set(worktreePath: string, rowKeys: readonly string[]): Promise<void> {
     await this.memento.update(TERMINAL_ORDERS_KEY, {
       ...this.all(),
-      [worktreePath]: [...sessionNames],
+      [worktreePath]: [...rowKeys],
     });
   }
 

@@ -78,6 +78,7 @@ import { ReleaseNoticeStore } from './releaseNoticeStore';
 import { BookmarkStore } from './bookmark/bookmarkStore';
 import { AddBookmarkCommand } from './bookmark/addBookmarkCommand';
 import { BookmarkOpener } from './bookmark/bookmarkOpener';
+import { appendBookmarkToRowOrder } from './tree/reconcileRowOrder';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -280,6 +281,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     model: terminalModel,
     restoreTerminalSnapshot: ensureSnapshotRestored,
     terminalOrders,
+    bookmarks,
     listTerminalLocations: () => terminalLocations(
       repositoryRegistry,
       repositoryCommonDirCache,
@@ -432,12 +434,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repositoryCommonDirCache,
     worktreeCreateLaunchers,
   );
-  const addBookmark = new AddBookmarkCommand(bookmarks, async (worktreePath, bookmark) => {
-    tree.refreshWorktree(worktreePath);
-    const bookmarkNode = tree.findBookmark(bookmark.url, worktreePath);
-    if (!bookmarkNode || !treeView) return;
-    await treeView.reveal(bookmarkNode, { select: true, focus: false });
-  });
+  const addBookmark = new AddBookmarkCommand(
+    bookmarks,
+    async (worktreePath, bookmark) => {
+      const rowKeys = appendBookmarkToRowOrder(
+        terminalOrders.get(worktreePath),
+        terminalModel.get(worktreePath),
+        bookmarks.list(worktreePath),
+        bookmark,
+      );
+      await terminalOrders.set(worktreePath, rowKeys);
+    },
+    async (worktreePath, bookmark) => {
+      tree.refreshWorktree(worktreePath);
+      const bookmarkNode = tree.findBookmark(bookmark.url, worktreePath);
+      if (!bookmarkNode || !treeView) return;
+      await treeView.reveal(bookmarkNode, { select: true, focus: false });
+    },
+  );
   const bookmarkOpener = new BookmarkOpener({
     getCommands: () => vscode.commands.getCommands(),
     executeCommand: (command, argument) => vscode.commands.executeCommand(command, argument),
@@ -460,6 +474,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     worktreeOrders,
     terminalOrders,
     tmux,
+    bookmarks,
     activeWorktrees,
     switcher,
     detachedOpener,

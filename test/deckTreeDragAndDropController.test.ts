@@ -73,6 +73,15 @@ function terminal(repositoryPath: string, worktreePath: string, sessionName: str
   };
 }
 
+function bookmark(repositoryPath: string, worktreePath: string, url: string) {
+  return {
+    contextValue: 'deck.bookmark',
+    repositoryPath,
+    worktreePath,
+    bookmark: { url },
+  };
+}
+
 function createController(refresh = vi.fn()) {
   const repositoryRegistry = {
     list: vi.fn(() => vscodeState.repositories),
@@ -98,6 +107,9 @@ function createController(refresh = vi.fn()) {
   const tmux = {
     listSessions: vscodeState.listSessions,
   };
+  const bookmarks = {
+    list: vi.fn(() => [{ url: 'http://localhost:5173/' }]),
+  };
   const activeWorktrees = { set: vi.fn(async () => undefined) };
   const switcher = { switchTo: vi.fn(async () => undefined) };
   const detachedOpener = { open: vi.fn(async () => undefined) };
@@ -110,11 +122,13 @@ function createController(refresh = vi.fn()) {
       worktreeOrders,
       terminalOrders,
       tmux,
+      bookmarks,
       activeWorktrees,
       switcher,
       detachedOpener,
       reveal,
     ),
+    bookmarks,
     detachedOpener,
     repositoryRegistry,
     refresh,
@@ -280,6 +294,36 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-3',
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
+    ]);
+    expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
+  });
+
+  it('reorders a Bookmark among its Worktree rows', async () => {
+    const { controller, refresh, terminalOrders } = createController();
+    vi.mocked(terminalOrders.get).mockReturnValue([
+      'wt-_repo_a-main__term-1',
+      'wt-_repo_a-main__term-2',
+      'wt-_repo_a-main__term-3',
+      'http://localhost:5173/',
+    ]);
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', 'http://localhost:5173/')],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-main', 'wt-_repo_a-main__term-2'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(terminalOrders.set).toHaveBeenCalledWith('/repo/a-main', [
+      'wt-_repo_a-main__term-1',
+      'http://localhost:5173/',
+      'wt-_repo_a-main__term-2',
+      'wt-_repo_a-main__term-3',
     ]);
     expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
   });

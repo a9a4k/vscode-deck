@@ -1,5 +1,6 @@
 import type { AgentStatusDecorationTerminal } from '../agent/agentStatusDecorations';
-import { pruneOrder } from '../tree/pruneOrder';
+import type { Bookmark } from '../bookmark/bookmarkStore';
+import { pruneRowOrder } from '../tree/pruneRowOrder';
 import { classifyObservation } from './observationTrust';
 import type { TerminalModel, TerminalModelSession } from './terminalModel';
 import type { TmuxSession } from './tmuxCli';
@@ -15,10 +16,15 @@ interface TerminalOrderWriter {
   set(worktreePath: string, order: readonly string[]): Promise<void>;
 }
 
+interface BookmarkReader {
+  list(worktreePath: string): readonly Bookmark[];
+}
+
 interface TerminalReconcilerOptions {
   model: TerminalModel;
   restoreTerminalSnapshot(): Promise<void>;
   terminalOrders: TerminalOrderWriter;
+  bookmarks: BookmarkReader;
   listTerminalLocations(): readonly TerminalLocation[];
   updateTerminalDecorations(terminals: readonly AgentStatusDecorationTerminal[]): void;
   wakeAgentExitSweep(): void;
@@ -54,7 +60,7 @@ export class TerminalReconciler {
 
     const worktreeDiffs = this.options.model.apply(sessions);
     const locations = uniqueLocations(this.options.listTerminalLocations());
-    await this.pruneTerminalOrders(locations);
+    await this.pruneRowOrders(locations);
     this.options.updateTerminalDecorations(decorationTerminals(this.options.model, locations));
 
     if (worktreeDiffs.some((worktreeDiff) => worktreeDiff.removed.length > 0)) {
@@ -82,14 +88,17 @@ export class TerminalReconciler {
     }
   }
 
-  private async pruneTerminalOrders(locations: readonly TerminalLocation[]): Promise<void> {
+  private async pruneRowOrders(locations: readonly TerminalLocation[]): Promise<void> {
     for (const location of locations) {
       const order = this.options.terminalOrders.get(location.worktreePath);
       if (order === undefined) continue;
       const liveSessionNames = new Set(
         this.options.model.get(location.worktreePath).map((terminal) => terminal.sessionName),
       );
-      const pruned = pruneOrder(order, liveSessionNames);
+      const bookmarkUrls = new Set(
+        this.options.bookmarks.list(location.worktreePath).map((bookmark) => bookmark.url),
+      );
+      const pruned = pruneRowOrder(order, liveSessionNames, bookmarkUrls);
       if (pruned.changed) {
         await this.options.terminalOrders.set(location.worktreePath, pruned.order);
       }
