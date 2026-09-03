@@ -21,15 +21,16 @@ export class AddBookmarkCommand {
     if (!node) return;
 
     const clipboardText = (await vscode.env.clipboard.readText()).trim();
-    const url = await vscode.window.showInputBox({
+    const input = await vscode.window.showInputBox({
       prompt: 'URL to pin to this Worktree',
       placeHolder: 'https://…',
       value: isHttpUrl(clipboardText) ? clipboardText : undefined,
       validateInput: (value) => isHttpUrl(value.trim()) ? undefined : 'Enter an http(s) URL.',
     });
-    if (url === undefined) return;
+    if (input === undefined) return;
 
-    const bookmark = await this.bookmarks.add(node.worktree.path, { url: url.trim() });
+    const url = input.trim();
+    const bookmark = await this.bookmarks.add(node.worktree.path, { url });
     await this.reveal(node.worktree.path, bookmark);
   }
 }

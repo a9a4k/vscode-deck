@@ -21,7 +21,7 @@ SOURCE_SLOT = 16
 TREE_MIDLINE = 9.6 / SOURCE_SLOT * SLOT
 TAB_MIDLINE = SLOT / 2
 DEFAULT_INK_SCALE = 0.80
-TERMINAL_INK_SCALE = 0.70
+FONT_GLYPH_INK_SCALE = 0.70
 
 # Codicons terminal glyph path. Source: microsoft/vscode-codicons, MIT.
 TERMINAL_PATH = (
@@ -83,7 +83,7 @@ def main() -> None:
     for asset in RASTERS:
         generate_raster(asset, asset.tree, TREE_MIDLINE)
         generate_raster(asset, asset.tab, TAB_MIDLINE)
-    generate_terminal_font()
+    generate_tree_icon_font()
 
 
 def generate_raster(asset: RasterAsset, output_name: str, midline: float) -> None:
@@ -163,7 +163,7 @@ def build_padded_glyph(
     units_per_em = 1000
     source_width = source_bbox[2] - source_bbox[0]
     source_height = source_bbox[3] - source_bbox[1]
-    target_size = units_per_em * TERMINAL_INK_SCALE
+    target_size = units_per_em * FONT_GLYPH_INK_SCALE
     scale = target_size / max(source_width, source_height)
     width = source_width * scale
     height = source_height * scale
@@ -186,7 +186,7 @@ def build_padded_glyph(
     return glyph
 
 
-def generate_terminal_font() -> None:
+def generate_tree_icon_font() -> None:
     units_per_em = 1000
     # Keep the Terminal's shipped origin behavior unchanged. New glyphs cancel
     # their source bounds' origin so their ink centers on the tree midline.
