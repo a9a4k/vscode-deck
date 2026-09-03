@@ -1097,6 +1097,12 @@ describe('RepositoryTreeProvider', () => {
     });
     await bookmarks.add('/work/alpha-main', { url: 'https://example.com/products/one' });
     await bookmarks.add('/work/alpha-main', { url: 'https://example.com/products/two' });
+    const terminalOrders = {
+      get: vi.fn(() => [
+        'https://example.com/products/one',
+        'https://example.com/products/two',
+      ]),
+    } as unknown as TerminalOrderStore;
     const provider = new RepositoryTreeProvider(
       registry(['/work/alpha-main']),
       { get: vi.fn() } as unknown as ActiveWorktreeStore,
@@ -1107,7 +1113,7 @@ describe('RepositoryTreeProvider', () => {
       true,
       new Set(),
       undefined,
-      undefined,
+      terminalOrders,
       bookmarks,
     );
     const repositories = provider.getChildren();
