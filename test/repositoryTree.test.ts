@@ -1945,6 +1945,49 @@ describe('RepositoryTreeProvider', () => {
     ]);
   });
 
+  it('keeps Bookmark row order when tmux is unavailable', async () => {
+    const values: Record<string, unknown> = {};
+    const bookmarks = new BookmarkStore({
+      get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+      update: async (key: string, value: unknown) => {
+        values[key] = value;
+      },
+    });
+    await bookmarks.add('/work/alpha-main', { url: 'https://example.com/first' });
+    await bookmarks.add('/work/alpha-main', { url: 'https://example.com/second' });
+    const terminalOrders = {
+      get: vi.fn(() => [
+        'https://example.com/second',
+        'https://example.com/first',
+      ]),
+    } as unknown as TerminalOrderStore;
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      observedModel(),
+      false,
+      new Set(),
+      undefined,
+      terminalOrders,
+      bookmarks,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+
+    const rows = provider.getChildren(worktrees[0]);
+
+    expect((rows as Array<{ label: string }>).map((row) => row.label)).toEqual([
+      'tmux ≥3.1 not found · install ↗',
+      'second',
+      'first',
+    ]);
+  });
+
   it('returns Terminal children synchronously from the TerminalModel', async () => {
     const model = new TerminalModel();
     const provider = new RepositoryTreeProvider(

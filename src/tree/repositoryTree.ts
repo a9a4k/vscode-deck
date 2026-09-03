@@ -374,7 +374,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     }
     if (element instanceof WorktreeNode) {
       if (this.tmuxAvailable) return this.getRowChildren(element);
-      return [new TmuxUnavailableNode(element), ...this.getBookmarkChildren(element)];
+      return [new TmuxUnavailableNode(element), ...this.getOrderedBookmarkChildren(element)];
     }
     return [];
   }
@@ -659,6 +659,16 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       row.kind === 'terminal'
         ? terminalNodes.get(row.key)!
         : bookmarkNodes.get(row.key)!);
+  }
+
+  private getOrderedBookmarkChildren(element: WorktreeNode): BookmarkNode[] {
+    const { bookmarks, rows } = this.getOrderedRows(element);
+    const bookmarkNodes = new Map(
+      this.getBookmarkChildren(element, bookmarks).map((node) => [node.bookmark.url, node]),
+    );
+
+    return rows.flatMap((row) =>
+      row.kind === 'bookmark' ? [bookmarkNodes.get(row.key)!] : []);
   }
 
   private getOrderedRows(element: WorktreeNode) {
