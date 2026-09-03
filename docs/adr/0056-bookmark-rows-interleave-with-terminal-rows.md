@@ -103,11 +103,10 @@ express.
 
 ## Consequences
 
-- **The order reconciler must be fed both sources.** `reconcileTerminalOrder`
-  and `pruneOrder` drop keys their input doesn't claim. Handing them only the
-  tmux session list — the current call shape — would silently delete **every**
-  Bookmark key from every Worktree's order. This is the single most likely way
-  to break this ADR by accident.
+- **The order reconciler must be fed both sources.** `reconcileRowOrder` and
+  `pruneRowOrder` require both the live Terminal and Bookmark sources. This
+  prevents a call shaped around only the tmux session list from silently
+  deleting **every** Bookmark key from every Worktree's order.
 - Key spaces cannot collide: Deck's session names match `wt-…__term-N`, and a
   Bookmark key is a URL carrying a scheme.
 - The tree gains rows that never disappear on their own. A Terminal dies on
@@ -120,10 +119,12 @@ express.
 
 ## Validation
 
-- `src/tree/reconcileTerminalOrder.ts` — stored order resolved against live
-  sessions, unknown keys dropped, uncurated appended by ascending `term-N`;
-  confirms the overlay semantics decision 2 extends and the trap in
-  Consequences.
+- `src/tree/reconcileRowOrder.ts` — stored order resolved against live
+  Terminals and stored Bookmarks, unknown keys dropped, uncurated Terminals
+  appended by ascending `term-N`; confirms the overlay semantics decision 2
+  extends and the trap in Consequences.
+- `src/tree/pruneRowOrder.ts` — mixed orders are pruned against both ownership
+  sources, so observing only tmux cannot erase Bookmark positions.
 - `src/terminal/terminalCascade.ts` — `killWorktree(worktreePath)` kills by
   session-name prefix and closes the matching tabs; the model for decision 7.
 - CONTEXT.md **Terminal** — "Its Worktree is fixed when it is created and never

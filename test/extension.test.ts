@@ -1277,6 +1277,9 @@ describe('activate', () => {
     expect(context.values['deck.bookmarks']).toEqual({
       '/work/repo': [{ url: 'https://example.com/docs' }],
     });
+    expect(context.values['deck.terminalOrders']).toEqual({
+      '/work/repo': ['https://example.com/docs'],
+    });
     expect(tree.refreshWorktree).toHaveBeenCalledWith('/work/repo');
     expect(tree.findBookmark).toHaveBeenCalledWith('https://example.com/docs', '/work/repo');
     expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(

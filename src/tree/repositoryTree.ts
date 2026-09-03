@@ -25,7 +25,7 @@ import { excludeBare } from './excludeBare';
 import { excludePending } from './excludePending';
 import { NodeRegistry } from './nodeRegistry';
 import { reconcileWorktreeOrder } from './reconcileWorktreeOrder';
-import { reconcileTerminalOrder } from './reconcileTerminalOrder';
+import { reconcileRowOrder } from './reconcileRowOrder';
 import {
   describeRepositoryTreeItem,
   describeTmuxUnavailableTreeItem,
@@ -178,6 +178,14 @@ class BookmarkNode extends vscode.TreeItem {
     this.tooltip = bookmark.url;
     this.contextValue = 'deck.bookmark';
     this.iconPath = new vscode.ThemeIcon('deck-bookmark-globe');
+  }
+
+  get repositoryPath(): string {
+    return this.worktreeNode.repositoryPath;
+  }
+
+  get worktreePath(): string {
+    return this.worktreeNode.worktree.path;
   }
 }
 
@@ -355,10 +363,8 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       return this.getWorktreeChildren(element);
     }
     if (element instanceof WorktreeNode) {
-      const terminals = this.tmuxAvailable
-        ? this.getTerminalChildren(element)
-        : [new TmuxUnavailableNode(element)];
-      return [...terminals, ...this.getBookmarkChildren(element)];
+      if (this.tmuxAvailable) return this.getRowChildren(element);
+      return [new TmuxUnavailableNode(element), ...this.getBookmarkChildren(element)];
     }
     return [];
   }
@@ -620,14 +626,35 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   }
 
   private getTerminalChildren(element: WorktreeNode): RepositoryTreeNode[] {
-    const terminals = reconcileTerminalOrder(
-      this.terminalOrders?.get(element.worktree.path),
-      this.terminalModel.get(element.worktree.path),
+    return this.getRowChildren(element).filter(
+      (node): node is TerminalNode => node instanceof TerminalNode,
     );
-    return this.toTerminalNodes(element, terminals);
   }
 
-  private toTerminalNodes(element: WorktreeNode, terminals: readonly TerminalModelSession[]): RepositoryTreeNode[] {
+  private getRowChildren(element: WorktreeNode): RepositoryTreeNode[] {
+    const bookmarks = this.bookmarks?.list(element.worktree.path) ?? [];
+    const rows = reconcileRowOrder(
+      this.terminalOrders?.get(element.worktree.path),
+      this.terminalModel.get(element.worktree.path),
+      bookmarks,
+    );
+    const terminalNodes = new Map(
+      this.toTerminalNodes(
+        element,
+        rows.flatMap((row) => row.kind === 'terminal' ? [row.terminal] : []),
+      ).map((node) => [node.terminal.sessionName, node]),
+    );
+    const bookmarkNodes = new Map(
+      this.getBookmarkChildren(element).map((node) => [node.bookmark.url, node]),
+    );
+
+    return rows.map((row) =>
+      row.kind === 'terminal'
+        ? terminalNodes.get(row.key)!
+        : bookmarkNodes.get(row.key)!);
+  }
+
+  private toTerminalNodes(element: WorktreeNode, terminals: readonly TerminalModelSession[]): TerminalNode[] {
     const liveSessionNames = new Set(terminals.map((terminal) => terminal.sessionName));
     const nodes = terminals.map((terminal) => this.toTerminalNode(element, terminal));
     for (const [sessionName, node] of this.renderedTerminals) {

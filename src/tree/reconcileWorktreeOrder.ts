@@ -20,6 +20,15 @@ export function reconcileWorktreeOrder(
   return ordered;
 }
 
+export function pruneWorktreeOrder(
+  storedOrder: readonly string[],
+  livePaths: ReadonlySet<string>,
+): { order: readonly string[]; changed: boolean } {
+  const order = storedOrder.filter((path) => livePaths.has(path));
+  const changed = order.length !== storedOrder.length;
+  return { order: changed ? order : storedOrder, changed };
+}
+
 function sortUnplacedWorktrees(
   gitWorktrees: readonly Worktree[],
   placedPaths: ReadonlySet<string>,

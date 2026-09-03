@@ -3,6 +3,8 @@ import { TerminalModel } from '../src/terminal/terminalModel';
 import { TerminalReconciler } from '../src/terminal/terminalReconciler';
 import { TERMINAL_SNAPSHOT_ANCHOR_SESSION } from '../src/terminal/terminalSnapshotRuntime';
 
+const noBookmarks = { list: () => [] };
+
 describe('TerminalReconciler', () => {
   it('restores a down DeckSocket without changing trusted Terminal state', async () => {
     const model = new TerminalModel();
@@ -21,6 +23,7 @@ describe('TerminalReconciler', () => {
       model,
       restoreTerminalSnapshot: restore,
       terminalOrders,
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
@@ -52,6 +55,7 @@ describe('TerminalReconciler', () => {
     const terminalOrders = {
       get: vi.fn(() => [
         'wt-_work_alpha__term-1',
+        'http://localhost:5173/',
         'wt-_work_alpha__term-2',
       ]),
       set: vi.fn(async () => {
@@ -71,6 +75,9 @@ describe('TerminalReconciler', () => {
       model,
       restoreTerminalSnapshot: restore,
       terminalOrders,
+      bookmarks: {
+        list: () => [{ url: 'http://localhost:5173/' }],
+      },
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
@@ -90,6 +97,7 @@ describe('TerminalReconciler', () => {
       { sessionName: 'wt-_work_alpha__term-3', n: 3, windowName: 'three' },
     ]);
     expect(terminalOrders.set).toHaveBeenCalledWith('/work/alpha', [
+      'http://localhost:5173/',
       'wt-_work_alpha__term-2',
     ]);
     expect(updateDecorations).toHaveBeenCalledWith([
@@ -122,6 +130,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [
         { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
         { repositoryPath: '/work/beta', worktreePath: '/work/beta' },
@@ -160,6 +169,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [
         { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
       ],
@@ -189,6 +199,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [
         { repositoryPath: '/work/alpha', worktreePath: '/work/alpha' },
         { repositoryPath: '/work/beta', worktreePath: '/work/beta' },
@@ -222,6 +233,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [],
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
@@ -253,6 +265,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [],
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
@@ -281,6 +294,7 @@ describe('TerminalReconciler', () => {
         get: vi.fn(),
         set: vi.fn(async () => undefined),
       },
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [],
       updateTerminalDecorations: vi.fn(),
       wakeAgentExitSweep: vi.fn(),
@@ -312,6 +326,7 @@ describe('TerminalReconciler', () => {
       model,
       restoreTerminalSnapshot: restore,
       terminalOrders,
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,
@@ -351,6 +366,7 @@ describe('TerminalReconciler', () => {
       model,
       restoreTerminalSnapshot: vi.fn(async () => undefined),
       terminalOrders,
+      bookmarks: noBookmarks,
       listTerminalLocations: () => [{ repositoryPath: '/work/alpha', worktreePath: '/work/alpha' }],
       updateTerminalDecorations: updateDecorations,
       wakeAgentExitSweep: wakeExitSweep,

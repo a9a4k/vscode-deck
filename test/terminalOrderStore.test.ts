@@ -19,14 +19,26 @@ describe('TerminalOrderStore', () => {
 
     expect(store.get('/work/alpha')).toBeUndefined();
 
-    await store.set('/work/alpha', ['wt-_work_alpha__term-2', 'wt-_work_alpha__term-1']);
+    await store.set('/work/alpha', [
+      'wt-_work_alpha__term-2',
+      'https://example.com/docs',
+      'wt-_work_alpha__term-1',
+    ]);
     await store.set('/work/beta', ['wt-_work_beta__term-1']);
 
     expect(values[TERMINAL_ORDERS_KEY]).toEqual({
-      '/work/alpha': ['wt-_work_alpha__term-2', 'wt-_work_alpha__term-1'],
+      '/work/alpha': [
+        'wt-_work_alpha__term-2',
+        'https://example.com/docs',
+        'wt-_work_alpha__term-1',
+      ],
       '/work/beta': ['wt-_work_beta__term-1'],
     });
-    expect(store.get('/work/alpha')).toEqual(['wt-_work_alpha__term-2', 'wt-_work_alpha__term-1']);
+    expect(store.get('/work/alpha')).toEqual([
+      'wt-_work_alpha__term-2',
+      'https://example.com/docs',
+      'wt-_work_alpha__term-1',
+    ]);
   });
 
   it('overwrites and clears one Worktree order without touching others', async () => {

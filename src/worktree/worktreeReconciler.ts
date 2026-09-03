@@ -1,8 +1,7 @@
 import * as path from 'node:path';
 import type { Worktree } from '../git/worktrees';
-import { pruneOrder } from '../tree/pruneOrder';
 import { describeWorktreeTreeItem } from '../tree/worktreeTreeItem';
-import { reconcileWorktreeOrder } from '../tree/reconcileWorktreeOrder';
+import { pruneWorktreeOrder, reconcileWorktreeOrder } from '../tree/reconcileWorktreeOrder';
 
 interface RepositoryList {
   list(): readonly string[];
@@ -64,7 +63,7 @@ export class WorktreeReconciler {
     const cached = this.options.worktreeListCache.get(commonDir) ?? [];
     const order = this.options.worktreeOrders.get(commonDir);
     if (order !== undefined) {
-      const pruned = pruneOrder(
+      const pruned = pruneWorktreeOrder(
         order,
         new Set(gitWorktrees.map((worktree) => worktree.path)),
       );
