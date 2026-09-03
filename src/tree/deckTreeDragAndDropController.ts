@@ -237,9 +237,15 @@ export class DeckTreeDragAndDropController
     payload: Extract<DragPayload, { kind: 'row' }>,
     target: DeckNodeLike,
   ): Promise<void> {
-    const targetWorktreePath = isWorktreeNode(target)
-      ? target.worktree.path
-      : isRowNode(target) ? target.worktreePath : undefined;
+    let targetWorktreePath: string | undefined;
+    let targetRowKey: string | undefined;
+    if (isWorktreeNode(target)) {
+      targetWorktreePath = target.worktree.path;
+    } else if (isRowNode(target)) {
+      targetWorktreePath = target.worktreePath;
+      targetRowKey = rowKey(target);
+    }
+
     if (
       payload.rowKind === 'bookmark'
       && targetWorktreePath !== undefined
@@ -248,7 +254,7 @@ export class DeckTreeDragAndDropController
       await this.moveBookmark(
         payload,
         targetWorktreePath,
-        isRowNode(target) ? rowKey(target) : undefined,
+        targetRowKey,
       );
       return;
     }
@@ -280,7 +286,7 @@ export class DeckTreeDragAndDropController
   private async moveBookmark(
     payload: RowDragPayload,
     targetWorktreePath: string,
-    targetKey?: string,
+    targetRowKey?: string,
   ): Promise<void> {
     const sourceBookmarks = this.bookmarks.list(payload.worktreePath);
     if (!sourceBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) return;
@@ -290,28 +296,33 @@ export class DeckTreeDragAndDropController
       this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
       this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
     ]);
-    const sourceOrder = reconcileRowOrder(
+    const sourceRowOrder = reconcileRowOrder(
       this.terminalOrders.get(payload.worktreePath),
       sourceSessions,
       sourceBookmarks,
     )
       .map((row) => row.key)
       .filter((key) => key !== payload.sourceKey);
-    let targetOrder = reconcileRowOrder(
+    let targetRowOrder = reconcileRowOrder(
       this.terminalOrders.get(targetWorktreePath),
       targetSessions,
       targetBookmarks,
     ).map((row) => row.key);
     if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
-      targetOrder.push(payload.sourceKey);
-      if (targetKey !== undefined) {
-        targetOrder = reorderArray(targetOrder, payload.sourceKey, targetKey, 'above');
+      targetRowOrder.push(payload.sourceKey);
+      if (targetRowKey !== undefined) {
+        targetRowOrder = reorderArray(
+          targetRowOrder,
+          payload.sourceKey,
+          targetRowKey,
+          'above',
+        );
       }
     }
 
     await this.bookmarks.move(payload.worktreePath, targetWorktreePath, payload.sourceKey);
-    await this.terminalOrders.set(payload.worktreePath, sourceOrder);
-    await this.terminalOrders.set(targetWorktreePath, targetOrder);
+    await this.terminalOrders.set(payload.worktreePath, sourceRowOrder);
+    await this.terminalOrders.set(targetWorktreePath, targetRowOrder);
     this.refresh({ worktreePath: payload.worktreePath });
     this.refresh({ worktreePath: targetWorktreePath });
   }
