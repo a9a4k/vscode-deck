@@ -13,9 +13,8 @@ session-list cache and ADR-0053 re-affirmed the rule — *Deck persists no
 terminal list* — because that cache was a second truth, hand-invalidated at
 four call sites, with the bugs clustered in the truth/mirror seam.
 `TerminalOrder` (ADR-0028) survives that rule precisely because it stores
-**order without existence**: `reconcileTerminalOrder` resolves each stored
-`sessionName` against the live tmux list and silently drops the ones tmux
-doesn't claim.
+**order without existence**: `reconcileRowOrder` resolves each stored key
+against its owning source and silently drops the ones neither source claims.
 
 A Bookmark has no tmux. No process, no external registry, nothing that could
 be re-observed. If Deck doesn't persist it, it doesn't exist.

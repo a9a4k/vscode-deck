@@ -415,13 +415,8 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   ): Promise<TerminalNode | undefined> {
     const worktree = this.findWorktreeNodeForSession(sessionName, worktreeMatches);
     if (worktree === undefined) return undefined;
-    const terminals = this.getTerminalChildren(worktree);
-    for (const terminal of terminals) {
-      if (terminal instanceof TerminalNode && terminal.terminal.sessionName === sessionName) {
-        return terminal;
-      }
-    }
-    return undefined;
+    return this.getTerminalChildren(worktree)
+      .find((node) => node.terminal.sessionName === sessionName);
   }
 
   private findWorktreeNodeForSession(
@@ -602,8 +597,10 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     }
   }
 
-  private getBookmarkChildren(element: WorktreeNode): BookmarkNode[] {
-    const bookmarks = this.bookmarks?.list(element.worktree.path) ?? [];
+  private getBookmarkChildren(
+    element: WorktreeNode,
+    bookmarks = this.bookmarks?.list(element.worktree.path) ?? [],
+  ): BookmarkNode[] {
     const liveKeys = new Set(bookmarks.map((bookmark) => this.bookmarkKey(element.worktree.path, bookmark.url)));
     const nodes = bookmarks.map((bookmark) => {
       const key = this.bookmarkKey(element.worktree.path, bookmark.url);
@@ -625,19 +622,16 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     return `${worktreePath}\0${url}`;
   }
 
-  private getTerminalChildren(element: WorktreeNode): RepositoryTreeNode[] {
-    return this.getRowChildren(element).filter(
-      (node): node is TerminalNode => node instanceof TerminalNode,
+  private getTerminalChildren(element: WorktreeNode): TerminalNode[] {
+    const { rows } = this.getOrderedRows(element);
+    return this.toTerminalNodes(
+      element,
+      rows.flatMap((row) => row.kind === 'terminal' ? [row.terminal] : []),
     );
   }
 
   private getRowChildren(element: WorktreeNode): RepositoryTreeNode[] {
-    const bookmarks = this.bookmarks?.list(element.worktree.path) ?? [];
-    const rows = reconcileRowOrder(
-      this.terminalOrders?.get(element.worktree.path),
-      this.terminalModel.get(element.worktree.path),
-      bookmarks,
-    );
+    const { bookmarks, rows } = this.getOrderedRows(element);
     const terminalNodes = new Map(
       this.toTerminalNodes(
         element,
@@ -645,13 +639,23 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       ).map((node) => [node.terminal.sessionName, node]),
     );
     const bookmarkNodes = new Map(
-      this.getBookmarkChildren(element).map((node) => [node.bookmark.url, node]),
+      this.getBookmarkChildren(element, bookmarks).map((node) => [node.bookmark.url, node]),
     );
 
     return rows.map((row) =>
       row.kind === 'terminal'
         ? terminalNodes.get(row.key)!
         : bookmarkNodes.get(row.key)!);
+  }
+
+  private getOrderedRows(element: WorktreeNode) {
+    const bookmarks = this.bookmarks?.list(element.worktree.path) ?? [];
+    const rows = reconcileRowOrder(
+      this.terminalOrders?.get(element.worktree.path),
+      this.terminalModel.get(element.worktree.path),
+      bookmarks,
+    );
+    return { bookmarks, rows };
   }
 
   private toTerminalNodes(element: WorktreeNode, terminals: readonly TerminalModelSession[]): TerminalNode[] {
