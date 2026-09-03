@@ -45,6 +45,21 @@ describe('domain docs', () => {
     expect(normalizedAdr).toContain('Codex has a parity gap');
     expect(normalizedAdr).toContain('stale toast');
   });
+
+  it('records Bookmark ownership and avoids browser-row synonyms', () => {
+    const context = readFileSync(join(process.cwd(), 'CONTEXT.md'), 'utf8');
+    const bookmarkEntry = normalizeWhitespace(glossaryEntry(context, 'Bookmark'));
+
+    expect(bookmarkEntry).toContain('A URL a user pins to a Worktree');
+    expect(bookmarkEntry).toContain('nothing outside Deck owns which Bookmarks exist');
+    expect(bookmarkEntry).toContain('Deck persists them itself');
+    expect(bookmarkEntry).toContain('Identified by its URL within its Worktree');
+    expect(bookmarkEntry).toContain('_Avoid_: browser');
+    expect(bookmarkEntry).toContain('favorite');
+    expect(bookmarkEntry).toContain('pin / pinned tab');
+    expect(bookmarkEntry).toContain('tab');
+    expect(bookmarkEntry).toContain('link');
+  });
 });
 
 function glossaryEntry(markdown: string, term: string): string {

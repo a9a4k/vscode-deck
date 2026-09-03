@@ -32,6 +32,25 @@ TERMINAL_PATH = (
     ".7.7L6.3 8 3.4 11l.7.7zM8 11h5v1H8v-1z"
 )
 
+# Codicons globe glyph path. Source: microsoft/vscode-codicons, MIT.
+GLOBE_PATH = (
+    "M8 1C4.141 1 1 4.141 1 8C1 11.859 4.141 15 8 15C11.859 15 15 11.859 "
+    "15 8C15 4.141 11.859 1 8 1ZM8 14C7.422 14 6.686 12.906 6.288 11H9.713C"
+    "9.315 12.906 8.579 14 8.001 14H8ZM6.121 10C6.044 9.392 6 8.723 6 8C6 "
+    "7.277 6.044 6.608 6.121 6H9.878C9.955 6.608 9.999 7.277 9.999 8C9.999 "
+    "8.723 9.955 9.392 9.878 10H6.121ZM2 8C2 7.299 2.121 6.626 2.343 6H5.121"
+    "C5.041 6.656 5 7.332 5 8C5 8.668 5.041 9.344 5.121 10H2.343C2.121 9.374"
+    " 2 8.701 2 8ZM8 2C8.578 2 9.314 3.094 9.712 5H6.287C6.685 3.094 7.422 "
+    "2 8 2ZM10.879 6H13.657C13.879 6.626 14 7.299 14 8C14 8.701 13.879 9.374"
+    " 13.657 10H10.879C10.959 9.344 11 8.668 11 8C11 7.332 10.959 6.656 "
+    "10.879 6ZM13.195 5H10.722C10.516 3.938 10.199 2.98 9.775 2.268C11.228 "
+    "2.719 12.446 3.707 13.195 5ZM6.226 2.268C5.802 2.98 5.484 3.938 5.279 "
+    "5H2.806C3.556 3.707 4.774 2.718 6.226 2.268ZM2.805 11H5.278C5.484 "
+    "12.062 5.801 13.02 6.225 13.732C4.772 13.281 3.554 12.293 2.805 11ZM"
+    "9.774 13.732C10.198 13.02 10.516 12.062 10.721 11H13.194C12.444 12.293"
+    " 11.226 13.282 9.774 13.732Z"
+)
+
 
 @dataclass(frozen=True)
 class RasterAsset:
@@ -135,9 +154,13 @@ def union_bbox(frames: list[Image.Image]) -> tuple[int, int, int, int] | None:
     return union
 
 
-def generate_terminal_font() -> None:
+def build_padded_glyph(
+    name: str,
+    svg_path: str,
+    source_bbox: tuple[float, float, float, float],
+    source_origin: tuple[float, float] = (0.0, 0.0),
+) -> object:
     units_per_em = 1000
-    source_bbox = (0.0, 1.0, 16.0, 15.0)
     source_width = source_bbox[2] - source_bbox[0]
     source_height = source_bbox[3] - source_bbox[1]
     target_size = units_per_em * TERMINAL_INK_SCALE
@@ -149,20 +172,42 @@ def generate_terminal_font() -> None:
 
     glyph_pen = TTGlyphPen(None)
     quad_pen = Cu2QuPen(glyph_pen, max_err=1.0)
-    transform = Transform(scale, 0, 0, -scale, left, units_per_em - top)
-    parse_path(TERMINAL_PATH, TransformPen(quad_pen, transform))
+    transform = Transform(
+        scale,
+        0,
+        0,
+        -scale,
+        left - source_origin[0] * scale,
+        units_per_em - top + source_origin[1] * scale,
+    )
+    parse_path(svg_path, TransformPen(quad_pen, transform))
     glyph = glyph_pen.glyph()
-    glyph.recalcBounds({"deck-terminal": glyph})
+    glyph.recalcBounds({name: glyph})
+    return glyph
+
+
+def generate_terminal_font() -> None:
+    units_per_em = 1000
+    # Keep the Terminal's shipped origin behavior unchanged. New glyphs cancel
+    # their source bounds' origin so their ink centers on the tree midline.
+    glyphs = {
+        "deck-terminal": build_padded_glyph(
+            "deck-terminal", TERMINAL_PATH, (0.0, 1.0, 16.0, 15.0)
+        ),
+        "deck-bookmark-globe": build_padded_glyph(
+            "deck-bookmark-globe", GLOBE_PATH, (1.0, 1.0, 15.0, 15.0), (1.0, 1.0)
+        ),
+    }
 
     fb = FontBuilder(units_per_em, isTTF=True)
-    glyph_order = [".notdef", "deck-terminal"]
+    glyph_order = [".notdef", *glyphs]
     fb.setupGlyphOrder(glyph_order)
-    fb.setupCharacterMap({0xE001: "deck-terminal"})
-    fb.setupGlyf({".notdef": TTGlyphPen(None).glyph(), "deck-terminal": glyph})
+    fb.setupCharacterMap({0xE001: "deck-terminal", 0xE002: "deck-bookmark-globe"})
+    fb.setupGlyf({".notdef": TTGlyphPen(None).glyph(), **glyphs})
     # VS Code renders the glyph flush-left unless the hmtx LSB matches xMin.
     fb.setupHorizontalMetrics({
         ".notdef": (units_per_em, 0),
-        "deck-terminal": (units_per_em, glyph.xMin),
+        **{name: (units_per_em, glyph.xMin) for name, glyph in glyphs.items()},
     })
     fb.setupHorizontalHeader(ascent=units_per_em, descent=0)
     fb.setupOS2(

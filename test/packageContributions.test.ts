@@ -177,6 +177,30 @@ describe('package contributions', () => {
     expect(existsSync(join(process.cwd(), 'resources/deck-icons.LICENSE'))).toBe(true);
   });
 
+  it('contributes Add Bookmark for Worktree context menus and the padded globe row icon', () => {
+    expect(pkg.contributes.icons?.['deck-bookmark-globe']).toEqual({
+      description: 'Bookmark globe (padded)',
+      default: {
+        fontPath: './resources/deck-icons.woff',
+        fontCharacter: '\\E002',
+      },
+    });
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.addBookmark',
+      title: 'Add Bookmark…',
+      icon: '$(globe)',
+    });
+    expect(pkg.contributes.menus['view/item/context']).toContainEqual({
+      command: 'deck.addBookmark',
+      when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)',
+      group: 'navigation@3',
+    });
+    expect(pkg.contributes.menus.commandPalette).not.toContainEqual({
+      command: 'deck.addBookmark',
+      when: 'false',
+    });
+  });
+
   it('contributes Deck Terminal find command and keybindings', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.terminal.find',

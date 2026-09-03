@@ -1,6 +1,8 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Worktree } from '../git/worktrees';
+import { deriveBookmarkLabel } from '../bookmark/bookmarkLabel';
+import type { Bookmark, BookmarkStore } from '../bookmark/bookmarkStore';
 import { RepositoryCommonDirCache, resolveCommonDirSafe } from '../repository/repositoryCommonDirCache';
 import { RepositoryRegistryStore } from '../repository/repositoryRegistryStore';
 import { ActiveWorktreeStore } from '../switch/activeWorktreeStore';
@@ -31,7 +33,7 @@ import {
   describeWorktreeTreeItem,
 } from './worktreeTreeItem';
 
-export type RepositoryTreeNode = RepositoryNode | WorktreeNode | TerminalNode | TmuxUnavailableNode;
+export type RepositoryTreeNode = RepositoryNode | WorktreeNode | TerminalNode | BookmarkNode | TmuxUnavailableNode;
 
 const resourcesDir = path.join(__dirname, '..', '..', 'resources');
 
@@ -166,6 +168,19 @@ class TerminalNode extends vscode.TreeItem {
   }
 }
 
+class BookmarkNode extends vscode.TreeItem {
+  constructor(
+    public readonly bookmark: Bookmark,
+    public readonly worktreeNode: WorktreeNode,
+  ) {
+    super(bookmark.label ?? deriveBookmarkLabel(bookmark.url), vscode.TreeItemCollapsibleState.None);
+    this.id = `bookmark::${worktreeNode.worktree.path}::${bookmark.url}`;
+    this.tooltip = bookmark.url;
+    this.contextValue = 'deck.bookmark';
+    this.iconPath = new vscode.ThemeIcon('deck-bookmark-globe');
+  }
+}
+
 class TmuxUnavailableNode extends vscode.TreeItem {
   constructor(public readonly worktreeNode: WorktreeNode) {
     const item = describeTmuxUnavailableTreeItem();
@@ -190,6 +205,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private readonly renderedRepositories = new NodeRegistry<RepositoryNode>();
   private readonly renderedWorktrees = new NodeRegistry<WorktreeNode>();
   private readonly renderedTerminals = new Map<string, TerminalNode>();
+  private readonly renderedBookmarks = new Map<string, BookmarkNode>();
 
   constructor(
     private readonly repositoryRegistry: Pick<RepositoryRegistryStore, 'list'>,
@@ -208,6 +224,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     private readonly pendingWorktreeRemovals: ReadonlySet<string> = new Set(),
     private readonly agentStatuses?: AgentStatusLookup,
     private readonly terminalOrders?: Pick<TerminalOrderStore, 'get'>,
+    private readonly bookmarks?: Pick<BookmarkStore, 'list'>,
   ) {
     this.syncAgentStatuses();
     this.resolveActiveRepository(false);
@@ -318,6 +335,9 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     if (element instanceof TerminalNode) {
       return element.worktreeNode;
     }
+    if (element instanceof BookmarkNode) {
+      return element.worktreeNode;
+    }
     if (element instanceof TmuxUnavailableNode) {
       return element.worktreeNode;
     }
@@ -335,8 +355,10 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
       return this.getWorktreeChildren(element);
     }
     if (element instanceof WorktreeNode) {
-      if (!this.tmuxAvailable) return [new TmuxUnavailableNode(element)];
-      return this.getTerminalChildren(element);
+      const terminals = this.tmuxAvailable
+        ? this.getTerminalChildren(element)
+        : [new TmuxUnavailableNode(element)];
+      return [...terminals, ...this.getBookmarkChildren(element)];
     }
     return [];
   }
@@ -363,6 +385,13 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     const worktree = this.findWorktreeNodeForSession(sessionName);
     if (worktree === undefined) return undefined;
     return this.toTerminalNode(worktree, liveSession);
+  }
+
+  findBookmark(url: string, worktreePath: string): RepositoryTreeNode | undefined {
+    const worktree = this.findRenderedWorktree(worktreePath);
+    if (!worktree) return undefined;
+    return this.getBookmarkChildren(worktree)
+      .find((node) => node.bookmark.url === url);
   }
 
   async describeSession(sessionName: string): Promise<{ repo: string; branch: string } | undefined> {
@@ -562,6 +591,32 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     for (const [sessionName, terminal] of this.renderedTerminals) {
       if (terminal.worktreePath === worktreePath) this.renderedTerminals.delete(sessionName);
     }
+    for (const [key, bookmark] of this.renderedBookmarks) {
+      if (bookmark.worktreeNode.worktree.path === worktreePath) this.renderedBookmarks.delete(key);
+    }
+  }
+
+  private getBookmarkChildren(element: WorktreeNode): BookmarkNode[] {
+    const bookmarks = this.bookmarks?.list(element.worktree.path) ?? [];
+    const liveKeys = new Set(bookmarks.map((bookmark) => this.bookmarkKey(element.worktree.path, bookmark.url)));
+    const nodes = bookmarks.map((bookmark) => {
+      const key = this.bookmarkKey(element.worktree.path, bookmark.url);
+      const existing = this.renderedBookmarks.get(key);
+      if (existing) return existing;
+      const node = new BookmarkNode(bookmark, element);
+      this.renderedBookmarks.set(key, node);
+      return node;
+    });
+    for (const [key, node] of this.renderedBookmarks) {
+      if (node.worktreeNode.worktree.path === element.worktree.path && !liveKeys.has(key)) {
+        this.renderedBookmarks.delete(key);
+      }
+    }
+    return nodes;
+  }
+
+  private bookmarkKey(worktreePath: string, url: string): string {
+    return `${worktreePath}\0${url}`;
   }
 
   private getTerminalChildren(element: WorktreeNode): RepositoryTreeNode[] {

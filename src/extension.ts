@@ -75,6 +75,8 @@ import { ResumeTemplate } from './agent/resumeTemplate';
 import { SnapshotRewriter } from './agent/snapshotRewriter';
 import { ReleaseNoticeGate } from './releaseNoticeGate';
 import { ReleaseNoticeStore } from './releaseNoticeStore';
+import { BookmarkStore } from './bookmark/bookmarkStore';
+import { AddBookmarkCommand } from './bookmark/addBookmarkCommand';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -223,6 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const worktreeRoots = new WorktreeRootStore(context.globalState);
   const worktreeOrders = new WorktreeOrderStore(context.globalState);
   const terminalOrders = new TerminalOrderStore(context.globalState);
+  const bookmarks = new BookmarkStore(context.globalState);
   const terminalModel = new TerminalModel();
   const worktreeListCache = new WorktreeListCacheStore(context.globalState);
   const pendingTerminalOpens = new PendingTerminalOpenStore(context.globalState);
@@ -242,6 +245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pendingWorktreeRemovals,
     agentStatuses,
     terminalOrders,
+    bookmarks,
   );
   let lastRevealedActiveTerminalSessionName: string | undefined;
   const revealActiveTerminalIfNeeded = async (
@@ -427,6 +431,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repositoryCommonDirCache,
     worktreeCreateLaunchers,
   );
+  const addBookmark = new AddBookmarkCommand(bookmarks, async (worktreePath, bookmark) => {
+    tree.refreshWorktree(worktreePath);
+    const bookmarkNode = tree.findBookmark(bookmark.url, worktreePath);
+    if (!bookmarkNode || !treeView) return;
+    await treeView.reveal(bookmarkNode, { select: true, focus: false });
+  });
   const revealRepository = async (repositoryPath: string) => {
     const roots = tree.getChildren();
     if (!Array.isArray(roots)) return;
@@ -581,6 +591,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.addRepository', () => addRepository.run()),
     vscode.commands.registerCommand('deck.addWorktree', (node) => addWorktree.run(node)),
     vscode.commands.registerCommand('deck.addTerminal', (node) => addTerminal.run(node)),
+    vscode.commands.registerCommand('deck.addBookmark', (node) =>
+      addBookmark.run(node ?? selectedWorktreeNode(treeView?.selection[0]))),
     vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>
@@ -853,6 +865,12 @@ async function showAgentHookConfigChanges(configs: readonly AgentConfigChange[])
 
 function agentHookProductName(agent: HookReconcileResult['agent']): string {
   return agent === 'claude' ? 'Claude Code' : 'Codex';
+}
+
+function selectedWorktreeNode(
+  node: RepositoryTreeNode | undefined,
+): { worktree: { path: string } } | undefined {
+  return node && 'worktree' in node ? node : undefined;
 }
 
 // Mirrors the Explorer's delete confirmation (a modal warning gated by a

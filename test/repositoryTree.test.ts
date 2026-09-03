@@ -112,6 +112,7 @@ import { RepositoryRegistryStore } from '../src/repository/repositoryRegistrySto
 import { getCommonDir, listWorktrees, type Worktree } from '../src/git/worktrees';
 import { TerminalModel } from '../src/terminal/terminalModel';
 import { WorktreeReconciler } from '../src/worktree/worktreeReconciler';
+import { BookmarkStore } from '../src/bookmark/bookmarkStore';
 
 function registry(repositories = ['/work/alpha-main', '/work/beta-main']) {
   return {
@@ -1020,6 +1021,60 @@ describe('RepositoryTreeProvider', () => {
       'three',
     ]);
     expect(terminalOrders.get).toHaveBeenCalledWith('/work/alpha-main');
+  });
+
+  it('renders local Bookmarks after Terminals in store order with label-only globe rows', async () => {
+    const values: Record<string, unknown> = {};
+    const bookmarks = new BookmarkStore({
+      get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+      update: async (key: string, value: unknown) => {
+        values[key] = value;
+      },
+    });
+    await bookmarks.add('/work/alpha-main', { url: 'https://github.com/org/repo/pull/186' });
+    await bookmarks.add('/work/alpha-main', { url: 'http://localhost:5173/', label: 'App' });
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      observedModel([
+        { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+      ]),
+      true,
+      new Set(),
+      undefined,
+      undefined,
+      bookmarks,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+
+    const rows = provider.getChildren(worktrees[0]);
+
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows).toEqual([
+      expect.objectContaining({ label: 'zsh', contextValue: 'deck.terminal.foreign' }),
+      expect.objectContaining({
+        label: 'pull/186',
+        description: undefined,
+        tooltip: 'https://github.com/org/repo/pull/186',
+        contextValue: 'deck.bookmark',
+        iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
+        command: undefined,
+      }),
+      expect.objectContaining({
+        label: 'App',
+        description: undefined,
+        tooltip: 'http://localhost:5173/',
+        contextValue: 'deck.bookmark',
+        iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
+        command: undefined,
+      }),
+    ]);
   });
 
   it('relabels only the changed rendered Terminal row', () => {

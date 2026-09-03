@@ -91,10 +91,12 @@ const vscodeState = vi.hoisted(() => ({
   openTerminalArgs: undefined as unknown[] | undefined,
   repositoryTreeArgs: undefined as unknown[] | undefined,
   repositoryTreeInstances: [] as Array<{
+    findBookmark: ReturnType<typeof vi.fn>;
     findTerminal: ReturnType<typeof vi.fn>;
     findTerminalBySessionName: ReturnType<typeof vi.fn>;
     describeSession: ReturnType<typeof vi.fn>;
     refresh: ReturnType<typeof vi.fn>;
+    refreshWorktree: ReturnType<typeof vi.fn>;
     updateTerminalDecorations: ReturnType<typeof vi.fn>;
     getChildren: ReturnType<typeof vi.fn>;
   }>,
@@ -152,6 +154,8 @@ const vscodeState = vi.hoisted(() => ({
   rewriteTerminalSnapshotAgentSessions: vi.fn(async () => undefined),
   showWarningMessage: vi.fn(),
   showInformationMessage: vi.fn(),
+  showInputBox: vi.fn(),
+  clipboardText: 'https://example.com/docs',
   withProgress: vi.fn((_options, task: (progress: { report(update: unknown): void }) => Promise<unknown>) =>
     task({ report: vi.fn() }),
   ),
@@ -194,6 +198,11 @@ vi.mock('vscode', () => ({
     executeCommand: vscodeState.executeCommand,
     registerCommand: vscodeState.registerCommand,
   },
+  env: {
+    clipboard: {
+      readText: vi.fn(async () => vscodeState.clipboardText),
+    },
+  },
   Uri: {
     file: (path: string) => ({ fsPath: path }),
     joinPath: (base: unknown, ...paths: string[]) => ({ base, paths }),
@@ -208,6 +217,7 @@ vi.mock('vscode', () => ({
     registerCustomEditorProvider: vscodeState.registerCustomEditorProvider,
     showWarningMessage: vscodeState.showWarningMessage,
     showInformationMessage: vscodeState.showInformationMessage,
+    showInputBox: vscodeState.showInputBox,
     withProgress: vscodeState.withProgress,
     showTextDocument: vscodeState.showTextDocument,
     state: {
@@ -352,6 +362,7 @@ vi.mock('../src/tree/repositoryTree', () => ({
       setTerminals: vi.fn(),
       getDecorationStatus: vi.fn(),
     };
+    findBookmark = vi.fn();
     findTerminal = vi.fn();
     findTerminalBySessionName = vi.fn();
     describeSession = vi.fn();
@@ -680,6 +691,8 @@ describe('activate', () => {
     vscodeState.configListeners = [];
     vscodeState.showWarningMessage.mockClear();
     vscodeState.showInformationMessage.mockReset();
+    vscodeState.clipboardText = 'https://example.com/docs';
+    vscodeState.showInputBox.mockResolvedValue('https://example.com/docs');
     vscodeState.runLauncherRun.mockResolvedValue(undefined);
     vscodeState.withProgress.mockClear();
     vscodeState.withProgress.mockImplementation((_options, task) => task({ report: vi.fn() }));
@@ -1245,6 +1258,48 @@ describe('activate', () => {
     expect(vscodeState.addTerminalRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
     (vscodeState.addTerminalArgs?.[1] as (() => void) | undefined)?.();
     expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
+  });
+
+  it('pins, refreshes, and reveals a Bookmark through the registered command', async () => {
+    const context = createContext();
+
+    await activate(context as never);
+    const tree = vscodeState.repositoryTreeInstances[0];
+    const bookmarkNode = { bookmark: { url: 'https://example.com/docs' } };
+    tree.findBookmark.mockReturnValue(bookmarkNode);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.addBookmark',
+    );
+    if (!registration) throw new Error('missing deck.addBookmark registration');
+    const node = { worktree: { path: '/work/repo' } };
+    await registration[1](node);
+
+    expect(context.values['deck.bookmarks']).toEqual({
+      '/work/repo': [{ url: 'https://example.com/docs' }],
+    });
+    expect(tree.refreshWorktree).toHaveBeenCalledWith('/work/repo');
+    expect(tree.findBookmark).toHaveBeenCalledWith('https://example.com/docs', '/work/repo');
+    expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(
+      bookmarkNode,
+      { select: true, focus: false },
+    );
+  });
+
+  it('pins to the selected Worktree when Add Bookmark runs from the Command Palette', async () => {
+    const context = createContext();
+    const selectedWorktree = { worktree: { path: '/work/repo' } };
+    vscodeState.treeViewSelection = [selectedWorktree];
+
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.addBookmark',
+    );
+    if (!registration) throw new Error('missing deck.addBookmark registration');
+    await registration[1]();
+
+    expect(context.values['deck.bookmarks']).toEqual({
+      '/work/repo': [{ url: 'https://example.com/docs' }],
+    });
   });
 
   it('registers deck.runLauncher through RunLauncherCommand', async () => {

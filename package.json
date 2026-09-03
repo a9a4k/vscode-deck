@@ -52,6 +52,13 @@
           "fontPath": "./resources/deck-icons.woff",
           "fontCharacter": "\\E001"
         }
+      },
+      "deck-bookmark-globe": {
+        "description": "Bookmark globe (padded)",
+        "default": {
+          "fontPath": "./resources/deck-icons.woff",
+          "fontCharacter": "\\E002"
+        }
       }
     },
     "configuration": {
@@ -249,6 +256,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "deck.addBookmark",
+        "title": "Add Bookmark…",
+        "icon": "$(globe)"
+      },
+      {
         "command": "deck.runLauncher",
         "title": "Run Terminal Launcher",
         "icon": "$(play)"
@@ -353,6 +365,11 @@
           "command": "deck.openWorktreeInNewWindow",
           "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.main)",
           "group": "navigation@2"
+        },
+        {
+          "command": "deck.addBookmark",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)",
+          "group": "navigation@3"
         },
         {
           "command": "deck.removeRepository",
