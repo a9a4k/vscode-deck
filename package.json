@@ -261,6 +261,10 @@
         "icon": "$(globe)"
       },
       {
+        "command": "deck.renameBookmark",
+        "title": "Rename Bookmark…"
+      },
+      {
         "command": "deck.runLauncher",
         "title": "Run Terminal Launcher",
         "icon": "$(play)"
@@ -372,6 +376,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "deck.renameBookmark",
+          "when": "view == deck.repositories && viewItem == deck.bookmark",
+          "group": "navigation@1"
+        },
+        {
           "command": "deck.removeRepository",
           "when": "view == deck.repositories && viewItem == deck.repository",
           "group": "navigation"
@@ -430,6 +439,10 @@
         },
         {
           "command": "deck.addTerminal",
+          "when": "false"
+        },
+        {
+          "command": "deck.renameBookmark",
           "when": "false"
         },
         {

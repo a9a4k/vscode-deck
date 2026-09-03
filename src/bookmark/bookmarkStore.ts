@@ -26,6 +26,16 @@ export class BookmarkStore {
     return bookmark;
   }
 
+  async rename(worktreePath: string, url: string, label: string | undefined): Promise<void> {
+    await this.memento.update(BOOKMARKS_KEY, {
+      ...this.all(),
+      [worktreePath]: this.list(worktreePath).map((bookmark) => {
+        if (bookmark.url !== url) return bookmark;
+        return label === undefined ? { url: bookmark.url } : { ...bookmark, label };
+      }),
+    });
+  }
+
   async clear(worktreePath: string): Promise<void> {
     const all = { ...this.all() };
     delete all[worktreePath];

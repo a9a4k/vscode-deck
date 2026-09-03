@@ -77,6 +77,7 @@ import { ReleaseNoticeGate } from './releaseNoticeGate';
 import { ReleaseNoticeStore } from './releaseNoticeStore';
 import { BookmarkStore } from './bookmark/bookmarkStore';
 import { AddBookmarkCommand } from './bookmark/addBookmarkCommand';
+import { RenameBookmarkCommand } from './bookmark/renameBookmarkCommand';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -437,6 +438,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!bookmarkNode || !treeView) return;
     await treeView.reveal(bookmarkNode, { select: true, focus: false });
   });
+  const renameBookmark = new RenameBookmarkCommand(bookmarks, (worktreePath) => {
+    tree.refreshWorktree(worktreePath);
+  });
   const revealRepository = async (repositoryPath: string) => {
     const roots = tree.getChildren();
     if (!Array.isArray(roots)) return;
@@ -593,6 +597,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.addTerminal', (node) => addTerminal.run(node)),
     vscode.commands.registerCommand('deck.addBookmark', (node) =>
       addBookmark.run(node ?? selectedWorktreeNode(treeView?.selection[0]))),
+    vscode.commands.registerCommand('deck.renameBookmark', (node) => renameBookmark.run(node)),
     vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>

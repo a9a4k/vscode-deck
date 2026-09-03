@@ -201,6 +201,22 @@ describe('package contributions', () => {
     });
   });
 
+  it('contributes Rename Bookmark only on Bookmark row context menus', () => {
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.renameBookmark',
+      title: 'Rename Bookmark…',
+    });
+    expect(pkg.contributes.menus['view/item/context']).toContainEqual({
+      command: 'deck.renameBookmark',
+      when: 'view == deck.repositories && viewItem == deck.bookmark',
+      group: 'navigation@1',
+    });
+    expect(pkg.contributes.menus.commandPalette).toContainEqual({
+      command: 'deck.renameBookmark',
+      when: 'false',
+    });
+  });
+
   it('contributes Deck Terminal find command and keybindings', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.terminal.find',
