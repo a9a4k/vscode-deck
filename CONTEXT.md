@@ -73,8 +73,8 @@ The user-curated display order of Worktrees within a Repository, overlaid on a d
 _Avoid_: sort order, alphabetical order (the default is by creation, not name)
 
 **TerminalOrder**:
-The user-curated display order of Terminals within a Worktree. An order overlay reconciled against the live tmux list — tmux owns which Terminals exist; this owns only their order. Absent it, Terminals fall back to ascending `term-N` order.
-_Avoid_: terminal list (it stores order, not existence — cf. ADR-0014), sort order
+The user-curated display order of a Worktree's rows — Terminals and Bookmarks interleaved, since a Bookmark is a sibling row and can sit between two Terminals. An order overlay that owns order but never existence: each key is resolved against the source that owns the row (the live tmux list for a Terminal, the Bookmark store for a Bookmark), and a key neither claims is dropped. Absent it, Terminals fall back to ascending `term-N` order. Named for Terminals because they came first; it has always stored plain row keys, so admitting Bookmarks needed no migration.
+_Avoid_: terminal list (it stores order, not existence — cf. ADR-0014), sort order, terminal-only order (it spans both row kinds)
 
 ### Terminals
 
@@ -139,6 +139,25 @@ _Avoid_: attachment (the agent decides that — Deck only supplies a path), uplo
 A FileDrop whose image source carries bytes but no usable path, such as Finder. Deck writes the dropped bytes to a file outside every Worktree and hands the pane that file's path as a bracketed paste. Distinct from image **paste** (Cmd+V), where Deck forwards a keystroke and never sees the image — the pasteboard already holds it and a dropped file does not (ADR-0024, ADR-0054). Non-image byte drags remain with the workbench because a copy of a source file would not be that file.
 _Avoid_: image paste (a different gesture with a different mechanism), attachment, upload
 
+### Bookmarks
+
+**Bookmark**:
+A URL a user pins to a Worktree, shown as a row beside its Terminals and opened
+in VS Code's Integrated Browser or the default browser. Unlike a Terminal it has
+no backing process: tmux owns which Terminals exist, but nothing outside Deck
+owns which Bookmarks exist, so Deck persists them itself. That is not a breach of
+ADR-0014/ADR-0053 — those forbid *mirroring* an external source of truth in a
+persisted cache, and a Bookmark has no such source. Identified by its URL within
+its Worktree, and **portable**: it may be dragged to another Worktree, where a
+Terminal may not — a Terminal is bound by its session name and working
+directory, a Bookmark by nothing but the user's say-so (ADR-0056).
+_Avoid_: browser (the surface it may open in — VS Code's Integrated Browser is a
+separate thing Deck does not own), favorite (VS Code's browser keeps its own
+global favorites; a Bookmark is Deck's and scoped to a Worktree), pin / pinned
+tab (VS Code pins editor tabs — an unrelated durability concept on the same
+screen), tab (a disposable view, per the Terminal precedent), link (any URL
+anywhere; a Bookmark is curated and belongs to a Worktree)
+
 ### External changes
 
 **ExternalGitWatch**:
@@ -164,6 +183,7 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 - The **DeckSocket** has one **ExternalTerminalWatch**, realized by the **TerminalPoll**'s session-set diff.
 - A **Repository** has one **ActiveWorktree**; the mounted folder has one **ActiveRepository** (or none).
 - A **Worktree** hosts zero or more **Terminals**.
+- A **Worktree** hosts zero or more **Bookmarks**, rendered as sibling rows interleaved with its Terminals in one **TerminalOrder**.
 - A **Terminal**'s AgentStatus change to NeedsInput/Completed raises one **AgentStatusNotification**.
 - A **Terminal** belongs to exactly one **Worktree** and lives on the one **DeckSocket**.
 - A **FileDrop** targets a **Terminal** without changing its ownership or AgentSession; whatever runs in the pane — an AgentSession or a plain shell — receives the same pasted path. An **ImageDrop** is its bytes-only image fallback.
@@ -207,4 +227,5 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 - "unpushed commits" was the only committed-work warning in WorktreeRemoval, but it is measured against `@{u}` and a branch with no upstream reports none — so a branch whose only ref held unique work warned nothing, and `git branch -d` refused after the fact. Resolved: branch deletion is gated by **UnmergedCommits** (vs. the default branch and remotes); "unpushed" remains a Worktree-removal signal only.
 - "Dropping an image on the agent" was assumed to be the same gesture as pasting one, so ADR-0024 treated drop as a variant of paste and declined it. Resolved: they are two gestures with different mechanisms, because the image is in a different place. Paste forwards a keystroke and Deck never sees the image; **ImageDrop** has no keystroke to forward, so Deck materializes the file and pastes its path. The surface is a **Terminal** (a tab running an agent), never the **AgentSession** itself — that remains an observed attribute, not something you can drop onto.
 - An **ImageDrop** was assumed to be the only FileDrop a webview could use because a dropped `File` exposes bytes but no path. Resolved: VS Code's own Shift-gated drags carry URI lists across the webview boundary, so a `file:` URI becomes the real path and accepts files, folders, and editor tabs without copying. ImageDrop is now the fallback for image sources that carry bytes but no usable path.
+- "browser rows next to terminal rows" implied Deck would embed a browser. Resolved: the row is a **Bookmark** — a pinned URL — and Deck embeds nothing. VS Code 1.133 ships its own Integrated Browser (a real Electron web view, so unlike a webview it renders sites that refuse framing); Deck hands it a URL and owns only the row. "Browser" is avoided because it names a surface Deck does not own, and because a Bookmark may open in the default browser instead.
 - A **Worktree** was assumed to always have a branch, so a branchless one fell back to showing its full filesystem path as the row label — resolved: a **Detached Worktree** is a real checkout and stays shown, labelled by folder name + short commit; a **Bare Worktree** has no working tree and is hidden, because Switching to one would mount git internals and poison the **ActiveWorktree**.
