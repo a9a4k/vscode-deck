@@ -26,6 +26,13 @@ export class BookmarkStore {
     return bookmark;
   }
 
+  async remove(worktreePath: string, url: string): Promise<void> {
+    await this.memento.update(BOOKMARKS_KEY, {
+      ...this.all(),
+      [worktreePath]: this.list(worktreePath).filter((bookmark) => bookmark.url !== url),
+    });
+  }
+
   async clear(worktreePath: string): Promise<void> {
     const all = { ...this.all() };
     delete all[worktreePath];

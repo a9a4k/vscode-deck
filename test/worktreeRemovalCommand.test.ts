@@ -31,6 +31,9 @@ import {
   readBranchTip,
   removeWorktree,
 } from '../src/git/worktrees';
+import { BookmarkCascade } from '../src/bookmark/bookmarkCascade';
+import { BookmarkStore } from '../src/bookmark/bookmarkStore';
+import { TerminalOrderStore } from '../src/terminal/terminalOrderStore';
 import { WorktreeRemovalCommand } from '../src/worktree/worktreeRemovalCommand';
 
 const node = {
@@ -125,6 +128,43 @@ describe('WorktreeRemovalCommand', () => {
     expect(terminalCascade.killWorktree.mock.invocationCallOrder[0]).toBeLessThan(
       removeWorktree.mock.invocationCallOrder[0],
     );
+  });
+
+  it('cascades Bookmark and row-order removal only to the removed Worktree', async () => {
+    const values: Record<string, unknown> = {};
+    const memento = {
+      get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+      update: async (key: string, value: unknown) => {
+        values[key] = value;
+      },
+    };
+    const bookmarks = new BookmarkStore(memento);
+    const rowOrders = new TerminalOrderStore(memento);
+    const sharedUrl = 'https://example.com/shared';
+    await bookmarks.add('/repo/feature', { url: sharedUrl });
+    await bookmarks.add('/repo/feature', { url: 'https://example.com/feature' });
+    await bookmarks.add('/repo/sibling', { url: sharedUrl });
+    await rowOrders.set('/repo/feature', ['wt-_repo_feature__term-1', sharedUrl]);
+    await rowOrders.set('/repo/sibling', ['wt-_repo_sibling__term-1', sharedUrl]);
+    const command = new WorktreeRemovalCommand(
+      { get: () => undefined, clear: async () => undefined },
+      vi.fn(),
+      undefined,
+      undefined,
+      undefined,
+      new Set(),
+      new BookmarkCascade(bookmarks, rowOrders),
+    );
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(
+      'Remove (keep branch)' as never,
+    );
+
+    await command.run(node);
+    await waitUntil(() => bookmarks.list('/repo/feature').length === 0);
+
+    expect(rowOrders.get('/repo/feature')).toBeUndefined();
+    expect(bookmarks.list('/repo/sibling')).toEqual([{ url: sharedUrl }]);
+    expect(rowOrders.get('/repo/sibling')).toEqual(['wt-_repo_sibling__term-1', sharedUrl]);
   });
 
   it('continues removing the worktree when terminal cascade fails', async () => {

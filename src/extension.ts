@@ -77,6 +77,8 @@ import { ReleaseNoticeGate } from './releaseNoticeGate';
 import { ReleaseNoticeStore } from './releaseNoticeStore';
 import { BookmarkStore } from './bookmark/bookmarkStore';
 import { AddBookmarkCommand } from './bookmark/addBookmarkCommand';
+import { RemoveBookmarkCommand } from './bookmark/removeBookmarkCommand';
+import { BookmarkCascade } from './bookmark/bookmarkCascade';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -423,6 +425,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     removeAgentStatus,
   );
   const terminalCascade = new TerminalCascade(tmux, undefined, removeAgentStatus);
+  const bookmarkCascade = new BookmarkCascade(bookmarks, terminalOrders);
   const addWorktree = new AddWorktreeCommand(
     switcher,
     detachedOpener,
@@ -437,6 +440,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!bookmarkNode || !treeView) return;
     await treeView.reveal(bookmarkNode, { select: true, focus: false });
   });
+  const removeBookmark = new RemoveBookmarkCommand(
+    bookmarks,
+    terminalOrders,
+    (worktreePath) => tree.refreshWorktree(worktreePath),
+  );
   const revealRepository = async (repositoryPath: string) => {
     const roots = tree.getChildren();
     if (!Array.isArray(roots)) return;
@@ -467,6 +475,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     repositoryCommonDirCache,
     terminalCascade,
     pendingWorktreeRemovals,
+    bookmarkCascade,
   );
   const removeRepository = new RepositoryRemovalCommand(
     repositoryRegistry,
@@ -593,6 +602,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.addTerminal', (node) => addTerminal.run(node)),
     vscode.commands.registerCommand('deck.addBookmark', (node) =>
       addBookmark.run(node ?? selectedWorktreeNode(treeView?.selection[0]))),
+    vscode.commands.registerCommand('deck.removeBookmark', (node) => removeBookmark.run(node)),
     vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>

@@ -1199,6 +1199,33 @@ describe('activate', () => {
     expect(vscodeState.removeWorktreeArgs?.[5]).toBe(vscodeState.repositoryTreeArgs?.[7]);
   });
 
+  it('wires Bookmark cleanup into WorktreeRemoval', async () => {
+    const context = createContext();
+    const sharedUrl = 'https://example.com/shared';
+    context.values['deck.bookmarks'] = {
+      '/work/alpha': [{ url: sharedUrl }],
+      '/work/beta': [{ url: sharedUrl }],
+    };
+    context.values['deck.terminalOrders'] = {
+      '/work/alpha': ['wt-_work_alpha__term-1', sharedUrl],
+      '/work/beta': ['wt-_work_beta__term-1', sharedUrl],
+    };
+
+    await activate(context as never);
+    const bookmarkCascade = vscodeState.removeWorktreeArgs?.[6] as
+      | { clearWorktree(worktreePath: string): Promise<void> }
+      | undefined;
+    if (!bookmarkCascade) throw new Error('missing Bookmark WorktreeRemoval cascade');
+    await bookmarkCascade.clearWorktree('/work/alpha');
+
+    expect(context.values['deck.bookmarks']).toEqual({
+      '/work/beta': [{ url: sharedUrl }],
+    });
+    expect(context.values['deck.terminalOrders']).toEqual({
+      '/work/beta': ['wt-_work_beta__term-1', sharedUrl],
+    });
+  });
+
   it('routes Worktree commands through Repository reconciliation', async () => {
     const context = createContext();
     await activate(context as never);
@@ -1300,6 +1327,38 @@ describe('activate', () => {
     expect(context.values['deck.bookmarks']).toEqual({
       '/work/repo': [{ url: 'https://example.com/docs' }],
     });
+  });
+
+  it('removes a Bookmark row and its order key through the registered command', async () => {
+    const context = createContext();
+    const removedUrl = 'https://example.com/removed';
+    const keptUrl = 'https://example.com/kept';
+    context.values['deck.bookmarks'] = {
+      '/work/repo': [{ url: removedUrl }, { url: keptUrl }],
+    };
+    context.values['deck.terminalOrders'] = {
+      '/work/repo': ['wt-_work_repo__term-1', removedUrl, keptUrl],
+    };
+
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.removeBookmark',
+    );
+    if (!registration) throw new Error('missing deck.removeBookmark registration');
+    await registration[1]({
+      bookmark: { url: removedUrl },
+      worktreeNode: { worktree: { path: '/work/repo' } },
+    });
+
+    expect(context.values['deck.bookmarks']).toEqual({
+      '/work/repo': [{ url: keptUrl }],
+    });
+    expect(context.values['deck.terminalOrders']).toEqual({
+      '/work/repo': ['wt-_work_repo__term-1', keptUrl],
+    });
+    expect(vscodeState.repositoryTreeInstances[0].refreshWorktree).toHaveBeenCalledWith(
+      '/work/repo',
+    );
   });
 
   it('registers deck.runLauncher through RunLauncherCommand', async () => {
