@@ -262,12 +262,15 @@ export class DeckTreeDragAndDropController
     if (!isRowNode(target) || payload.worktreePath !== target.worktreePath) return;
 
     const liveSessions = await this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath));
-    const rows = reconcileRowOrder(
-      this.terminalOrders.get(payload.worktreePath),
+    const observedRows = reconcileRowOrder(
+      undefined,
       liveSessions,
       this.bookmarks.list(payload.worktreePath),
     );
-    const keys = rows.map((row) => row.key);
+    const keys = mergeObservedRowsIntoStoredOrder(
+      this.terminalOrders.get(payload.worktreePath),
+      observedRows,
+    );
     const targetKey = rowKey(target);
     const position = dropPosition(keys, payload.sourceKey, targetKey);
     const reordered = reorderArray(
@@ -296,18 +299,22 @@ export class DeckTreeDragAndDropController
       this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
       this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
     ]);
-    const sourceRowOrder = reconcileRowOrder(
+    const sourceRowOrder = mergeObservedRowsIntoStoredOrder(
       this.terminalOrders.get(payload.worktreePath),
-      sourceSessions,
-      sourceBookmarks,
-    )
-      .map((row) => row.key)
-      .filter((key) => key !== payload.sourceKey);
-    let targetRowOrder = reconcileRowOrder(
+      reconcileRowOrder(
+        undefined,
+        sourceSessions,
+        sourceBookmarks,
+      ),
+    ).filter((key) => key !== payload.sourceKey);
+    let targetRowOrder = mergeObservedRowsIntoStoredOrder(
       this.terminalOrders.get(targetWorktreePath),
-      targetSessions,
-      targetBookmarks,
-    ).map((row) => row.key);
+      reconcileRowOrder(
+        undefined,
+        targetSessions,
+        targetBookmarks,
+      ),
+    );
     if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
       targetRowOrder.push(payload.sourceKey);
       if (targetRowKey !== undefined) {
@@ -401,4 +408,18 @@ function dropPosition(
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function mergeObservedRowsIntoStoredOrder(
+  storedOrder: readonly string[] | undefined,
+  observedRows: readonly { key: string }[],
+): string[] {
+  const rowOrder = [...(storedOrder ?? [])];
+  const includedKeys = new Set(rowOrder);
+  for (const row of observedRows) {
+    if (includedKeys.has(row.key)) continue;
+    rowOrder.push(row.key);
+    includedKeys.add(row.key);
+  }
+  return rowOrder;
 }
