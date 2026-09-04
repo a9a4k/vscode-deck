@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const vscodeState = vi.hoisted(() => ({
   emitters: [] as Array<{ fire: ReturnType<typeof vi.fn> }>,
+  showInputBox: vi.fn(),
   workspaceFolders: [{ uri: { fsPath: '/work/beta-main' } }] as Array<{ uri: { fsPath: string } }>,
 }));
 
 vi.mock('vscode', () => ({
   commands: {
     executeCommand: vi.fn(),
+  },
+  env: {
+    clipboard: {
+      readText: vi.fn(async () => ''),
+    },
   },
   EventEmitter: class {
     readonly event = vi.fn();
@@ -45,6 +51,7 @@ vi.mock('vscode', () => ({
   },
   window: {
     showErrorMessage: vi.fn(),
+    showInputBox: vscodeState.showInputBox,
     showOpenDialog: vi.fn(),
   },
   workspace: {
@@ -112,6 +119,7 @@ import { RepositoryRegistryStore } from '../src/repository/repositoryRegistrySto
 import { getCommonDir, listWorktrees, type Worktree } from '../src/git/worktrees';
 import { TerminalModel } from '../src/terminal/terminalModel';
 import { WorktreeReconciler } from '../src/worktree/worktreeReconciler';
+import { AddBookmarkCommand } from '../src/bookmark/addBookmarkCommand';
 import { BookmarkStore } from '../src/bookmark/bookmarkStore';
 
 function registry(repositories = ['/work/alpha-main', '/work/beta-main']) {
@@ -169,9 +177,46 @@ function knownCommonDirs(): RepositoryCommonDirCache {
   } as unknown as RepositoryCommonDirCache;
 }
 
+function createBookmarkTree(sessions: Parameters<TerminalModel['apply']>[0]) {
+  const values: Record<string, unknown> = {};
+  const memento = {
+    get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+    update: async (key: string, value: unknown) => {
+      values[key] = value;
+    },
+  };
+  const bookmarks = new BookmarkStore(memento);
+  const terminalOrders = new TerminalOrderStore(memento);
+  const provider = new RepositoryTreeProvider(
+    registry(['/work/alpha-main']),
+    { get: vi.fn() } as unknown as ActiveWorktreeStore,
+    { get: vi.fn() } as unknown as WorktreeOrderStore,
+    warmWorktreeCache(),
+    knownCommonDirs(),
+    observedModel(sessions),
+    true,
+    new Set(),
+    undefined,
+    terminalOrders,
+    bookmarks,
+  );
+  return { bookmarks, provider, terminalOrders };
+}
+
+function renderedRowIds(provider: RepositoryTreeProvider) {
+  const repositories = provider.getChildren();
+  if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+  const worktrees = provider.getChildren(repositories[0]);
+  if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+  const rows = provider.getChildren(worktrees[0]);
+  if (!Array.isArray(rows)) throw new Error('expected sync Worktree children');
+  return rows.map((row) => row.id);
+}
+
 describe('RepositoryTreeProvider', () => {
   beforeEach(() => {
     vscodeState.emitters = [];
+    vscodeState.showInputBox.mockReset();
     vscodeState.workspaceFolders = [{ uri: { fsPath: '/work/beta-main' } }];
   });
 
@@ -1084,6 +1129,54 @@ describe('RepositoryTreeProvider', () => {
         iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
         command: expect.objectContaining({ command: 'deck.openBookmark' }),
       }),
+    ]);
+  });
+
+  it('renders the first pinned Bookmark below every Terminal when no row order exists', async () => {
+    const { bookmarks, provider, terminalOrders } = createBookmarkTree([
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
+    ]);
+    vscodeState.showInputBox.mockResolvedValue('https://example.com/docs');
+    await new AddBookmarkCommand(bookmarks, async () => undefined)
+      .run({ worktree: { path: '/work/alpha-main' } });
+
+    expect(renderedRowIds(provider)).toEqual([
+      'terminal::wt-_work_alpha-main__term-1',
+      'terminal::wt-_work_alpha-main__term-2',
+      'bookmark::/work/alpha-main::https://example.com/docs',
+    ]);
+    expect(terminalOrders.get('/work/alpha-main')).toBeUndefined();
+  });
+
+  it('renders successive pinned Bookmarks after curated and uncurated Terminals', async () => {
+    const { bookmarks, provider, terminalOrders } = createBookmarkTree([
+      { sessionName: 'wt-_work_alpha-main__term-3', windowName: 'three' },
+      { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'one' },
+      { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'two' },
+    ]);
+    await terminalOrders.set('/work/alpha-main', [
+      'wt-_work_alpha-main__term-2',
+      'wt-_work_alpha-main__term-1',
+    ]);
+    vscodeState.showInputBox
+      .mockResolvedValueOnce('https://example.com/first')
+      .mockResolvedValueOnce('https://example.com/second');
+    const command = new AddBookmarkCommand(bookmarks, async () => undefined);
+    const worktreeNode = { worktree: { path: '/work/alpha-main' } };
+    await command.run(worktreeNode);
+    await command.run(worktreeNode);
+
+    expect(renderedRowIds(provider)).toEqual([
+      'terminal::wt-_work_alpha-main__term-2',
+      'terminal::wt-_work_alpha-main__term-1',
+      'terminal::wt-_work_alpha-main__term-3',
+      'bookmark::/work/alpha-main::https://example.com/first',
+      'bookmark::/work/alpha-main::https://example.com/second',
+    ]);
+    expect(terminalOrders.get('/work/alpha-main')).toEqual([
+      'wt-_work_alpha-main__term-2',
+      'wt-_work_alpha-main__term-1',
     ]);
   });
 
