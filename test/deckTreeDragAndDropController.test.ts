@@ -353,6 +353,38 @@ describe('DeckTreeDragAndDropController', () => {
     expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
   });
 
+  it('preserves stored Terminal keys when reordering a Bookmark with no observed sessions', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'http://localhost:5173/';
+    await bookmarks.add('/repo/a-main', { url });
+    await terminalOrders.set('/repo/a-main', [
+      'wt-_repo_a-main__term-3',
+      url,
+      'wt-_repo_a-main__term-1',
+      'wt-_repo_a-main__term-2',
+    ]);
+    vscodeState.listSessions.mockResolvedValue([]);
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-main', 'wt-_repo_a-main__term-3'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(terminalOrders.get('/repo/a-main')).toEqual([
+      url,
+      'wt-_repo_a-main__term-3',
+      'wt-_repo_a-main__term-1',
+      'wt-_repo_a-main__term-2',
+    ]);
+  });
+
   it('moves a Bookmark across Repositories onto a Worktree and appends it to its rows', async () => {
     const { bookmarks, controller, refresh, terminalOrders } = createBookmarkMoveController();
     const url = 'https://github.com/org/repo/pull/192';
@@ -434,6 +466,79 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-feature__term-1',
       url,
       'wt-_repo_a-feature__term-2',
+    ]);
+  });
+
+  it('preserves both Worktrees stored Terminal keys when moving a Bookmark with no observed sessions', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/196';
+    const targetBookmark = { url: 'https://example.com/target' };
+    await bookmarks.add('/repo/a-main', { url });
+    await bookmarks.add('/repo/a-feature', targetBookmark);
+    await terminalOrders.set('/repo/a-main', [
+      'wt-_repo_a-main__term-3',
+      url,
+      'wt-_repo_a-main__term-1',
+    ]);
+    await terminalOrders.set('/repo/a-feature', [
+      'wt-_repo_a-feature__term-2',
+      targetBookmark.url,
+      'wt-_repo_a-feature__term-1',
+    ]);
+    vscodeState.listSessions.mockResolvedValue([]);
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-feature', 'wt-_repo_a-feature__term-1'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(terminalOrders.get('/repo/a-main')).toEqual([
+      'wt-_repo_a-main__term-3',
+      'wt-_repo_a-main__term-1',
+    ]);
+    expect(terminalOrders.get('/repo/a-feature')).toEqual([
+      'wt-_repo_a-feature__term-2',
+      targetBookmark.url,
+      url,
+      'wt-_repo_a-feature__term-1',
+    ]);
+  });
+
+  it('repositions an unresolved target-order key instead of duplicating the moved Bookmark', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/196';
+    await bookmarks.add('/repo/a-main', { url });
+    await terminalOrders.set('/repo/a-main', [url]);
+    await terminalOrders.set('/repo/a-feature', [
+      url,
+      'wt-_repo_a-feature__term-2',
+      'wt-_repo_a-feature__term-1',
+    ]);
+    vscodeState.listSessions.mockResolvedValue([]);
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-feature', 'wt-_repo_a-feature__term-1'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(terminalOrders.get('/repo/a-feature')).toEqual([
+      'wt-_repo_a-feature__term-2',
+      url,
+      'wt-_repo_a-feature__term-1',
     ]);
   });
 

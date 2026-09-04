@@ -262,24 +262,27 @@ export class DeckTreeDragAndDropController
     if (!isRowNode(target) || payload.worktreePath !== target.worktreePath) return;
 
     const liveSessions = await this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath));
-    const rows = reconcileRowOrder(
-      this.terminalOrders.get(payload.worktreePath),
+    const observedRows = reconcileRowOrder(
+      undefined,
       liveSessions,
       this.bookmarks.list(payload.worktreePath),
     );
-    const keys = rows.map((row) => row.key);
+    const rowOrder = appendObservedRowsToStoredOrder(
+      this.terminalOrders.get(payload.worktreePath),
+      observedRows,
+    );
     const targetKey = rowKey(target);
-    const position = dropPosition(keys, payload.sourceKey, targetKey);
-    const reordered = reorderArray(
-      keys,
+    const position = dropPosition(rowOrder, payload.sourceKey, targetKey);
+    const reorderedRowOrder = reorderArray(
+      rowOrder,
       payload.sourceKey,
       targetKey,
       position,
     );
 
-    if (sameOrder(keys, reordered)) return;
+    if (sameOrder(rowOrder, reorderedRowOrder)) return;
 
-    await this.terminalOrders.set(payload.worktreePath, reordered);
+    await this.terminalOrders.set(payload.worktreePath, reorderedRowOrder);
     this.refresh({ worktreePath: payload.worktreePath });
   }
 
@@ -296,19 +299,26 @@ export class DeckTreeDragAndDropController
       this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
       this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
     ]);
-    const sourceRowOrder = reconcileRowOrder(
-      this.terminalOrders.get(payload.worktreePath),
+    const observedSourceRows = reconcileRowOrder(
+      undefined,
       sourceSessions,
       sourceBookmarks,
-    )
-      .map((row) => row.key)
-      .filter((key) => key !== payload.sourceKey);
-    let targetRowOrder = reconcileRowOrder(
-      this.terminalOrders.get(targetWorktreePath),
+    );
+    const observedTargetRows = reconcileRowOrder(
+      undefined,
       targetSessions,
       targetBookmarks,
-    ).map((row) => row.key);
+    );
+    const sourceRowOrder = appendObservedRowsToStoredOrder(
+      this.terminalOrders.get(payload.worktreePath),
+      observedSourceRows,
+    ).filter((key) => key !== payload.sourceKey);
+    let targetRowOrder = appendObservedRowsToStoredOrder(
+      this.terminalOrders.get(targetWorktreePath),
+      observedTargetRows,
+    );
     if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
+      targetRowOrder = targetRowOrder.filter((key) => key !== payload.sourceKey);
       targetRowOrder.push(payload.sourceKey);
       if (targetRowKey !== undefined) {
         targetRowOrder = reorderArray(
@@ -401,4 +411,18 @@ function dropPosition(
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function appendObservedRowsToStoredOrder(
+  storedOrder: readonly string[] | undefined,
+  observedRows: readonly { key: string }[],
+): string[] {
+  const rowOrder = [...(storedOrder ?? [])];
+  const includedKeys = new Set(rowOrder);
+  for (const row of observedRows) {
+    if (includedKeys.has(row.key)) continue;
+    rowOrder.push(row.key);
+    includedKeys.add(row.key);
+  }
+  return rowOrder;
 }
