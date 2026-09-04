@@ -319,17 +319,17 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-3',
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
+      'http://localhost:5173/',
     ]);
     expect(refresh).toHaveBeenCalledWith({ worktreePath: '/repo/a-main' });
   });
 
-  it('reorders a Bookmark among its Worktree rows', async () => {
+  it('reorders an uncurated Bookmark among its Worktree rows', async () => {
     const { controller, refresh, terminalOrders } = createController();
     vi.mocked(terminalOrders.get).mockReturnValue([
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
       'wt-_repo_a-main__term-3',
-      'http://localhost:5173/',
     ]);
     const dataTransfer = new DataTransferMock();
 
@@ -495,6 +495,7 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-3',
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
+      'http://localhost:5173/',
     ]);
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalledOnce();
@@ -520,6 +521,7 @@ describe('DeckTreeDragAndDropController', () => {
       'wt-_repo_a-main__term-2',
       'wt-_repo_a-main__term-3',
       'wt-_repo_a-main__term-1',
+      'http://localhost:5173/',
     ]);
     expect(refresh).toHaveBeenCalledOnce();
   });

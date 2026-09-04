@@ -16,6 +16,7 @@ export function reconcileRowOrder<
   const terminalsByKey = new Map(terminals.map((terminal) => [terminal.sessionName, terminal]));
   const bookmarksByKey = new Map(bookmarks.map((bookmark) => [bookmark.url, bookmark]));
   const emittedTerminals = new Set<string>();
+  const emittedBookmarks = new Set<string>();
   const rows: OrderedRow<Terminal, Bookmark>[] = [];
 
   for (const key of storedOrder ?? []) {
@@ -27,12 +28,21 @@ export function reconcileRowOrder<
     }
 
     const bookmark = bookmarksByKey.get(key);
-    if (bookmark) rows.push({ kind: 'bookmark', key, bookmark });
+    if (bookmark) {
+      rows.push({ kind: 'bookmark', key, bookmark });
+      emittedBookmarks.add(key);
+    }
   }
 
   for (const terminal of terminals) {
     if (!emittedTerminals.has(terminal.sessionName)) {
       rows.push({ kind: 'terminal', key: terminal.sessionName, terminal });
+    }
+  }
+
+  for (const bookmark of bookmarks) {
+    if (!emittedBookmarks.has(bookmark.url)) {
+      rows.push({ kind: 'bookmark', key: bookmark.url, bookmark });
     }
   }
 

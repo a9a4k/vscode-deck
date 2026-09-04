@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import type { Bookmark } from './bookmarkStore';
 
 interface BookmarkStoreLike {
-  list(worktreePath: string): readonly Bookmark[];
   add(worktreePath: string, bookmark: Bookmark): Promise<Bookmark>;
 }
 
@@ -33,10 +32,8 @@ export class AddBookmarkCommand {
 
     const worktreePath = node.worktree.path;
     const url = input.trim();
-    const alreadyPinned = this.bookmarks.list(worktreePath)
-      .some((bookmark) => bookmark.url === url);
     const bookmark = await this.bookmarks.add(worktreePath, { url });
-    if (!alreadyPinned) await this.appendToRowOrder(worktreePath, bookmark);
+    await this.appendToRowOrder(worktreePath, bookmark);
     await this.reveal(worktreePath, bookmark);
   }
 }

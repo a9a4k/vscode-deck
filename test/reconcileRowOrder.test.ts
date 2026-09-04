@@ -68,6 +68,28 @@ describe('reconcileRowOrder', () => {
     ]);
   });
 
+  it('appends uncurated Bookmarks after uncurated Terminals in store insertion order', () => {
+    const bookmarks = [
+      { url: 'https://example.com/first' },
+      { url: 'https://example.com/second' },
+    ];
+    const terminals = [
+      { sessionName: 'wt-_work_alpha__term-2' },
+      { sessionName: 'wt-_work_alpha__term-1' },
+    ];
+
+    expect(reconcileRowOrder(
+      [terminals[1].sessionName],
+      terminals,
+      bookmarks,
+    ).map((row) => row.key)).toEqual([
+      terminals[1].sessionName,
+      terminals[0].sessionName,
+      bookmarks[0].url,
+      bookmarks[1].url,
+    ]);
+  });
+
   it('appends a newly pinned Bookmark to the bottom of the stored row order', () => {
     const existingBookmark = { url: 'https://example.com/docs' };
     const newBookmark = { url: 'http://localhost:5173/' };

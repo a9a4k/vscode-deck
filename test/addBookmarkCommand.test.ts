@@ -102,14 +102,15 @@ describe('AddBookmarkCommand', () => {
     }));
   });
 
-  it('reveals the existing row when the URL is already pinned', async () => {
-    const { appendToRowOrder, bookmarks, command, reveal } = createCommand();
+  it('restores the row-order key before revealing an already-pinned Bookmark', async () => {
+    const { appendToRowOrder, bookmarks, command, effects, reveal } = createCommand();
     const existing = { url: 'https://github.com/org/repo/pull/186', label: 'PR 186' };
     await bookmarks.add('/work/alpha', existing);
 
     await command.run({ worktree: { path: '/work/alpha' } });
 
-    expect(appendToRowOrder).not.toHaveBeenCalled();
+    expect(appendToRowOrder).toHaveBeenCalledWith('/work/alpha', existing);
     expect(reveal).toHaveBeenCalledWith('/work/alpha', existing);
+    expect(effects).toEqual(['append', 'reveal']);
   });
 });

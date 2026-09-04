@@ -60,6 +60,18 @@ describe('RenameBookmarkCommand', () => {
     }));
   });
 
+  it('pre-fills the raw value when the stored URL cannot be parsed', async () => {
+    const { bookmarks, command } = createCommand();
+    const bookmark = { url: 'not a URL' };
+    await bookmarks.add('/work/alpha', bookmark);
+
+    await command.run({ bookmark, worktreeNode: { worktree: { path: '/work/alpha' } } });
+
+    expect(vscodeState.showInputBox).toHaveBeenCalledWith(expect.objectContaining({
+      value: 'not a URL',
+    }));
+  });
+
   it('clears a custom label when the entered name is blank', async () => {
     const { bookmarks, command } = createCommand();
     const bookmark = { url: 'https://github.com/org/repo/pull/190', label: 'Rename work' };

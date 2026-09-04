@@ -1087,6 +1087,34 @@ describe('RepositoryTreeProvider', () => {
     ]);
   });
 
+  it('renders an uncurated Bookmark with an unparseable URL after Terminal rows', () => {
+    const terminal = { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' };
+    const provider = new RepositoryTreeProvider(
+      registry(['/work/alpha-main']),
+      { get: vi.fn() } as unknown as ActiveWorktreeStore,
+      { get: vi.fn() } as unknown as WorktreeOrderStore,
+      warmWorktreeCache(),
+      knownCommonDirs(),
+      observedModel([terminal]),
+      true,
+      new Set(),
+      undefined,
+      { get: vi.fn(() => [terminal.sessionName]) } as unknown as TerminalOrderStore,
+      { list: vi.fn(() => [{ url: 'not a URL' }]) } as unknown as BookmarkStore,
+    );
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+
+    const rows = provider.getChildren(worktrees[0]);
+
+    expect((rows as Array<{ label: string }>).map((row) => row.label)).toEqual([
+      'zsh',
+      'not a URL',
+    ]);
+  });
+
   it('updates cached Bookmark rows for custom and derived labels', async () => {
     const values: Record<string, unknown> = {};
     const bookmarks = new BookmarkStore({

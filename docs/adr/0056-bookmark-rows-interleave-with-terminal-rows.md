@@ -51,20 +51,18 @@ express.
    persist rows": **never persist a mirror of an existence owned elsewhere**,
    because a mirror needs invalidation and invalidation is where the bugs live.
    A Bookmark has no elsewhere; the store *is* the truth, so there is no seam
-   to get wrong. Keeping the rows and the order that references them in one
-   store is what prevents two stores from disagreeing about which Bookmarks
-   exist.
+   to get wrong about its existence.
 
 4. **A Bookmark's identity is its URL within its Worktree.** Pinning a URL
    already pinned there reveals and selects the existing row instead of
    creating a second.
 
-5. **Bookmarks are never uncurated.** Because Deck owns their existence, it
-   writes the order entry when the Bookmark is pinned — appended at the bottom,
-   matching ADR-0028. Only Terminals can appear without an order entry (they
-   can be created outside Deck, ADR-0052), so the fallback rule stays exactly
-   what it was: uncurated Terminals sort by ascending `term-N` after the
-   curated rows. There is no cross-kind tiebreak to define.
+5. **The reader recovers uncurated Bookmarks.** Deck writes the order entry
+   when a Bookmark is pinned — appended at the bottom, matching ADR-0028 — but
+   Bookmark existence and row order are separate writes. The reader therefore
+   treats the write-path invariant as recoverable: curated rows render first,
+   in stored order; uncurated Terminals render next, by ascending `term-N`;
+   uncurated Bookmarks render last, in Bookmark store insertion order.
 
 6. **Bookmarks are portable; Terminals are bound.** A Bookmark may be dragged
    to another Worktree, which re-keys its store entry. The Terminal rule
@@ -106,6 +104,9 @@ express.
   `pruneRowOrder` require both the live Terminal and Bookmark sources. This
   prevents a call shaped around only the tmux session list from silently
   deleting **every** Bookmark key from every Worktree's order.
+- Adding a Bookmark is two non-atomic `globalState` writes: existence first,
+  then row order. The reader-side fallback, rather than the writer's invariant,
+  guarantees that every stored Bookmark stays reachable after a partial write.
 - Key spaces cannot collide: Deck's session names match `wt-…__term-N`, and a
   Bookmark key is a URL carrying a scheme.
 - The tree gains rows that never disappear on their own. A Terminal dies on
@@ -120,8 +121,9 @@ express.
 
 - `src/tree/reconcileRowOrder.ts` — stored order resolved against live
   Terminals and stored Bookmarks, unknown keys dropped, uncurated Terminals
-  appended by ascending `term-N`; confirms the overlay semantics decision 2
-  extends and the trap in Consequences.
+  appended by ascending `term-N`, then uncurated Bookmarks in store insertion
+  order; confirms the overlay semantics decision 2 extends and the trap in
+  Consequences.
 - `src/tree/pruneRowOrder.ts` — mixed orders are pruned against both ownership
   sources, so observing only tmux cannot erase Bookmark positions.
 - `src/terminal/terminalCascade.ts` — `killWorktree(worktreePath)` kills by

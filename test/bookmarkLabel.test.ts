@@ -26,4 +26,8 @@ describe('deriveBookmarkLabel', () => {
     expect(second).toBe('pull/186');
     expect(first).not.toBe(second);
   });
+
+  it('uses the raw value when the stored URL cannot be parsed', () => {
+    expect(deriveBookmarkLabel('not a URL')).toBe('not a URL');
+  });
 });
