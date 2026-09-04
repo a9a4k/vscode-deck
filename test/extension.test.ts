@@ -619,6 +619,7 @@ import { activate, deactivate, openPendingTerminalForCurrentWorktree } from '../
 import { resolveCommonDirSafe } from '../src/repository/repositoryCommonDirCache';
 import { PendingTerminalOpenStore } from '../src/terminal/pendingTerminalOpenStore';
 import { SessionUriCodec } from '../src/terminal/sessionUriCodec';
+import { reconcileRowOrder } from '../src/tree/reconcileRowOrder';
 
 describe('activate', () => {
   beforeEach(() => {
@@ -1292,7 +1293,7 @@ describe('activate', () => {
     expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
-  it('pins, refreshes, and reveals a Bookmark through the registered command', async () => {
+  it('pins the first Bookmark below existing Terminals, then refreshes and reveals it', async () => {
     const context = createContext();
 
     await activate(context as never);
@@ -1309,15 +1310,75 @@ describe('activate', () => {
     expect(context.values['deck.bookmarks']).toEqual({
       '/work/repo': [{ url: 'https://example.com/docs' }],
     });
-    expect(context.values['deck.terminalOrders']).toEqual({
-      '/work/repo': ['https://example.com/docs'],
-    });
+    const storedOrder = (context.values['deck.terminalOrders'] as
+      | Record<string, string[]>
+      | undefined)?.['/work/repo'];
+    expect(reconcileRowOrder(
+      storedOrder,
+      [
+        { sessionName: 'wt-_work_repo__term-2' },
+        { sessionName: 'wt-_work_repo__term-1' },
+      ],
+      [{ url: 'https://example.com/docs' }],
+    ).map((row) => row.key)).toEqual([
+      'wt-_work_repo__term-1',
+      'wt-_work_repo__term-2',
+      'https://example.com/docs',
+    ]);
+    expect(storedOrder).toBeUndefined();
     expect(tree.refreshWorktree).toHaveBeenCalledWith('/work/repo');
     expect(tree.findBookmark).toHaveBeenCalledWith('https://example.com/docs', '/work/repo');
     expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(
       bookmarkNode,
       { select: true, focus: false },
     );
+  });
+
+  it('pins successive Bookmarks below curated and uncurated Terminals without changing their order', async () => {
+    const context = createContext();
+    context.values['deck.terminalOrders'] = {
+      '/work/repo': [
+        'wt-_work_repo__term-2',
+        'wt-_work_repo__term-1',
+      ],
+    };
+    vscodeState.showInputBox
+      .mockResolvedValueOnce('https://example.com/first')
+      .mockResolvedValueOnce('https://example.com/second');
+
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.addBookmark',
+    );
+    if (!registration) throw new Error('missing deck.addBookmark registration');
+    const node = { worktree: { path: '/work/repo' } };
+    await registration[1](node);
+    await registration[1](node);
+
+    const storedOrder = (context.values['deck.terminalOrders'] as Record<string, string[]>)[
+      '/work/repo'
+    ];
+    const bookmarks = (context.values['deck.bookmarks'] as
+      Record<string, Array<{ url: string }>>)['/work/repo'];
+    expect(reconcileRowOrder(
+      storedOrder,
+      [
+        { sessionName: 'wt-_work_repo__term-3' },
+        { sessionName: 'wt-_work_repo__term-1' },
+        { sessionName: 'wt-_work_repo__term-2' },
+      ],
+      bookmarks,
+    ).map((row) => row.key)).toEqual([
+      'wt-_work_repo__term-2',
+      'wt-_work_repo__term-1',
+      'wt-_work_repo__term-3',
+      'https://example.com/first',
+      'https://example.com/second',
+    ]);
+    expect(storedOrder).toEqual([
+      'wt-_work_repo__term-2',
+      'wt-_work_repo__term-1',
+    ]);
   });
 
   it('pins to the selected Worktree when Add Bookmark runs from the Command Palette', async () => {

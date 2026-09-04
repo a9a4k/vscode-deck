@@ -78,7 +78,6 @@ import { ReleaseNoticeStore } from './releaseNoticeStore';
 import { BookmarkStore } from './bookmark/bookmarkStore';
 import { AddBookmarkCommand } from './bookmark/addBookmarkCommand';
 import { BookmarkOpener } from './bookmark/bookmarkOpener';
-import { appendBookmarkToRowOrder } from './tree/reconcileRowOrder';
 import { RemoveBookmarkCommand } from './bookmark/removeBookmarkCommand';
 import { BookmarkCascade } from './bookmark/bookmarkCascade';
 import { RenameBookmarkCommand } from './bookmark/renameBookmarkCommand';
@@ -440,13 +439,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const addBookmark = new AddBookmarkCommand(
     bookmarks,
-    async (worktreePath, bookmark) => {
-      const rowKeys = appendBookmarkToRowOrder(
-        terminalOrders.get(worktreePath),
-        bookmark,
-      );
-      await terminalOrders.set(worktreePath, rowKeys);
-    },
     async (worktreePath, bookmark) => {
       tree.refreshWorktree(worktreePath);
       const bookmarkNode = tree.findBookmark(bookmark.url, worktreePath);

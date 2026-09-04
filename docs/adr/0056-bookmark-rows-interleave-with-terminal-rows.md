@@ -57,12 +57,12 @@ express.
    already pinned there reveals and selects the existing row instead of
    creating a second.
 
-5. **The reader recovers uncurated Bookmarks.** Deck writes the order entry
-   when a Bookmark is pinned — appended at the bottom, matching ADR-0028 — but
-   Bookmark existence and row order are separate writes. The reader therefore
-   treats the write-path invariant as recoverable: curated rows render first,
-   in stored order; uncurated Terminals render next, by ascending `term-N`;
-   uncurated Bookmarks render last, in Bookmark store insertion order.
+5. **Pinning leaves row order untouched.** A pinned Bookmark is uncurated until
+   the user drags a row in its Worktree. The reader places curated rows first,
+   in stored order; uncurated Terminals next, by ascending `term-N`; and
+   uncurated Bookmarks last, in Bookmark store insertion order. Reader-side
+   placement therefore appends a new Bookmark at the bottom without making a
+   partial order hide any uncurated Terminal below it.
 
 6. **Bookmarks are portable; Terminals are bound.** A Bookmark may be dragged
    to another Worktree, which re-keys its store entry. The Terminal rule
@@ -104,9 +104,9 @@ express.
   `pruneRowOrder` require both the live Terminal and Bookmark sources. This
   prevents a call shaped around only the tmux session list from silently
   deleting **every** Bookmark key from every Worktree's order.
-- Adding a Bookmark is two non-atomic `globalState` writes: existence first,
-  then row order. The reader-side fallback, rather than the writer's invariant,
-  guarantees that every stored Bookmark stays reachable after a partial write.
+- Adding a Bookmark writes only its existence and leaves `TerminalOrder`
+  untouched. The reader guarantees bottom placement; dragging a row later
+  writes a complete visible order, including uncurated Bookmarks.
 - Key spaces cannot collide: Deck's session names match `wt-…__term-N`, and a
   Bookmark key is a URL carrying a scheme.
 - The tree gains rows that never disappear on their own. A Terminal dies on

@@ -49,14 +49,6 @@ export function reconcileRowOrder<
   return rows;
 }
 
-export function appendBookmarkToRowOrder<Bookmark extends { url: string }>(
-  storedOrder: readonly string[] | undefined,
-  bookmark: Bookmark,
-): readonly string[] {
-  if (storedOrder?.includes(bookmark.url)) return storedOrder;
-  return [...(storedOrder ?? []), bookmark.url];
-}
-
 function terminalNumber(sessionName: string): number {
   return Number(sessionName.match(/__term-(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
 }

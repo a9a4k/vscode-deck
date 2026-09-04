@@ -27,19 +27,10 @@ function createCommand() {
       values[key] = value;
     },
   });
-  const effects: string[] = [];
-  const ensureInRowOrder = vi.fn(async () => {
-    effects.push('ensure-order');
-  });
   const reveal = vi.fn(async () => undefined);
-  reveal.mockImplementation(async () => {
-    effects.push('reveal');
-  });
   return {
-    ensureInRowOrder,
     bookmarks,
-    command: new AddBookmarkCommand(bookmarks, ensureInRowOrder, reveal),
-    effects,
+    command: new AddBookmarkCommand(bookmarks, reveal),
     reveal,
   };
 }
@@ -68,18 +59,6 @@ describe('AddBookmarkCommand', () => {
     );
   });
 
-  it('appends a newly pinned Bookmark to the row order before revealing it', async () => {
-    const { command, effects, ensureInRowOrder } = createCommand();
-
-    await command.run({ worktree: { path: '/work/alpha' } });
-
-    expect(ensureInRowOrder).toHaveBeenCalledWith(
-      '/work/alpha',
-      { url: 'https://github.com/org/repo/pull/186' },
-    );
-    expect(effects).toEqual(['ensure-order', 'reveal']);
-  });
-
   it('does not pre-fill the input when the clipboard does not hold an http(s) URL', async () => {
     const { command } = createCommand();
     vscodeState.clipboardText = 'git@github.com:org/repo.git';
@@ -102,15 +81,13 @@ describe('AddBookmarkCommand', () => {
     }));
   });
 
-  it('restores the row-order key before revealing an already-pinned Bookmark', async () => {
-    const { bookmarks, command, effects, ensureInRowOrder, reveal } = createCommand();
+  it('reveals the existing row when the URL is already pinned', async () => {
+    const { bookmarks, command, reveal } = createCommand();
     const existing = { url: 'https://github.com/org/repo/pull/186', label: 'PR 186' };
     await bookmarks.add('/work/alpha', existing);
 
     await command.run({ worktree: { path: '/work/alpha' } });
 
-    expect(ensureInRowOrder).toHaveBeenCalledWith('/work/alpha', existing);
     expect(reveal).toHaveBeenCalledWith('/work/alpha', existing);
-    expect(effects).toEqual(['ensure-order', 'reveal']);
   });
 });

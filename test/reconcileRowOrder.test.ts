@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendBookmarkToRowOrder, reconcileRowOrder } from '../src/tree/reconcileRowOrder';
+import { reconcileRowOrder } from '../src/tree/reconcileRowOrder';
 
 describe('reconcileRowOrder', () => {
   it('keeps a stored Bookmark between live Terminals', () => {
@@ -90,41 +90,4 @@ describe('reconcileRowOrder', () => {
     ]);
   });
 
-  it('appends a newly pinned Bookmark to the bottom of the stored row order', () => {
-    const existingBookmark = { url: 'https://example.com/docs' };
-    const newBookmark = { url: 'http://localhost:5173/' };
-    const terminals = [
-      { sessionName: 'wt-_work_alpha__term-1' },
-      { sessionName: 'wt-_work_alpha__term-2' },
-    ];
-
-    expect(appendBookmarkToRowOrder(
-      [terminals[1].sessionName, existingBookmark.url, terminals[0].sessionName],
-      newBookmark,
-    )).toEqual([
-      terminals[1].sessionName,
-      existingBookmark.url,
-      terminals[0].sessionName,
-      newBookmark.url,
-    ]);
-  });
-
-  it('preserves curated Terminal keys when appending with no observed Terminals', () => {
-    const existingBookmark = { url: 'https://example.com/docs' };
-    const newBookmark = { url: 'http://localhost:5173/' };
-
-    expect(appendBookmarkToRowOrder(
-      [
-        'wt-_work_alpha__term-3',
-        'wt-_work_alpha__term-1',
-        existingBookmark.url,
-      ],
-      newBookmark,
-    )).toEqual([
-      'wt-_work_alpha__term-3',
-      'wt-_work_alpha__term-1',
-      existingBookmark.url,
-      newBookmark.url,
-    ]);
-  });
 });
