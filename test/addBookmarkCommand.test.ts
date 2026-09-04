@@ -28,17 +28,17 @@ function createCommand() {
     },
   });
   const effects: string[] = [];
-  const appendToRowOrder = vi.fn(async () => {
-    effects.push('append');
+  const ensureInRowOrder = vi.fn(async () => {
+    effects.push('ensure-order');
   });
   const reveal = vi.fn(async () => undefined);
   reveal.mockImplementation(async () => {
     effects.push('reveal');
   });
   return {
-    appendToRowOrder,
+    ensureInRowOrder,
     bookmarks,
-    command: new AddBookmarkCommand(bookmarks, appendToRowOrder, reveal),
+    command: new AddBookmarkCommand(bookmarks, ensureInRowOrder, reveal),
     effects,
     reveal,
   };
@@ -69,15 +69,15 @@ describe('AddBookmarkCommand', () => {
   });
 
   it('appends a newly pinned Bookmark to the row order before revealing it', async () => {
-    const { appendToRowOrder, command, effects } = createCommand();
+    const { command, effects, ensureInRowOrder } = createCommand();
 
     await command.run({ worktree: { path: '/work/alpha' } });
 
-    expect(appendToRowOrder).toHaveBeenCalledWith(
+    expect(ensureInRowOrder).toHaveBeenCalledWith(
       '/work/alpha',
       { url: 'https://github.com/org/repo/pull/186' },
     );
-    expect(effects).toEqual(['append', 'reveal']);
+    expect(effects).toEqual(['ensure-order', 'reveal']);
   });
 
   it('does not pre-fill the input when the clipboard does not hold an http(s) URL', async () => {
@@ -103,14 +103,14 @@ describe('AddBookmarkCommand', () => {
   });
 
   it('restores the row-order key before revealing an already-pinned Bookmark', async () => {
-    const { appendToRowOrder, bookmarks, command, effects, reveal } = createCommand();
+    const { bookmarks, command, effects, ensureInRowOrder, reveal } = createCommand();
     const existing = { url: 'https://github.com/org/repo/pull/186', label: 'PR 186' };
     await bookmarks.add('/work/alpha', existing);
 
     await command.run({ worktree: { path: '/work/alpha' } });
 
-    expect(appendToRowOrder).toHaveBeenCalledWith('/work/alpha', existing);
+    expect(ensureInRowOrder).toHaveBeenCalledWith('/work/alpha', existing);
     expect(reveal).toHaveBeenCalledWith('/work/alpha', existing);
-    expect(effects).toEqual(['append', 'reveal']);
+    expect(effects).toEqual(['ensure-order', 'reveal']);
   });
 });

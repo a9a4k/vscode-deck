@@ -14,7 +14,7 @@ interface WorktreeNodeLike {
 export class AddBookmarkCommand {
   constructor(
     private readonly bookmarks: BookmarkStoreLike,
-    private readonly appendToRowOrder: (worktreePath: string, bookmark: Bookmark) => Promise<void>,
+    private readonly ensureInRowOrder: (worktreePath: string, bookmark: Bookmark) => Promise<void>,
     private readonly reveal: (worktreePath: string, bookmark: Bookmark) => Promise<void>,
   ) {}
 
@@ -33,7 +33,7 @@ export class AddBookmarkCommand {
     const worktreePath = node.worktree.path;
     const url = input.trim();
     const bookmark = await this.bookmarks.add(worktreePath, { url });
-    await this.appendToRowOrder(worktreePath, bookmark);
+    await this.ensureInRowOrder(worktreePath, bookmark);
     await this.reveal(worktreePath, bookmark);
   }
 }
