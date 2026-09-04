@@ -443,8 +443,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     async (worktreePath, bookmark) => {
       const rowKeys = appendBookmarkToRowOrder(
         terminalOrders.get(worktreePath),
-        terminalModel.get(worktreePath),
-        bookmarks.list(worktreePath),
         bookmark,
       );
       await terminalOrders.set(worktreePath, rowKeys);

@@ -68,7 +68,7 @@ describe('reconcileRowOrder', () => {
     ]);
   });
 
-  it('appends a newly pinned Bookmark after every current row without disturbing their order', () => {
+  it('appends a newly pinned Bookmark to the bottom of the stored row order', () => {
     const existingBookmark = { url: 'https://example.com/docs' };
     const newBookmark = { url: 'http://localhost:5173/' };
     const terminals = [
@@ -77,14 +77,31 @@ describe('reconcileRowOrder', () => {
     ];
 
     expect(appendBookmarkToRowOrder(
-      [terminals[1].sessionName, existingBookmark.url],
-      terminals,
-      [existingBookmark, newBookmark],
+      [terminals[1].sessionName, existingBookmark.url, terminals[0].sessionName],
       newBookmark,
     )).toEqual([
       terminals[1].sessionName,
       existingBookmark.url,
       terminals[0].sessionName,
+      newBookmark.url,
+    ]);
+  });
+
+  it('preserves curated Terminal keys when appending with no observed Terminals', () => {
+    const existingBookmark = { url: 'https://example.com/docs' };
+    const newBookmark = { url: 'http://localhost:5173/' };
+
+    expect(appendBookmarkToRowOrder(
+      [
+        'wt-_work_alpha__term-3',
+        'wt-_work_alpha__term-1',
+        existingBookmark.url,
+      ],
+      newBookmark,
+    )).toEqual([
+      'wt-_work_alpha__term-3',
+      'wt-_work_alpha__term-1',
+      existingBookmark.url,
       newBookmark.url,
     ]);
   });

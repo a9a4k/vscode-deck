@@ -39,19 +39,12 @@ export function reconcileRowOrder<
   return rows;
 }
 
-export function appendBookmarkToRowOrder<
-  Terminal extends { sessionName: string },
-  Bookmark extends { url: string },
->(
+export function appendBookmarkToRowOrder<Bookmark extends { url: string }>(
   storedOrder: readonly string[] | undefined,
-  liveTerminals: readonly Terminal[],
-  bookmarks: readonly Bookmark[],
   bookmark: Bookmark,
 ): readonly string[] {
-  const existingKeys = reconcileRowOrder(storedOrder, liveTerminals, bookmarks)
-    .map((row) => row.key)
-    .filter((key) => key !== bookmark.url);
-  return [...existingKeys, bookmark.url];
+  if (storedOrder?.includes(bookmark.url)) return storedOrder;
+  return [...(storedOrder ?? []), bookmark.url];
 }
 
 function terminalNumber(sessionName: string): number {
