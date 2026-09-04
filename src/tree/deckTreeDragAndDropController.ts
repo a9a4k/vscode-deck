@@ -267,22 +267,22 @@ export class DeckTreeDragAndDropController
       liveSessions,
       this.bookmarks.list(payload.worktreePath),
     );
-    const keys = mergeObservedRowsIntoStoredOrder(
+    const rowOrder = appendObservedRowsToStoredOrder(
       this.terminalOrders.get(payload.worktreePath),
       observedRows,
     );
     const targetKey = rowKey(target);
-    const position = dropPosition(keys, payload.sourceKey, targetKey);
-    const reordered = reorderArray(
-      keys,
+    const position = dropPosition(rowOrder, payload.sourceKey, targetKey);
+    const reorderedRowOrder = reorderArray(
+      rowOrder,
       payload.sourceKey,
       targetKey,
       position,
     );
 
-    if (sameOrder(keys, reordered)) return;
+    if (sameOrder(rowOrder, reorderedRowOrder)) return;
 
-    await this.terminalOrders.set(payload.worktreePath, reordered);
+    await this.terminalOrders.set(payload.worktreePath, reorderedRowOrder);
     this.refresh({ worktreePath: payload.worktreePath });
   }
 
@@ -299,23 +299,26 @@ export class DeckTreeDragAndDropController
       this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
       this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
     ]);
-    const sourceRowOrder = mergeObservedRowsIntoStoredOrder(
+    const observedSourceRows = reconcileRowOrder(
+      undefined,
+      sourceSessions,
+      sourceBookmarks,
+    );
+    const observedTargetRows = reconcileRowOrder(
+      undefined,
+      targetSessions,
+      targetBookmarks,
+    );
+    const sourceRowOrder = appendObservedRowsToStoredOrder(
       this.terminalOrders.get(payload.worktreePath),
-      reconcileRowOrder(
-        undefined,
-        sourceSessions,
-        sourceBookmarks,
-      ),
+      observedSourceRows,
     ).filter((key) => key !== payload.sourceKey);
-    let targetRowOrder = mergeObservedRowsIntoStoredOrder(
+    let targetRowOrder = appendObservedRowsToStoredOrder(
       this.terminalOrders.get(targetWorktreePath),
-      reconcileRowOrder(
-        undefined,
-        targetSessions,
-        targetBookmarks,
-      ),
+      observedTargetRows,
     );
     if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
+      targetRowOrder = targetRowOrder.filter((key) => key !== payload.sourceKey);
       targetRowOrder.push(payload.sourceKey);
       if (targetRowKey !== undefined) {
         targetRowOrder = reorderArray(
@@ -410,7 +413,7 @@ function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
-function mergeObservedRowsIntoStoredOrder(
+function appendObservedRowsToStoredOrder(
   storedOrder: readonly string[] | undefined,
   observedRows: readonly { key: string }[],
 ): string[] {

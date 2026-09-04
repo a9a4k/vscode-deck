@@ -354,10 +354,12 @@ describe('DeckTreeDragAndDropController', () => {
   });
 
   it('preserves stored Terminal keys when reordering a Bookmark with no observed sessions', async () => {
-    const { controller, terminalOrders } = createController();
-    vi.mocked(terminalOrders.get).mockReturnValue([
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'http://localhost:5173/';
+    await bookmarks.add('/repo/a-main', { url });
+    await terminalOrders.set('/repo/a-main', [
       'wt-_repo_a-main__term-3',
-      'http://localhost:5173/',
+      url,
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
     ]);
@@ -365,7 +367,7 @@ describe('DeckTreeDragAndDropController', () => {
     const dataTransfer = new DataTransferMock();
 
     controller.handleDrag?.(
-      [bookmark('/repo/a', '/repo/a-main', 'http://localhost:5173/')],
+      [bookmark('/repo/a', '/repo/a-main', url)],
       dataTransfer as vscode.DataTransfer,
       {} as never,
     );
@@ -375,8 +377,8 @@ describe('DeckTreeDragAndDropController', () => {
       {} as never,
     );
 
-    expect(terminalOrders.set).toHaveBeenCalledWith('/repo/a-main', [
-      'http://localhost:5173/',
+    expect(terminalOrders.get('/repo/a-main')).toEqual([
+      url,
       'wt-_repo_a-main__term-3',
       'wt-_repo_a-main__term-1',
       'wt-_repo_a-main__term-2',
@@ -504,6 +506,37 @@ describe('DeckTreeDragAndDropController', () => {
     expect(terminalOrders.get('/repo/a-feature')).toEqual([
       'wt-_repo_a-feature__term-2',
       targetBookmark.url,
+      url,
+      'wt-_repo_a-feature__term-1',
+    ]);
+  });
+
+  it('repositions an unresolved target-order key instead of duplicating the moved Bookmark', async () => {
+    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/196';
+    await bookmarks.add('/repo/a-main', { url });
+    await terminalOrders.set('/repo/a-main', [url]);
+    await terminalOrders.set('/repo/a-feature', [
+      url,
+      'wt-_repo_a-feature__term-2',
+      'wt-_repo_a-feature__term-1',
+    ]);
+    vscodeState.listSessions.mockResolvedValue([]);
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-feature', 'wt-_repo_a-feature__term-1'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(terminalOrders.get('/repo/a-feature')).toEqual([
+      'wt-_repo_a-feature__term-2',
       url,
       'wt-_repo_a-feature__term-1',
     ]);
