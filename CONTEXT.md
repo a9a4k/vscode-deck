@@ -73,7 +73,7 @@ The user-curated display order of Worktrees within a Repository, overlaid on a d
 _Avoid_: sort order, alphabetical order (the default is by creation, not name)
 
 **TerminalOrder**:
-The user-curated display order of a Worktree's rows — Terminals and Bookmarks interleaved, since a Bookmark is a sibling row and can sit between two Terminals. An order overlay that owns order but never existence: each key is resolved against the source that owns the row (the live tmux list for a Terminal, the Bookmark store for a Bookmark), and a key neither claims is dropped. Absent it, Terminals fall back to ascending `term-N` order. Named for Terminals because they came first; it has always stored plain row keys, so admitting Bookmarks needed no migration.
+The user-curated display order of a Worktree's rows — Terminals and Bookmarks interleaved, since a Bookmark is a sibling row and can sit between two Terminals. An order overlay that owns order but never existence: each key is resolved against the source that owns the row (the live tmux list for a Terminal, the Bookmark store for a Bookmark), and a key neither claims is dropped. Rows it does not name still appear, after the ones it does: uncurated Terminals by ascending `term-N`, then uncurated Bookmarks in the order they were pinned — so a newly pinned Bookmark lands at the bottom without the order being written at all. Only the reconciliation that observes live Terminals may drop a key; every other write adds or repositions one. Named for Terminals because they came first; it has always stored plain row keys, so admitting Bookmarks needed no migration.
 _Avoid_: terminal list (it stores order, not existence — cf. ADR-0014), sort order, terminal-only order (it spans both row kinds)
 
 ### Terminals

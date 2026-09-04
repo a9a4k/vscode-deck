@@ -104,6 +104,21 @@ express.
   `pruneRowOrder` require both the live Terminal and Bookmark sources. This
   prevents a call shaped around only the tmux session list from silently
   deleting **every** Bookmark key from every Worktree's order.
+- **Only the reconciler removes keys from a row order; every other write is
+  additive.** Removal is allowed solely behind ADR-0053's trusted-observation
+  gate, where the prune already lives. Any other path — pinning, reordering,
+  moving a Bookmark between Worktrees — may append or reposition keys, and must
+  carry through every key it cannot currently resolve rather than rebuilding the
+  order from what it happens to observe.
+
+  This is written as an invariant because it was violated three separate times
+  in the first implementation (#193, #195, #196), each in a different write
+  path, each looking locally reasonable. The shape of the mistake is always the
+  same: reconstructing a stored order from a live snapshot. It is silent when it
+  goes wrong — a stale or empty observation quietly discards the user's
+  arrangement, and the rows reappear later in fallback order with nothing to
+  indicate anything was lost. A write path that needs the current rows should
+  union them into the stored order, never replace it.
 - Adding a Bookmark writes only its existence and leaves `TerminalOrder`
   untouched. The reader guarantees bottom placement; dragging a row later
   writes a complete visible order, including uncurated Bookmarks.
