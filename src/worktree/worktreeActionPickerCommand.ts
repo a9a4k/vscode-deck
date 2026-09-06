@@ -9,20 +9,20 @@ import {
   createAndOpenTerminal,
   type AddTerminalTmuxCli,
   type WorktreeNodeLike,
-} from './addTerminalCommand';
-import { SessionUriCodec } from './sessionUriCodec';
+} from '../terminal/addTerminalCommand';
+import { SessionUriCodec } from '../terminal/sessionUriCodec';
 
-interface RunLauncherTmuxCli extends AddTerminalTmuxCli {
+interface WorktreeActionTmuxCli extends AddTerminalTmuxCli {
   sendCommandLine(session: string, command: string): Promise<void>;
 }
 
-type LauncherQuickPickItem = vscode.QuickPickItem & {
+type WorktreeActionQuickPickItem = vscode.QuickPickItem & {
   action?: 'newTerminal' | 'addBookmark';
   launcher?: TerminalLauncher;
   configure?: true;
 };
 
-interface RunLauncherCommandOptions {
+interface WorktreeActionPickerCommandOptions {
   tmuxAvailable?: boolean;
   newTerminal?: (node: WorktreeNodeLike) => Promise<void>;
   wakePoll?: () => void;
@@ -37,7 +37,7 @@ interface RunLauncherCommandOptions {
   beforeCreate?: () => Promise<void>;
 }
 
-export class RunLauncherCommand {
+export class WorktreeActionPickerCommand {
   private readonly wakePoll: () => void;
   private readonly focusTerminal: (sessionName: string) => void;
   private readonly sessionUriCodec: SessionUriCodec;
@@ -51,8 +51,8 @@ export class RunLauncherCommand {
   private readonly newTerminal: (node: WorktreeNodeLike) => Promise<void>;
 
   constructor(
-    private readonly tmux: RunLauncherTmuxCli,
-    options: RunLauncherCommandOptions = {},
+    private readonly tmux: WorktreeActionTmuxCli,
+    options: WorktreeActionPickerCommandOptions = {},
   ) {
     this.tmuxAvailable = options.tmuxAvailable ?? true;
     this.wakePoll = options.wakePoll ?? (() => undefined);
@@ -112,14 +112,14 @@ export class RunLauncherCommand {
 function toQuickPickItems(
   groups: LauncherGroups,
   tmuxAvailable: boolean,
-): LauncherQuickPickItem[] {
-  const bookmarkItem: LauncherQuickPickItem = {
+): WorktreeActionQuickPickItem[] {
+  const bookmarkItem: WorktreeActionQuickPickItem = {
     label: 'Add Bookmark…',
     action: 'addBookmark',
   };
   if (!tmuxAvailable) return [bookmarkItem];
 
-  const primaryItems: LauncherQuickPickItem[] = [
+  const primaryItems: WorktreeActionQuickPickItem[] = [
     { label: 'New Terminal', action: 'newTerminal' },
     bookmarkItem,
   ];
@@ -139,7 +139,7 @@ function toQuickPickItems(
   ];
 }
 
-function groupItems(label: string, launchers: TerminalLauncher[]): LauncherQuickPickItem[] {
+function groupItems(label: string, launchers: TerminalLauncher[]): WorktreeActionQuickPickItem[] {
   if (launchers.length === 0) return [];
 
   return [

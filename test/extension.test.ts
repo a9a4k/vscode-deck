@@ -12,8 +12,8 @@ const vscodeState = vi.hoisted(() => ({
   addWorktreeRun: vi.fn(),
   addRepositoryRun: vi.fn(),
   addTerminalRun: vi.fn(),
-  runLauncherArgs: undefined as unknown[] | undefined,
-  runLauncherRun: vi.fn(),
+  worktreeActionPickerArgs: undefined as unknown[] | undefined,
+  worktreeActionPickerRun: vi.fn(),
   worktreeCreateLauncherRunnerArgs: undefined as unknown[] | undefined,
   worktreeCreateLauncherRunnerInstance: undefined as unknown,
   worktreeCreateLauncherRunnerRun: vi.fn(),
@@ -567,13 +567,13 @@ vi.mock('../src/terminal/addTerminalCommand', () => ({
   },
 }));
 
-vi.mock('../src/terminal/runLauncherCommand', () => ({
-  RunLauncherCommand: class {
+vi.mock('../src/worktree/worktreeActionPickerCommand', () => ({
+  WorktreeActionPickerCommand: class {
     constructor(...args: unknown[]) {
-      vscodeState.runLauncherArgs = args;
+      vscodeState.worktreeActionPickerArgs = args;
     }
 
-    run = vscodeState.runLauncherRun;
+    run = vscodeState.worktreeActionPickerRun;
   },
 }));
 
@@ -626,7 +626,7 @@ describe('activate', () => {
     vscodeState.addRepositoryArgs = undefined;
     vscodeState.addTerminalArgs = undefined;
     vscodeState.addWorktreeArgs = undefined;
-    vscodeState.runLauncherArgs = undefined;
+    vscodeState.worktreeActionPickerArgs = undefined;
     vscodeState.worktreeCreateLauncherRunnerArgs = undefined;
     vscodeState.worktreeCreateLauncherRunnerInstance = undefined;
     vscodeState.agentDetectionArgs = undefined;
@@ -698,7 +698,7 @@ describe('activate', () => {
     vscodeState.showInformationMessage.mockReset();
     vscodeState.clipboardText = 'https://example.com/docs';
     vscodeState.showInputBox.mockResolvedValue('https://example.com/docs');
-    vscodeState.runLauncherRun.mockResolvedValue(undefined);
+    vscodeState.worktreeActionPickerRun.mockResolvedValue(undefined);
     vscodeState.withProgress.mockClear();
     vscodeState.withProgress.mockImplementation((_options, task) => task({ report: vi.fn() }));
     vscodeState.showTextDocument.mockClear();
@@ -820,7 +820,8 @@ describe('activate', () => {
     );
     expect(vscodeState.repositoryTreeArgs?.[6]).toBe(false);
     expect(
-      (vscodeState.runLauncherArgs?.[1] as { tmuxAvailable?: boolean } | undefined)?.tmuxAvailable,
+      (vscodeState.worktreeActionPickerArgs?.[1] as { tmuxAvailable?: boolean } | undefined)
+        ?.tmuxAvailable,
     ).toBe(false);
     expect(vscodeState.terminalSnapshotRuntimeInstances).toEqual([]);
   });
@@ -1290,7 +1291,9 @@ describe('activate', () => {
     if (!addTerminalRegistration) throw new Error('missing deck.addTerminal registration');
     await addTerminalRegistration[1]({ worktree: { path: '/work/repo' } });
 
-    expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
+    expect(vscodeState.worktreeActionPickerRun).toHaveBeenCalledWith({
+      worktree: { path: '/work/repo' },
+    });
     expect(vscodeState.addTerminalRun).not.toHaveBeenCalled();
   });
 
@@ -1408,7 +1411,7 @@ describe('activate', () => {
     expect(vscodeState.repositoryTreeInstances[0].refreshWorktree).toHaveBeenCalledWith('/work/repo');
   });
 
-  it('registers deck.runLauncher through RunLauncherCommand', async () => {
+  it('routes deck.runLauncher through the Worktree action picker', async () => {
     const context = createContext();
 
     await activate(context as never);
@@ -1418,9 +1421,11 @@ describe('activate', () => {
     if (!runLauncherRegistration) throw new Error('missing deck.runLauncher registration');
     await runLauncherRegistration[1]({ worktree: { path: '/work/repo' } });
 
-    expect(vscodeState.runLauncherArgs?.[0]).toBe(vscodeState.tmuxInstances[0]);
-    expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
-    const options = vscodeState.runLauncherArgs?.[1] as {
+    expect(vscodeState.worktreeActionPickerArgs?.[0]).toBe(vscodeState.tmuxInstances[0]);
+    expect(vscodeState.worktreeActionPickerRun).toHaveBeenCalledWith({
+      worktree: { path: '/work/repo' },
+    });
+    const options = vscodeState.worktreeActionPickerArgs?.[1] as {
       newTerminal?(node: { worktree: { path: string } }): Promise<void>;
       wakePoll?(): void;
     } | undefined;

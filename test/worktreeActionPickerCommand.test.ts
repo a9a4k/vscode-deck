@@ -32,9 +32,9 @@ vi.mock('vscode', () => ({
   },
 }));
 
-import { RunLauncherCommand } from '../src/terminal/runLauncherCommand';
+import { WorktreeActionPickerCommand } from '../src/worktree/worktreeActionPickerCommand';
 
-describe('RunLauncherCommand', () => {
+describe('WorktreeActionPickerCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vscodeState.userLaunchers = [];
@@ -61,7 +61,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'User Watch'),
     );
 
-    await new RunLauncherCommand(tmux, { wakePoll, resolveLaunchers }).run({
+    await new WorktreeActionPickerCommand(tmux, { wakePoll, resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
@@ -111,7 +111,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'Dev'),
     );
 
-    await new RunLauncherCommand(tmux, {
+    await new WorktreeActionPickerCommand(tmux, {
       focusTerminal,
       resolveLaunchers: vi.fn(async () => ({
         repo: [{ label: 'Dev', command: 'npm run dev' }],
@@ -134,7 +134,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'New Terminal'),
     );
 
-    await new RunLauncherCommand(tmux, {
+    await new WorktreeActionPickerCommand(tmux, {
       wakePoll,
       resolveLaunchers: vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] })),
     }).run({ worktree: { path: '/work/repo' } });
@@ -161,7 +161,7 @@ describe('RunLauncherCommand', () => {
     );
     const node = { worktree: { path: '/work/repo' } };
 
-    await new RunLauncherCommand(tmux, {
+    await new WorktreeActionPickerCommand(tmux, {
       resolveLaunchers: vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] })),
     }).run(node);
 
@@ -183,7 +183,10 @@ describe('RunLauncherCommand', () => {
     vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[0]);
     const node = { worktree: { path: '/work/repo' } };
 
-    await new RunLauncherCommand(tmux, { resolveLaunchers, tmuxAvailable: false }).run(node);
+    await new WorktreeActionPickerCommand(tmux, {
+      resolveLaunchers,
+      tmuxAvailable: false,
+    }).run(node);
 
     expect(vscodeState.showQuickPick).toHaveBeenCalledWith(
       [expect.objectContaining({ label: 'Add Bookmark…' })],
@@ -205,7 +208,7 @@ describe('RunLauncherCommand', () => {
       items.find((item) => item.label === 'No launchers configured — Configure…'),
     );
 
-    await new RunLauncherCommand(tmux, { wakePoll: vi.fn(), resolveLaunchers }).run({
+    await new WorktreeActionPickerCommand(tmux, { wakePoll: vi.fn(), resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
