@@ -252,7 +252,7 @@
       },
       {
         "command": "deck.addTerminal",
-        "title": "Add Terminal",
+        "title": "Start on this Worktree…",
         "icon": "$(add)"
       },
       {
@@ -461,6 +461,10 @@
         },
         {
           "command": "deck.addTerminal",
+          "when": "false"
+        },
+        {
+          "command": "deck.addBookmark",
           "when": "false"
         },
         {

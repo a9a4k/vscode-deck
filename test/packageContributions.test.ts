@@ -195,7 +195,9 @@ describe('package contributions', () => {
       when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)',
       group: 'navigation@3',
     });
-    expect(pkg.contributes.menus.commandPalette).not.toContainEqual({
+    // Hidden from the Command Palette like every other row command: it needs a
+    // Worktree node, and invoking it without one is a silent no-op.
+    expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.addBookmark',
       when: 'false',
     });
@@ -355,10 +357,12 @@ describe('package contributions', () => {
     });
   });
 
-  it('contributes add terminal as the inline `+` action on Worktree rows', () => {
+  it('contributes the Worktree action picker as the inline `+` action on Worktree rows', () => {
+    // The title is the inline button's hover tooltip, so it names the picker
+    // rather than one of the actions inside it.
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.addTerminal',
-      title: 'Add Terminal',
+      title: 'Start on this Worktree…',
       icon: '$(add)',
     });
 
