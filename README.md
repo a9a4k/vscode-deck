@@ -75,7 +75,7 @@ Paste is verified on macOS; on Linux and Windows the browser's own Ctrl+V may co
 
 Save a command as a launcher — your agent with its usual flags, or a project bootstrap — and start a terminal running it in one click. Define launchers **per user** (global), **shared with your team** (committed to `<worktree>/.deck/launchers.json`), or **personal to one repo**. Flip **run on worktree create** and Deck fires them automatically when you add a worktree through it, so a fresh worktree can bootstrap itself and kick off an agent without you typing a thing.
 
-**Configuring launchers.** Each launcher is `{ "command": …, "label"?: …, "runOnWorktreeCreate"?: true }` — only `command` is required (`label` defaults to it; sequence commands with `&&`). The launch button on a worktree row opens a Quick Pick listing of all three sources, in this order:
+**Configuring launchers.** Each launcher is `{ "command": …, "label"?: …, "runOnWorktreeCreate"?: true }` — only `command` is required (`label` defaults to it; sequence commands with `&&`). The add button on a Worktree row opens a Quick Pick with New Terminal and Add Bookmark first, then launchers from all three sources in this order:
 
 **1. Shared, per repo** — committed to the repo at `<worktree>/.deck/launchers.json` (a bare array):
 

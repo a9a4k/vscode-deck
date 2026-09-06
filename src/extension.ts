@@ -390,7 +390,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ensureSnapshotRestored,
     focusTerminal,
   );
-  const runLauncher = new RunLauncherCommand(tmux, {
+  const worktreeActions = new RunLauncherCommand(tmux, {
+    tmuxAvailable: tmuxAvailability.available,
+    newTerminal: (node) => addTerminal.run(node),
     wakePoll: () => terminalPoll?.wake(),
     focusTerminal,
     beforeCreate: ensureSnapshotRestored,
@@ -614,7 +616,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('deck.addRepository', () => addRepository.run()),
     vscode.commands.registerCommand('deck.addWorktree', (node) => addWorktree.run(node)),
-    vscode.commands.registerCommand('deck.addTerminal', (node) => addTerminal.run(node)),
+    vscode.commands.registerCommand('deck.addTerminal', (node) => worktreeActions.run(node)),
     vscode.commands.registerCommand('deck.addBookmark', (node) =>
       addBookmark.run(node ?? selectedWorktreeNode(treeView?.selection[0]))),
     vscode.commands.registerCommand('deck.openBookmark', (node) => bookmarkOpener.open(node)),
@@ -622,7 +624,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       bookmarkOpener.openInDefaultBrowser(node)),
     vscode.commands.registerCommand('deck.removeBookmark', (node) => removeBookmark.run(node)),
     vscode.commands.registerCommand('deck.renameBookmark', (node) => renameBookmark.run(node)),
-    vscode.commands.registerCommand('deck.runLauncher', (node) => runLauncher.run(node)),
+    vscode.commands.registerCommand('deck.runLauncher', (node) => worktreeActions.run(node)),
     vscode.commands.registerCommand('deck.openTerminal', (node) => openTerminal.run(node)),
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>
       openTerminalInNewWindow.run(node),

@@ -5,7 +5,7 @@ that are personal to one Repository but should not be committed to its
 `.deck/launchers.json`. They live in user settings as `deck.repositoryLaunchers`,
 an **array of `{ repository, launchers }`** entries (repository identity is a
 field, not the JSON key). They are resolved by common dir, so they apply to every
-Worktree of the Repository, and merged into the launcher Quick Pick after the
+Worktree of the Repository, and merged into the Worktree add Quick Pick after the
 committed-repo group and before the global-user group. An entry is **config, not
 registration**: a path matching no registered Repository is inert, and editing it
 never mutates the RepositoryRegistry.

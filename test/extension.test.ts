@@ -819,6 +819,9 @@ describe('activate', () => {
       false,
     );
     expect(vscodeState.repositoryTreeArgs?.[6]).toBe(false);
+    expect(
+      (vscodeState.runLauncherArgs?.[1] as { tmuxAvailable?: boolean } | undefined)?.tmuxAvailable,
+    ).toBe(false);
     expect(vscodeState.terminalSnapshotRuntimeInstances).toEqual([]);
   });
 
@@ -1277,7 +1280,7 @@ describe('activate', () => {
     expect(vscodeState.agentStatusStorePrune).not.toHaveBeenCalled();
   });
 
-  it('registers deck.addTerminal through AddTerminalCommand', async () => {
+  it('opens the Worktree action picker through deck.addTerminal', async () => {
     const context = createContext();
 
     await activate(context as never);
@@ -1287,9 +1290,8 @@ describe('activate', () => {
     if (!addTerminalRegistration) throw new Error('missing deck.addTerminal registration');
     await addTerminalRegistration[1]({ worktree: { path: '/work/repo' } });
 
-    expect(vscodeState.addTerminalRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
-    (vscodeState.addTerminalArgs?.[1] as (() => void) | undefined)?.();
-    expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
+    expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
+    expect(vscodeState.addTerminalRun).not.toHaveBeenCalled();
   });
 
   it('pins, refreshes, and reveals a Bookmark without creating a row order', async () => {
@@ -1418,7 +1420,13 @@ describe('activate', () => {
 
     expect(vscodeState.runLauncherArgs?.[0]).toBe(vscodeState.tmuxInstances[0]);
     expect(vscodeState.runLauncherRun).toHaveBeenCalledWith({ worktree: { path: '/work/repo' } });
-    const options = vscodeState.runLauncherArgs?.[1] as { wakePoll?(): void } | undefined;
+    const options = vscodeState.runLauncherArgs?.[1] as {
+      newTerminal?(node: { worktree: { path: string } }): Promise<void>;
+      wakePoll?(): void;
+    } | undefined;
+    const node = { worktree: { path: '/work/repo' } };
+    await options?.newTerminal?.(node);
+    expect(vscodeState.addTerminalRun).toHaveBeenCalledWith(node);
     options?.wakePoll?.();
     expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });

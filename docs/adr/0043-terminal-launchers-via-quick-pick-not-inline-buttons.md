@@ -1,9 +1,10 @@
 # Terminal Launchers via a Quick Pick, not per-launcher inline buttons
 
 TerminalLaunchers (user-defined commands that open a Terminal and run in it) are
-surfaced as **one static `$(play)` button per Worktree row that opens a Quick
-Pick**, merging a per-repo committed file (`<worktree>/.deck/launchers.json`,
-shown first) with the global `deck.terminalLaunchers` setting. We chose this
+surfaced in the flat Quick Pick behind the Worktree row's single `$(add)` button,
+after **New Terminal** and **Add Bookmark…**. The picker merges a per-repo
+committed file (`<worktree>/.deck/launchers.json`, shown first) with the global
+`deck.terminalLaunchers` setting. We chose a Quick Pick
 because the requirement is **per-repo launchers**, and VS Code's menu model makes
 per-repo *buttons* impossible: menu contributions are static in `package.json`, a
 command's icon is a single fixed path (can't vary per tree row), and
@@ -27,6 +28,8 @@ count, and carry free labels.
 
 - Launching is two clicks (button → pick), and there are no always-visible
   per-launcher letters on the row — the trade accepted to get per-repo support.
+- The add button remains available without tmux so its picker can still offer
+  Add Bookmark; New Terminal and launchers are omitted in that state.
 - `<worktree>/.deck/launchers.json` is committed, so launchers are team-shareable
   via git and overridable per branch; it is read fresh on each click (no watcher).
 - A launcher's command is typed into the Terminal exactly as a user would, so a

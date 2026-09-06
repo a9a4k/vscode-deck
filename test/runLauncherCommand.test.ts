@@ -41,7 +41,7 @@ describe('RunLauncherCommand', () => {
     vscodeState.repositoryLaunchers = [];
   });
 
-  it('shows launcher groups in source order and runs the picked command in a new Terminal', async () => {
+  it('shows Terminal and Bookmark actions before launcher groups and runs the picked launcher', async () => {
     const tmux = {
       listSessions: vi.fn(async () => []),
       ensureSession: vi.fn(async () => undefined),
@@ -72,6 +72,8 @@ describe('RunLauncherCommand', () => {
     );
     expect(vscodeState.showQuickPick).toHaveBeenCalledWith(
       [
+        expect.objectContaining({ label: 'New Terminal' }),
+        expect.objectContaining({ label: 'Add Bookmark…' }),
         { kind: -1, label: 'This repository (shared)' },
         expect.objectContaining({ label: 'Repo Dev', description: 'npm run dev' }),
         { kind: -1, label: 'This repository (personal)' },
@@ -79,7 +81,7 @@ describe('RunLauncherCommand', () => {
         { kind: -1, label: 'User' },
         expect.objectContaining({ label: 'User Watch', description: 'npm test -- --watch' }),
       ],
-      { placeHolder: 'Run Terminal Launcher' },
+      { placeHolder: 'Start on this Worktree' },
     );
     expect(tmux.ensureSession).toHaveBeenCalledWith('wt-_work_repo__term-1', '/work/repo');
     expect(vscodeState.executeCommand).toHaveBeenCalledWith(
@@ -105,7 +107,9 @@ describe('RunLauncherCommand', () => {
       sendCommandLine: vi.fn(async () => undefined),
     };
     const focusTerminal = vi.fn();
-    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[1]);
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) =>
+      items.find((item) => item.label === 'Dev'),
+    );
 
     await new RunLauncherCommand(tmux, {
       focusTerminal,
@@ -119,6 +123,77 @@ describe('RunLauncherCommand', () => {
     expect(focusTerminal).toHaveBeenCalledWith('wt-_work_repo__term-1');
   });
 
+  it('creates and opens a new Terminal from the primary action', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+      sendCommandLine: vi.fn(async () => undefined),
+    };
+    const wakePoll = vi.fn();
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) =>
+      items.find((item) => item.label === 'New Terminal'),
+    );
+
+    await new RunLauncherCommand(tmux, {
+      wakePoll,
+      resolveLaunchers: vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] })),
+    }).run({ worktree: { path: '/work/repo' } });
+
+    expect(tmux.ensureSession).toHaveBeenCalledWith('wt-_work_repo__term-1', '/work/repo');
+    expect(vscodeState.executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      { scheme: 'deck-terminal', path: '/work/repo/term-1' },
+      'deck.terminal',
+      { viewColumn: -1 },
+    );
+    expect(tmux.sendCommandLine).not.toHaveBeenCalled();
+    expect(wakePoll).toHaveBeenCalledOnce();
+  });
+
+  it('runs the existing Add Bookmark command from the second primary action', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+      sendCommandLine: vi.fn(async () => undefined),
+    };
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) =>
+      items.find((item) => item.label === 'Add Bookmark…'),
+    );
+    const node = { worktree: { path: '/work/repo' } };
+
+    await new RunLauncherCommand(tmux, {
+      resolveLaunchers: vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] })),
+    }).run(node);
+
+    expect(vscodeState.executeCommand).toHaveBeenCalledWith('deck.addBookmark', node);
+    expect(tmux.ensureSession).not.toHaveBeenCalled();
+  });
+
+  it('offers only Add Bookmark when tmux is unavailable', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+      sendCommandLine: vi.fn(async () => undefined),
+    };
+    const resolveLaunchers = vi.fn(async () => ({
+      repo: [{ label: 'Dev', command: 'npm run dev' }],
+      repositoryLocal: [],
+      user: [],
+    }));
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[0]);
+    const node = { worktree: { path: '/work/repo' } };
+
+    await new RunLauncherCommand(tmux, { resolveLaunchers, tmuxAvailable: false }).run(node);
+
+    expect(vscodeState.showQuickPick).toHaveBeenCalledWith(
+      [expect.objectContaining({ label: 'Add Bookmark…' })],
+      { placeHolder: 'Start on this Worktree' },
+    );
+    expect(resolveLaunchers).not.toHaveBeenCalled();
+    expect(vscodeState.executeCommand).toHaveBeenCalledWith('deck.addBookmark', node);
+    expect(tmux.listSessions).not.toHaveBeenCalled();
+  });
+
   it('opens launcher settings from the empty-state item', async () => {
     const tmux = {
       listSessions: vi.fn(async () => []),
@@ -126,15 +201,21 @@ describe('RunLauncherCommand', () => {
       sendCommandLine: vi.fn(async () => undefined),
     };
     const resolveLaunchers = vi.fn(async () => ({ repo: [], repositoryLocal: [], user: [] }));
-    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) => items[0]);
+    vscodeState.showQuickPick.mockImplementation(async (items: Array<{ label: string }>) =>
+      items.find((item) => item.label === 'No launchers configured — Configure…'),
+    );
 
     await new RunLauncherCommand(tmux, { wakePoll: vi.fn(), resolveLaunchers }).run({
       worktree: { path: '/work/repo' },
     });
 
     expect(vscodeState.showQuickPick).toHaveBeenCalledWith(
-      [expect.objectContaining({ label: 'No launchers configured — Configure…' })],
-      { placeHolder: 'Run Terminal Launcher' },
+      [
+        expect.objectContaining({ label: 'New Terminal' }),
+        expect.objectContaining({ label: 'Add Bookmark…' }),
+        expect.objectContaining({ label: 'No launchers configured — Configure…' }),
+      ],
+      { placeHolder: 'Start on this Worktree' },
     );
     expect(vscodeState.executeCommand).toHaveBeenCalledWith(
       'workbench.action.openSettings',

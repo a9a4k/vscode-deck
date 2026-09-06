@@ -331,7 +331,7 @@ describe('package contributions', () => {
     });
   });
 
-  it('contributes delete worktree only via the right-click context menu', () => {
+  it('puts delete Worktree last among Worktree context actions', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.removeWorktree',
       title: 'Delete Worktree…',
@@ -347,7 +347,7 @@ describe('package contributions', () => {
     ).toEqual([{
       command: 'deck.removeWorktree',
       when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active)',
-      group: 'navigation@3',
+      group: 'navigation@4',
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.removeWorktree',
@@ -369,7 +369,7 @@ describe('package contributions', () => {
     ).toEqual([{
       command: 'deck.addTerminal',
       when:
-        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable',
+        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)',
       group: 'inline',
     }]);
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
@@ -378,23 +378,16 @@ describe('package contributions', () => {
     });
   });
 
-  it('contributes TerminalLauncher as an inline play action on Worktree rows', () => {
+  it('does not contribute a separate TerminalLauncher inline action', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.runLauncher',
       title: 'Run Terminal Launcher',
       icon: '$(play)',
     });
 
-    expect(
-      pkg.contributes.menus['view/item/context'].filter(
-        (item: { command: string }) => item.command === 'deck.runLauncher',
-      ),
-    ).toEqual([{
-      command: 'deck.runLauncher',
-      when:
-        'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable',
-      group: 'inline@5',
-    }]);
+    expect(pkg.contributes.menus['view/item/context']).not.toContainEqual(
+      expect.objectContaining({ command: 'deck.runLauncher' }),
+    );
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.runLauncher',
       when: 'false',

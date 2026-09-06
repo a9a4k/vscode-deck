@@ -360,13 +360,8 @@
         },
         {
           "command": "deck.addTerminal",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable",
+          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)",
           "group": "inline"
-        },
-        {
-          "command": "deck.runLauncher",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active) && deck.tmuxAvailable",
-          "group": "inline@5"
         },
         {
           "command": "deck.switchWorktree",
@@ -376,7 +371,7 @@
         {
           "command": "deck.removeWorktree",
           "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active)",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "deck.openWorktreeInNewWindow",
