@@ -131,6 +131,24 @@ express.
 - A Worktree's rows now come from two sources with different staleness
   contracts: the TerminalModel is a bounded-staleness view (≤2s focused,
   ADR-0053), while the Bookmark store is exact and synchronous.
+- **A browser tab opened from a Bookmark is never closed by Deck** — not when
+  the Bookmark is removed, not when its Worktree is. `TerminalCascade` closes
+  Terminal tabs because a Terminal tab's URI *is* the session identity, so the
+  dead ones are findable; VS Code's browser editor exposes only an opaque
+  `vscode-browser:/<id>`, carrying neither the URL nor the page title, so the
+  equivalent lookup does not exist. Tracking the pairing in memory as Deck opens
+  each tab would work within a session and silently stop working after a window
+  reload — browser tabs survive a reload, an in-memory map does not — and
+  cleanup that runs only sometimes is worse than cleanup that never runs, since
+  it still has to be checked by hand.
+
+  Left open **deliberately**, not merely because it is hard. A Terminal tab is
+  closed because the process behind it was destroyed and the tab is genuinely
+  dead; a browser tab is a page the user is reading, and a Worktree is often
+  removed *because* its PR merged, with that PR still on screen. Should the
+  stray tabs prove annoying in practice, the shape to reach for is consent
+  rather than automation — the DisconnectedTab precedent, where Deck surfaces
+  evidence and offers an action but never touches tabs on its own.
 
 ## Validation
 

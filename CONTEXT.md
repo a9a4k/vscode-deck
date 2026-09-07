@@ -150,7 +150,12 @@ ADR-0014/ADR-0053 — those forbid *mirroring* an external source of truth in a
 persisted cache, and a Bookmark has no such source. Identified by its URL within
 its Worktree, and **portable**: it may be dragged to another Worktree, where a
 Terminal may not — a Terminal is bound by its session name and working
-directory, a Bookmark by nothing but the user's say-so (ADR-0056).
+directory, a Bookmark by nothing but the user's say-so (ADR-0056). Removing a
+Bookmark — or the Worktree it belongs to — takes the row, never the page: a
+browser tab opened from it stays open, because the tab is the user's reading of
+a page and nothing Deck destroyed is behind it. This is the opposite of a
+Terminal, whose tab is closed with it precisely because the process it showed is
+gone.
 _Avoid_: browser (the surface it may open in — VS Code's Integrated Browser is a
 separate thing Deck does not own), favorite (VS Code's browser keeps its own
 global favorites; a Bookmark is Deck's and scoped to a Worktree), pin / pinned
