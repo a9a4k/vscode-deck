@@ -36,7 +36,7 @@ export async function createAndOpenTerminal(
   const rowOrder = appendObservedRowsToStoredOrder(
     terminalOrders.get(worktreePath),
     observedRows,
-  );
+  ).filter((key) => key !== session);
   rowOrder.push(session);
   await terminalOrders.set(worktreePath, rowOrder);
 

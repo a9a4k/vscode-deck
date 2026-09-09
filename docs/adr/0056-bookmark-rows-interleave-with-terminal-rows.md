@@ -80,6 +80,8 @@ express.
    creates the session, Deck carries forward the stored order, appends any
    observed rows it did not name, then appends the new session. This preserves
    every curated position and puts the new Terminal below uncurated Bookmarks.
+   If `allocateTermN` reuses a killed Terminal's key before reconciliation has
+   pruned it, Deck repositions that key instead of storing it twice.
    Terminals created outside Deck remain uncurated and use the reader fallback
    from decision 5.
 

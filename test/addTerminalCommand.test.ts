@@ -154,6 +154,36 @@ describe('AddTerminalCommand', () => {
     ]);
   });
 
+  it('repositions a reused Terminal key at the end without duplicating it', async () => {
+    const liveTerminal = {
+      sessionName: 'wt-_work_repo__term-1',
+      windowName: 'zsh',
+    };
+    const reusedSessionName = 'wt-_work_repo__term-2';
+    const tmux = {
+      listSessions: vi.fn(async () => [liveTerminal]),
+      ensureSession: vi.fn(async () => undefined),
+    };
+    const { bookmarks, terminalOrders } = createRowStores();
+    const bookmarkUrl = 'https://example.com/docs';
+    await bookmarks.add('/work/repo', { url: bookmarkUrl });
+    await terminalOrders.set('/work/repo', [
+      reusedSessionName,
+      bookmarkUrl,
+      liveTerminal.sessionName,
+    ]);
+
+    await new AddTerminalCommand(tmux, terminalOrders, bookmarks).run({
+      worktree: { path: '/work/repo' },
+    });
+
+    expect(terminalOrders.get('/work/repo')).toEqual([
+      bookmarkUrl,
+      liveTerminal.sessionName,
+      reusedSessionName,
+    ]);
+  });
+
   it('requests focus for the newly opened Terminal', async () => {
     const tmux = {
       listSessions: vi.fn(async () => []),
