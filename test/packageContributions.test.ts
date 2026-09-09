@@ -234,7 +234,7 @@ describe('package contributions', () => {
     expect(pkg.contributes.menus['view/item/context']).toContainEqual({
       command: 'deck.removeBookmark',
       when: 'view == deck.repositories && viewItem == deck.bookmark',
-      group: 'navigation',
+      group: 'navigation@2',
     });
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.removeBookmark',

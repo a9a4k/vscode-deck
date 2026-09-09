@@ -401,7 +401,7 @@
         {
           "command": "deck.removeBookmark",
           "when": "view == deck.repositories && viewItem == deck.bookmark",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "deck.openTerminalInNewWindow",
