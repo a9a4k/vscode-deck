@@ -76,6 +76,13 @@ express.
    `git worktree move` orphans them — exactly as it already orphans Terminals,
    whose session names encode the old path.
 
+8. **Creating a Terminal in Deck is an additive row-order write.** After tmux
+   creates the session, Deck carries forward the stored order, appends any
+   observed rows it did not name, then appends the new session. This preserves
+   every curated position and puts the new Terminal below uncurated Bookmarks.
+   Terminals created outside Deck remain uncurated and use the reader fallback
+   from decision 5.
+
 ## Rejected
 
 - **Grouped (Bookmarks above Terminals).** Cleanly separates the ownership
@@ -122,6 +129,9 @@ express.
 - Adding a Bookmark writes only its existence and leaves `TerminalOrder`
   untouched. The reader guarantees bottom placement; dragging a row later
   writes a complete visible order, including uncurated Bookmarks.
+- Creating a Terminal through Deck writes the additive complete row order plus
+  the new session. This refines ADR-0028 decision 2: reader-side `term-N`
+  placement remains the fallback for Terminals Deck did not create.
 - Key spaces cannot collide: Deck's session names match `wt-…__term-N`, and a
   Bookmark key is a URL carrying a scheme.
 - The tree gains rows that never disappear on their own. A Terminal dies on
@@ -159,6 +169,9 @@ express.
   Consequences.
 - `src/tree/pruneRowOrder.ts` — mixed orders are pruned against both ownership
   sources, so observing only tmux cannot erase Bookmark positions.
+- `src/tree/appendObservedRowsToStoredOrder.ts` and
+  `src/terminal/addTerminalCommand.ts` — additive writes preserve stored keys,
+  include every currently observed row, and append a Deck-created Terminal.
 - `src/terminal/terminalCascade.ts` — `killWorktree(worktreePath)` kills by
   session-name prefix and closes the matching tabs; the model for decision 7.
 - CONTEXT.md **Terminal** — "Its Worktree is fixed when it is created and never

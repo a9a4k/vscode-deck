@@ -385,12 +385,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     terminalEditorProvider.focusTerminal(sessionName);
   const addTerminal = new AddTerminalCommand(
     tmux,
+    terminalOrders,
+    bookmarks,
     () => terminalPoll?.wake(),
     undefined,
     ensureSnapshotRestored,
     focusTerminal,
   );
-  const worktreeActionPicker = new WorktreeActionPickerCommand(tmux, {
+  const worktreeActionPicker = new WorktreeActionPickerCommand(tmux, terminalOrders, bookmarks, {
     tmuxAvailable: tmuxAvailability.available,
     newTerminal: (node) => addTerminal.run(node),
     wakePoll: () => terminalPoll?.wake(),

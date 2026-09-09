@@ -30,6 +30,42 @@ import {
   AddTerminalCommand,
   createHeadlessTerminal,
 } from '../src/terminal/addTerminalCommand';
+import { BookmarkStore } from '../src/bookmark/bookmarkStore';
+import { TerminalOrderStore } from '../src/terminal/terminalOrderStore';
+
+function createRowStores() {
+  const values: Record<string, unknown> = {};
+  const memento = {
+    get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+    update: async (key: string, value: unknown) => {
+      values[key] = value;
+    },
+  };
+
+  return {
+    bookmarks: new BookmarkStore(memento),
+    terminalOrders: new TerminalOrderStore(memento),
+  };
+}
+
+function createCommand(
+  tmux: ConstructorParameters<typeof AddTerminalCommand>[0],
+  wakePoll?: ConstructorParameters<typeof AddTerminalCommand>[3],
+  sessionUriCodec?: ConstructorParameters<typeof AddTerminalCommand>[4],
+  beforeCreate?: ConstructorParameters<typeof AddTerminalCommand>[5],
+  focusTerminal?: ConstructorParameters<typeof AddTerminalCommand>[6],
+) {
+  const { bookmarks, terminalOrders } = createRowStores();
+  return new AddTerminalCommand(
+    tmux,
+    terminalOrders,
+    bookmarks,
+    wakePoll,
+    sessionUriCodec,
+    beforeCreate,
+    focusTerminal,
+  );
+}
 
 describe('AddTerminalCommand', () => {
   beforeEach(() => {
@@ -48,7 +84,7 @@ describe('AddTerminalCommand', () => {
     };
     const wakePoll = vi.fn();
 
-    await new AddTerminalCommand(
+    await createCommand(
       tmux,
       wakePoll,
     ).run({ worktree: { path: '/work/repo' } });
@@ -70,6 +106,54 @@ describe('AddTerminalCommand', () => {
     expect(wakePoll).toHaveBeenCalledOnce();
   });
 
+  it('appends a newly created Terminal below an uncurated Bookmark', async () => {
+    const tmux = {
+      listSessions: vi.fn(async () => []),
+      ensureSession: vi.fn(async () => undefined),
+    };
+    const { bookmarks, terminalOrders } = createRowStores();
+    await bookmarks.add('/work/repo', { url: 'https://example.com/docs' });
+
+    await new AddTerminalCommand(tmux, terminalOrders, bookmarks).run({
+      worktree: { path: '/work/repo' },
+    });
+
+    expect(terminalOrders.get('/work/repo')).toEqual([
+      'https://example.com/docs',
+      'wt-_work_repo__term-1',
+    ]);
+  });
+
+  it('keeps an existing curated row order and appends the new Terminal last', async () => {
+    const existing = [
+      { sessionName: 'wt-_work_repo__term-1', windowName: 'zsh' },
+      { sessionName: 'wt-_work_repo__term-2', windowName: 'node' },
+    ];
+    const tmux = {
+      listSessions: vi.fn(async () => existing),
+      ensureSession: vi.fn(async () => undefined),
+    };
+    const { bookmarks, terminalOrders } = createRowStores();
+    const bookmarkUrl = 'https://example.com/docs';
+    await bookmarks.add('/work/repo', { url: bookmarkUrl });
+    await terminalOrders.set('/work/repo', [
+      existing[1].sessionName,
+      bookmarkUrl,
+      existing[0].sessionName,
+    ]);
+
+    await new AddTerminalCommand(tmux, terminalOrders, bookmarks).run({
+      worktree: { path: '/work/repo' },
+    });
+
+    expect(terminalOrders.get('/work/repo')).toEqual([
+      existing[1].sessionName,
+      bookmarkUrl,
+      existing[0].sessionName,
+      'wt-_work_repo__term-3',
+    ]);
+  });
+
   it('requests focus for the newly opened Terminal', async () => {
     const tmux = {
       listSessions: vi.fn(async () => []),
@@ -77,7 +161,7 @@ describe('AddTerminalCommand', () => {
     };
     const focusTerminal = vi.fn();
 
-    await new AddTerminalCommand(
+    await createCommand(
       tmux,
       vi.fn(),
       undefined,
@@ -106,7 +190,7 @@ describe('AddTerminalCommand', () => {
       order.push('restore');
     });
 
-    await new AddTerminalCommand(tmux, vi.fn(), undefined, beforeCreate).run({
+    await createCommand(tmux, vi.fn(), undefined, beforeCreate).run({
       worktree: { path: '/work/repo' },
     });
 
@@ -122,7 +206,7 @@ describe('AddTerminalCommand', () => {
     };
     const wakePoll = vi.fn();
 
-    await new AddTerminalCommand(
+    await createCommand(
       tmux,
       wakePoll,
     ).run({ worktree: { path: '/work/beta-main' } });

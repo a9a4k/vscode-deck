@@ -11,6 +11,8 @@ import {
   type WorktreeNodeLike,
 } from '../terminal/addTerminalCommand';
 import { SessionUriCodec } from '../terminal/sessionUriCodec';
+import type { TerminalOrderStore } from '../terminal/terminalOrderStore';
+import type { BookmarkStore } from '../bookmark/bookmarkStore';
 
 interface WorktreeActionTmuxCli extends AddTerminalTmuxCli {
   sendCommandLine(session: string, command: string): Promise<void>;
@@ -52,6 +54,8 @@ export class WorktreeActionPickerCommand {
 
   constructor(
     private readonly tmux: WorktreeActionTmuxCli,
+    private readonly terminalOrders: Pick<TerminalOrderStore, 'get' | 'set'>,
+    private readonly bookmarks: Pick<BookmarkStore, 'list'>,
     options: WorktreeActionPickerCommandOptions = {},
   ) {
     this.tmuxAvailable = options.tmuxAvailable ?? true;
@@ -65,7 +69,14 @@ export class WorktreeActionPickerCommand {
     this.beforeCreate = options.beforeCreate ?? (() => Promise.resolve());
     this.newTerminal = options.newTerminal ?? (async (node) => {
       await this.beforeCreate();
-      await createAndOpenTerminal(this.tmux, node, this.sessionUriCodec, this.focusTerminal);
+      await createAndOpenTerminal(
+        this.tmux,
+        node,
+        this.terminalOrders,
+        this.bookmarks,
+        this.sessionUriCodec,
+        this.focusTerminal,
+      );
       this.wakePoll();
     });
   }
@@ -101,6 +112,8 @@ export class WorktreeActionPickerCommand {
     const session = await createAndOpenTerminal(
       this.tmux,
       node,
+      this.terminalOrders,
+      this.bookmarks,
       this.sessionUriCodec,
       this.focusTerminal,
     );

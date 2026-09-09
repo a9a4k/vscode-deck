@@ -18,6 +18,7 @@ import type { TmuxSession } from '../terminal/tmuxCli';
 import { terminalSessionPrefix } from '../terminal/tmuxSafe';
 import { WorktreeOrderStore } from '../worktree/worktreeOrderStore';
 import { reconcileRowOrder } from './reconcileRowOrder';
+import { appendObservedRowsToStoredOrder } from './appendObservedRowsToStoredOrder';
 import { reconcileWorktreeOrder } from './reconcileWorktreeOrder';
 import { discoverySeedsFromDrop } from './discoverySeedsFromDrop';
 import { DropPosition, reorderArray } from './reorderArray';
@@ -411,18 +412,4 @@ function dropPosition(
 
 function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
-}
-
-function appendObservedRowsToStoredOrder(
-  storedOrder: readonly string[] | undefined,
-  observedRows: readonly { key: string }[],
-): string[] {
-  const rowOrder = [...(storedOrder ?? [])];
-  const includedKeys = new Set(rowOrder);
-  for (const row of observedRows) {
-    if (includedKeys.has(row.key)) continue;
-    rowOrder.push(row.key);
-    includedKeys.add(row.key);
-  }
-  return rowOrder;
 }

@@ -820,7 +820,7 @@ describe('activate', () => {
     );
     expect(vscodeState.repositoryTreeArgs?.[6]).toBe(false);
     expect(
-      (vscodeState.worktreeActionPickerArgs?.[1] as { tmuxAvailable?: boolean } | undefined)
+      (vscodeState.worktreeActionPickerArgs?.[3] as { tmuxAvailable?: boolean } | undefined)
         ?.tmuxAvailable,
     ).toBe(false);
     expect(vscodeState.terminalSnapshotRuntimeInstances).toEqual([]);
@@ -1425,7 +1425,7 @@ describe('activate', () => {
     expect(vscodeState.worktreeActionPickerRun).toHaveBeenCalledWith({
       worktree: { path: '/work/repo' },
     });
-    const options = vscodeState.worktreeActionPickerArgs?.[1] as {
+    const options = vscodeState.worktreeActionPickerArgs?.[3] as {
       newTerminal?(node: { worktree: { path: string } }): Promise<void>;
       wakePoll?(): void;
     } | undefined;
