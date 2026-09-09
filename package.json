@@ -379,11 +379,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "deck.addBookmark",
-          "when": "view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)",
-          "group": "navigation@3"
-        },
-        {
           "command": "deck.openBookmarkInDefaultBrowser",
           "when": "view == deck.repositories && viewItem == deck.bookmark",
           "group": "inline"

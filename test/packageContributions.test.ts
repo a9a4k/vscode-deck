@@ -177,7 +177,7 @@ describe('package contributions', () => {
     expect(existsSync(join(process.cwd(), 'resources/deck-icons.LICENSE'))).toBe(true);
   });
 
-  it('contributes Add Bookmark for Worktree context menus and the padded globe row icon', () => {
+  it('contributes Add Bookmark without a Worktree context-menu entry', () => {
     expect(pkg.contributes.icons?.['deck-bookmark-globe']).toEqual({
       description: 'Bookmark globe (padded)',
       default: {
@@ -190,7 +190,9 @@ describe('package contributions', () => {
       title: 'Add Bookmark…',
       icon: '$(globe)',
     });
-    expect(pkg.contributes.menus['view/item/context']).toContainEqual({
+    // New Terminal and Add Bookmark share the Worktree add picker; neither is
+    // duplicated in its context menu.
+    expect(pkg.contributes.menus['view/item/context']).not.toContainEqual({
       command: 'deck.addBookmark',
       when: 'view == deck.repositories && (viewItem == deck.worktree || viewItem == deck.worktree.active || viewItem == deck.worktree.main || viewItem == deck.worktree.main.active)',
       group: 'navigation@3',
