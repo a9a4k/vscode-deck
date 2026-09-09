@@ -110,7 +110,7 @@ function createController(refresh = vi.fn()) {
   };
   const bookmarks = {
     list: vi.fn(() => [{ url: 'http://localhost:5173/' }]),
-    move: vi.fn(async () => undefined),
+    move: vi.fn(async () => true),
   };
   const activeWorktrees = { set: vi.fn(async () => undefined) };
   const switcher = { switchTo: vi.fn(async () => undefined) };
@@ -542,18 +542,18 @@ describe('DeckTreeDragAndDropController', () => {
     ]);
   });
 
-  it('does not duplicate a target Worktree row that already has the moved Bookmark URL', async () => {
-    const { bookmarks, controller, terminalOrders } = createBookmarkMoveController();
+  it('rejects a duplicate-URL Bookmark dropped onto a Worktree without changing either row order', async () => {
+    const { bookmarks, controller, refresh, terminalOrders } = createBookmarkMoveController();
     const url = 'https://github.com/org/repo/pull/192';
-    await bookmarks.add('/repo/a-main', { url, label: 'Source label' });
-    await bookmarks.add('/repo/a-feature', { url, label: 'Target label' });
-    await terminalOrders.set('/repo/a-main', ['wt-_repo_a-main__term-1', url]);
-    await terminalOrders.set('/repo/a-feature', ['wt-_repo_a-feature__term-1', url]);
-    vscodeState.listSessions.mockImplementation(async (prefix: string | undefined) => (
-      prefix === 'wt-_repo_a-main__term-'
-        ? [{ sessionName: 'wt-_repo_a-main__term-1', windowName: 'source' }]
-        : [{ sessionName: 'wt-_repo_a-feature__term-1', windowName: 'target' }]
-    ));
+    const source = { url, label: 'Source label' };
+    const target = { url, label: 'Target label' };
+    const sourceOrder = ['wt-_repo_a-main__term-1', url];
+    const targetOrder = [url, 'wt-_repo_a-feature__term-1'];
+    await bookmarks.add('/repo/a-main', source);
+    await bookmarks.add('/repo/a-feature', target);
+    await terminalOrders.set('/repo/a-main', sourceOrder);
+    await terminalOrders.set('/repo/a-feature', targetOrder);
+    const setOrder = vi.spyOn(terminalOrders, 'set');
     const dataTransfer = new DataTransferMock();
 
     controller.handleDrag?.(
@@ -567,12 +567,53 @@ describe('DeckTreeDragAndDropController', () => {
       {} as never,
     );
 
-    expect(bookmarks.list('/repo/a-main')).toEqual([]);
-    expect(bookmarks.list('/repo/a-feature')).toEqual([{ url, label: 'Source label' }]);
-    expect(terminalOrders.get('/repo/a-feature')).toEqual([
-      'wt-_repo_a-feature__term-1',
-      url,
-    ]);
+    expect(bookmarks.list('/repo/a-main')).toEqual([source]);
+    expect(bookmarks.list('/repo/a-feature')).toEqual([target]);
+    expect(terminalOrders.get('/repo/a-main')).toEqual(sourceOrder);
+    expect(terminalOrders.get('/repo/a-feature')).toEqual(targetOrder);
+    expect(setOrder).not.toHaveBeenCalled();
+    expect(vscodeState.listSessions).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Source label is already bookmarked in a-feature.',
+    );
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('rejects a duplicate-URL Bookmark dropped onto a row in another Worktree', async () => {
+    const { bookmarks, controller, refresh, terminalOrders } = createBookmarkMoveController();
+    const url = 'https://github.com/org/repo/pull/202';
+    const source = { url };
+    const target = { url, label: 'Target label' };
+    const sourceOrder = [url, 'wt-_repo_a-main__term-1'];
+    const targetOrder = ['wt-_repo_a-feature__term-1', url];
+    await bookmarks.add('/repo/a-main', source);
+    await bookmarks.add('/repo/a-feature', target);
+    await terminalOrders.set('/repo/a-main', sourceOrder);
+    await terminalOrders.set('/repo/a-feature', targetOrder);
+    const setOrder = vi.spyOn(terminalOrders, 'set');
+    const dataTransfer = new DataTransferMock();
+
+    controller.handleDrag?.(
+      [bookmark('/repo/a', '/repo/a-main', url)],
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+    await controller.handleDrop?.(
+      terminal('/repo/a', '/repo/a-feature', 'wt-_repo_a-feature__term-1'),
+      dataTransfer as vscode.DataTransfer,
+      {} as never,
+    );
+
+    expect(bookmarks.list('/repo/a-main')).toEqual([source]);
+    expect(bookmarks.list('/repo/a-feature')).toEqual([target]);
+    expect(terminalOrders.get('/repo/a-main')).toEqual(sourceOrder);
+    expect(terminalOrders.get('/repo/a-feature')).toEqual(targetOrder);
+    expect(setOrder).not.toHaveBeenCalled();
+    expect(vscodeState.listSessions).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      `${url} is already bookmarked in a-feature.`,
+    );
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('reorders an internal Terminal drag even when VS Code also adds a resourceUri uri-list', async () => {

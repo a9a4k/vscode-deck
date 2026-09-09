@@ -62,8 +62,9 @@ describe('BookmarkStore', () => {
     await store.add('/work/alpha', moved);
     await store.add('/work/beta', { url: 'https://example.com/kept' });
 
-    await store.move('/work/alpha', '/work/beta', moved.url);
+    const result = await store.move('/work/alpha', '/work/beta', moved.url);
 
+    expect(result).toBe(true);
     expect(store.list('/work/alpha')).toEqual([]);
     expect(store.list('/work/beta')).toEqual([
       { url: 'https://example.com/kept' },
@@ -71,16 +72,19 @@ describe('BookmarkStore', () => {
     ]);
   });
 
-  it('keeps one moved Bookmark when the target Worktree already has its URL', async () => {
+  it('rejects a move when the target Worktree already has its URL', async () => {
     const { store } = createStore();
     const url = 'https://github.com/org/repo/pull/192';
-    await store.add('/work/alpha', { url, label: 'Source label' });
-    await store.add('/work/beta', { url, label: 'Target label' });
+    const source = { url, label: 'Source label' };
+    const target = { url, label: 'Target label' };
+    await store.add('/work/alpha', source);
+    await store.add('/work/beta', target);
 
-    await store.move('/work/alpha', '/work/beta', url);
+    const moved = await store.move('/work/alpha', '/work/beta', url);
 
-    expect(store.list('/work/alpha')).toEqual([]);
-    expect(store.list('/work/beta')).toEqual([{ url, label: 'Source label' }]);
+    expect(moved).toBe(false);
+    expect(store.list('/work/alpha')).toEqual([source]);
+    expect(store.list('/work/beta')).toEqual([target]);
   });
 
   it('removes one Bookmark without touching its siblings or another Worktree', async () => {

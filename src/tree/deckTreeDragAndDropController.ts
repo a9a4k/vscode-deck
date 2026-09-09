@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import * as vscode from 'vscode';
 import type { BookmarkStore } from '../bookmark/bookmarkStore';
 import { getCommonDirSafe, listWorktrees } from '../git/worktrees';
@@ -293,9 +294,17 @@ export class DeckTreeDragAndDropController
     targetRowKey?: string,
   ): Promise<void> {
     const sourceBookmarks = this.bookmarks.list(payload.worktreePath);
-    if (!sourceBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) return;
+    const sourceBookmark = sourceBookmarks.find((bookmark) => bookmark.url === payload.sourceKey);
+    if (!sourceBookmark) return;
 
     const targetBookmarks = this.bookmarks.list(targetWorktreePath);
+    if (targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
+      await vscode.window.showInformationMessage(
+        `${sourceBookmark.label ?? sourceBookmark.url} is already bookmarked in ${basename(targetWorktreePath)}.`,
+      );
+      return;
+    }
+
     const [sourceSessions, targetSessions] = await Promise.all([
       this.tmux.listSessions(terminalSessionPrefix(payload.worktreePath)),
       this.tmux.listSessions(terminalSessionPrefix(targetWorktreePath)),
@@ -318,20 +327,24 @@ export class DeckTreeDragAndDropController
       this.terminalOrders.get(targetWorktreePath),
       observedTargetRows,
     );
-    if (!targetBookmarks.some((bookmark) => bookmark.url === payload.sourceKey)) {
-      targetRowOrder = targetRowOrder.filter((key) => key !== payload.sourceKey);
-      targetRowOrder.push(payload.sourceKey);
-      if (targetRowKey !== undefined) {
-        targetRowOrder = reorderArray(
-          targetRowOrder,
-          payload.sourceKey,
-          targetRowKey,
-          'above',
-        );
-      }
+    targetRowOrder = targetRowOrder.filter((key) => key !== payload.sourceKey);
+    targetRowOrder.push(payload.sourceKey);
+    if (targetRowKey !== undefined) {
+      targetRowOrder = reorderArray(
+        targetRowOrder,
+        payload.sourceKey,
+        targetRowKey,
+        'above',
+      );
     }
 
-    await this.bookmarks.move(payload.worktreePath, targetWorktreePath, payload.sourceKey);
+    const moved = await this.bookmarks.move(
+      payload.worktreePath,
+      targetWorktreePath,
+      payload.sourceKey,
+    );
+    if (!moved) return;
+
     await this.terminalOrders.set(payload.worktreePath, sourceRowOrder);
     await this.terminalOrders.set(targetWorktreePath, targetRowOrder);
     this.refresh({ worktreePath: payload.worktreePath });

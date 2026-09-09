@@ -26,27 +26,22 @@ export class BookmarkStore {
     return bookmark;
   }
 
-  async move(sourceWorktreePath: string, targetWorktreePath: string, url: string): Promise<void> {
-    if (sourceWorktreePath === targetWorktreePath) return;
+  async move(sourceWorktreePath: string, targetWorktreePath: string, url: string): Promise<boolean> {
+    if (sourceWorktreePath === targetWorktreePath) return false;
 
     const sourceBookmarks = this.list(sourceWorktreePath);
     const bookmark = sourceBookmarks.find((candidate) => candidate.url === url);
-    if (!bookmark) return;
+    if (!bookmark) return false;
 
     const targetBookmarks = this.list(targetWorktreePath);
-    const movedTargetBookmarks = [...targetBookmarks];
-    const existingTargetIndex = targetBookmarks.findIndex((candidate) => candidate.url === url);
-    if (existingTargetIndex === -1) {
-      movedTargetBookmarks.push(bookmark);
-    } else {
-      movedTargetBookmarks[existingTargetIndex] = bookmark;
-    }
+    if (targetBookmarks.some((candidate) => candidate.url === url)) return false;
 
     await this.memento.update(BOOKMARKS_KEY, {
       ...this.all(),
       [sourceWorktreePath]: sourceBookmarks.filter((candidate) => candidate.url !== url),
-      [targetWorktreePath]: movedTargetBookmarks,
+      [targetWorktreePath]: [...targetBookmarks, bookmark],
     });
+    return true;
   }
 
   async remove(worktreePath: string, url: string): Promise<void> {
