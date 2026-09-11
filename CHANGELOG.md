@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.0
+
+Pin a URL — a GitHub PR, a Linear ticket, a local dev server — as a **Bookmark**
+row next to a Worktree's Terminals. Click it to open in VS Code's Integrated
+Browser, or use the inline action to open in your default browser instead.
+Bookmarks drag-reorder alongside Terminals and move between Worktrees like any
+other row. Add one from the Worktree row's `+` menu, now retitled **Start on
+this Worktree…**.
+
 ## 0.23.0
 
 Deck now tells you when it updates. The quiet update notice links to this local
