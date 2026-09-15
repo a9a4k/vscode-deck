@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.0
+
+Bookmark rows now show the site's own icon — a flat, theme-colored silhouette
+derived from its favicon — instead of a generic globe. Icons are fetched and
+cached automatically per host, recolored to match Deck's other tree icons in
+both light and dark themes, and fall back to the globe for a site with no
+favicon.
+
 ## 0.24.0
 
 Pin a URL — a GitHub PR, a Linear ticket, a local dev server — as a **Bookmark**
