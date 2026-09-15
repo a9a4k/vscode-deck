@@ -92,6 +92,33 @@ Alternatives considered:
    loses mouse input; the post-seed SIGWINCH repaint does not recover
    them because TUIs do not re-send modes on redraw.
 
+   The modes are **queried from tmux, not tracked from the stream.** The
+   alternative — scan `%output` for DECSET/DECRST and replay the
+   accumulated set — is what the comparable xterm.js reattach fixes do
+   (acorn #902, mulmoterminal #1977), and it is the only route for a mode
+   tmux does not expose. Rejected here because tmux already tracks these
+   modes authoritatively and continuously (it must, to render the pane and
+   encode its input), so a query costs four more fields in a `list-panes`
+   we already issue, while a scanner costs a stateful parser with its own
+   edge cases: sequences split across `%output` events, last-SET-wins
+   ordering, RIS clearing the set where DECSTR does not, and OSC/DCS
+   recovery so an unterminated title cannot wedge tracking. This client
+   already carries one such byte scanner (the ESC k title filter); its
+   cost argued against a second. The price is that the replay is bounded
+   by what tmux exposes as a format — `bracket_paste_flag` does not exist
+   before tmux 3.7 (it expands empty on 3.6), so that mode degrades
+   silently until the floor moves. Hence the comma-separated format: an
+   unknown field expands to empty instead of shifting the ones after it.
+
+   iTerm2 (`TmuxStateParser.m`, `TmuxWindowOpener.m`) reads the same flags
+   but applies them differently — it sets its own emulator's state
+   directly (`setMouseMode:`, `setBracketedPasteMode:`), bypassing its VT
+   parser. xterm.js exposes no equivalent API, so Deck must replay the
+   enabling sequences into the input stream instead. `mouse_utf8_flag`
+   (mode 1005) is consequently omitted where iTerm2 handles it: xterm.js
+   removed 1005 support (xtermjs/xterm.js#2507) and logs it as
+   unsupported, so replaying it would be inert.
+
 6. **Exit semantics are preserved.** Child-process exit (and the
    preceding `%exit`) maps to `onExit(code)` exactly as node-pty's exit
    did: shell `exit` / kill-session / cascade all end the client
