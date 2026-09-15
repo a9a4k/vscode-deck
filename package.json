@@ -493,6 +493,7 @@
     "vscode:prepublish": "npm run build",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p . && node scripts/copy-webview-assets.mjs",
+    "check:vsix": "npm run build && npx --yes @vscode/vsce@3.9.2 ls | node scripts/check-vsix-contents.mjs",
     "test": "vitest run",
     "watch": "tsc -w -p .",
     "typecheck": "tsc --noEmit"
@@ -502,15 +503,15 @@
     "@types/node": "^20.x",
     "@types/pngjs": "^6.0.5",
     "@types/vscode": "^1.106.0",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.8"
-  },
-  "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.8"
+  },
+  "dependencies": {
     "decode-ico": "^0.4.1",
     "pngjs": "^7.0.0"
   }
