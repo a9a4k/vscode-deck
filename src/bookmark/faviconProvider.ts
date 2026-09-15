@@ -1,5 +1,5 @@
 import { buildFaviconIcons } from './buildFaviconIcons';
-import type { CachedFaviconIcon, FaviconCache } from './faviconCache';
+import type { CachedFavicon, CachedFaviconIcon, FaviconCache } from './faviconCache';
 import { FAVICON_ALGORITHM_VERSION } from './faviconSilhouette';
 
 export type FetchFavicon = (hostname: string) => Promise<Uint8Array | undefined>;
@@ -12,7 +12,7 @@ export interface FaviconProviderOptions {
 }
 
 export class FaviconProvider {
-  private readonly inFlight = new Map<string, Set<() => void>>();
+  private readonly inFlightListeners = new Map<string, Set<() => void>>();
   private readonly now: () => number;
   private readonly negativeCacheTtlMs: number;
 
@@ -34,32 +34,33 @@ export class FaviconProvider {
 
   ensureFetched(hostname: string, onSettled: () => void): void {
     if (!this.needsRefresh(hostname)) return;
-    const listeners = this.inFlight.get(hostname);
+    const listeners = this.inFlightListeners.get(hostname);
     if (listeners !== undefined) {
       listeners.add(onSettled);
       return;
     }
-    this.inFlight.set(hostname, new Set([onSettled]));
-    void this.populate(hostname);
+    this.inFlightListeners.set(hostname, new Set([onSettled]));
+    void this.fetchAndCache(hostname);
   }
 
-  private async populate(hostname: string): Promise<void> {
+  private async fetchAndCache(hostname: string): Promise<void> {
     try {
       const bytes = await this.fetchFavicon(hostname).catch(() => undefined);
       const icons = bytes === undefined ? undefined : buildFaviconIcons(bytes);
-      await this.cache.set(
-        hostname,
-        icons === undefined
-          ? { none: true, checkedAt: this.now() }
-          : {
-              light: toPngDataUri(icons.light),
-              dark: toPngDataUri(icons.dark),
-              algoVersion: FAVICON_ALGORITHM_VERSION,
-            },
-      );
+      let cached: CachedFavicon;
+      if (icons === undefined) {
+        cached = { none: true, checkedAt: this.now() };
+      } else {
+        cached = {
+          light: toPngDataUri(icons.light),
+          dark: toPngDataUri(icons.dark),
+          algoVersion: FAVICON_ALGORITHM_VERSION,
+        };
+      }
+      await this.cache.set(hostname, cached);
     } finally {
-      const listeners = this.inFlight.get(hostname) ?? [];
-      this.inFlight.delete(hostname);
+      const listeners = this.inFlightListeners.get(hostname) ?? [];
+      this.inFlightListeners.delete(hostname);
       for (const listener of listeners) listener();
     }
   }

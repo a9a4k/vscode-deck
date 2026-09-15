@@ -176,23 +176,22 @@ class BookmarkNode extends vscode.TreeItem {
     public bookmark: Bookmark,
     public readonly worktreeNode: WorktreeNode,
     private readonly favicons: Pick<FaviconProvider, 'getCachedIcon' | 'ensureFetched'> | undefined,
-    onDidChangeIcon: (node: BookmarkNode) => void,
+    onDidResolveFavicon: (node: BookmarkNode) => void,
   ) {
     super(bookmark.label ?? deriveBookmarkLabel(bookmark.url), vscode.TreeItemCollapsibleState.None);
     this.id = `bookmark::${worktreeNode.worktree.path}::${bookmark.url}`;
     this.tooltip = bookmark.url;
     this.contextValue = 'deck.bookmark';
-    this.iconPath = new vscode.ThemeIcon('deck-bookmark-globe');
     this.command = {
       command: 'deck.openBookmark',
       title: 'Open Bookmark',
       arguments: [this],
     };
     this.onFaviconSettled = () => {
-      this.updateIcon();
-      onDidChangeIcon(this);
+      this.refreshFavicon();
+      onDidResolveFavicon(this);
     };
-    this.updateIcon();
+    this.refreshFavicon();
   }
 
   get repositoryPath(): string {
@@ -206,10 +205,10 @@ class BookmarkNode extends vscode.TreeItem {
   update(bookmark: Bookmark): void {
     this.bookmark = bookmark;
     this.label = bookmark.label ?? deriveBookmarkLabel(bookmark.url);
-    this.updateIcon();
+    this.refreshFavicon();
   }
 
-  private updateIcon(): void {
+  private refreshFavicon(): void {
     const hostname = bookmarkHostname(this.bookmark.url);
     const icon = hostname === undefined ? undefined : this.favicons?.getCachedIcon(hostname);
     this.iconPath = icon === undefined
