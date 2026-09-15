@@ -2,11 +2,10 @@ import { cpSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Webview assets must ship inside the .vsix. node_modules is excluded by
-// .vscodeignore (and exposing it via localResourceRoots is discouraged), so
-// the xterm UMD bundles the terminal webview loads via <script> are copied
-// into dist/media at build time. Keep this list in sync with the
-// asWebviewUri calls in terminalEditorProvider.ts.
+// Webview assets must ship inside the .vsix. VSCE excludes their dev-only xterm
+// packages, and exposing node_modules via localResourceRoots is discouraged, so
+// copy the bundles loaded by the terminal webview into dist/media. Keep this list
+// in sync with the asWebviewUri calls in terminalEditorProvider.ts.
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dest = join(root, 'dist', 'media');
 
