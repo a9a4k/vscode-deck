@@ -3,35 +3,35 @@ import { readFile } from 'node:fs/promises';
 const packagedFiles = new Set(
   (await readStdin()).split(/\r?\n/).filter(Boolean),
 );
-const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
-const packageEntries = Object.entries(lock.packages)
+const packageLock = JSON.parse(await readFile('package-lock.json', 'utf8'));
+const lockfilePackageEntries = Object.entries(packageLock.packages)
   .filter(([path]) => path.startsWith('node_modules/'));
-const productionPackages = packageEntries
+const productionPackagePaths = lockfilePackageEntries
   .filter(([, metadata]) => metadata.dev !== true)
   .map(([path]) => path);
-const devOnlyPackages = packageEntries
+const devOnlyPackagePaths = lockfilePackageEntries
   .filter(([, metadata]) => metadata.dev === true)
   .map(([path]) => path);
 
 const requiredFiles = [
   'dist/extension.js',
-  ...productionPackages.map((path) => `${path}/package.json`),
+  ...productionPackagePaths.map((path) => `${path}/package.json`),
 ];
-const missing = requiredFiles
+const missingFiles = requiredFiles
   .filter((path) => !packagedFiles.has(path));
-const leaked = [...packagedFiles]
-  .filter((file) => devOnlyPackages.some((path) => file.startsWith(`${path}/`)));
+const leakedDevOnlyFiles = [...packagedFiles]
+  .filter((file) => devOnlyPackagePaths.some((path) => file.startsWith(`${path}/`)));
 
-if (missing.length > 0 || leaked.length > 0) {
-  if (missing.length > 0) {
-    console.error(`Missing runtime files:\n${missing.join('\n')}`);
+if (missingFiles.length > 0 || leakedDevOnlyFiles.length > 0) {
+  if (missingFiles.length > 0) {
+    console.error(`Missing runtime files:\n${missingFiles.join('\n')}`);
   }
-  if (leaked.length > 0) {
-    console.error(`Dev-only dependency files included:\n${leaked.join('\n')}`);
+  if (leakedDevOnlyFiles.length > 0) {
+    console.error(`Dev-only dependency files included:\n${leakedDevOnlyFiles.join('\n')}`);
   }
   process.exitCode = 1;
 } else {
-  console.log(`VSIX contains ${productionPackages.length} production packages and no dev-only packages.`);
+  console.log(`VSIX contains ${productionPackagePaths.length} production packages and no dev-only packages.`);
 }
 
 async function readStdin() {
