@@ -5,10 +5,7 @@ import { FaviconCache } from '../src/bookmark/faviconCache';
 import { FaviconProvider } from '../src/bookmark/faviconProvider';
 import { FAVICON_ALGORITHM_VERSION } from '../src/bookmark/faviconSilhouette';
 
-const FAVICON_BYTES = readFileSync(join(
-  __dirname,
-  '../prototypes/bookmark-row-icon-label/spike-composite/github-raw.png',
-));
+const FAVICON_BYTES = readFileSync(join(__dirname, 'fixtures/favicons/github-raw.png'));
 
 function createCache(initial: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = { 'deck.favicons': initial };

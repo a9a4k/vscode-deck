@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { buildFaviconIcons } from '../src/bookmark/buildFaviconIcons';
 import { FAVICON_CANVAS_SIZE } from '../src/bookmark/faviconSilhouette';
 
-const FIXTURES = join(__dirname, '../prototypes/bookmark-row-icon-label/spike-composite');
+const FIXTURES = join(__dirname, 'fixtures/favicons');
 
 function colorsIn(pngBytes: Uint8Array): Set<string> {
   const png = PNG.sync.read(Buffer.from(pngBytes));

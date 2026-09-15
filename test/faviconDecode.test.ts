@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { decodeFavicon } from '../src/bookmark/faviconDecode';
 
-const FIXTURES = join(__dirname, '../prototypes/bookmark-row-icon-label/spike-composite');
+const FIXTURES = join(__dirname, 'fixtures/favicons');
 
 describe('decodeFavicon', () => {
   it('sniffs and decodes real PNG bytes without a filename or content type', () => {

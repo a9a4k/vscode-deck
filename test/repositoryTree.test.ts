@@ -127,10 +127,7 @@ import { BookmarkStore } from '../src/bookmark/bookmarkStore';
 import { FaviconCache } from '../src/bookmark/faviconCache';
 import { FaviconProvider } from '../src/bookmark/faviconProvider';
 
-const FAVICON_BYTES = readFileSync(join(
-  __dirname,
-  '../prototypes/bookmark-row-icon-label/spike-composite/github-raw.png',
-));
+const FAVICON_BYTES = readFileSync(join(__dirname, 'fixtures/favicons/github-raw.png'));
 
 function registry(repositories = ['/work/alpha-main', '/work/beta-main']) {
   return {
