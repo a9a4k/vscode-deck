@@ -17,10 +17,12 @@ export function decodeFavicon(bytes: Uint8Array): RgbaImage | undefined {
 
 function decodeLargestIcoFrame(bytes: Uint8Array): RgbaImage | undefined {
   const frames = decodeIco(bytes);
-  const largest = frames.reduce<(typeof frames)[number] | undefined>((best, frame) => {
-    if (best === undefined) return frame;
-    return frame.width * frame.height > best.width * best.height ? frame : best;
-  }, undefined);
+  let largest: (typeof frames)[number] | undefined;
+  for (const frame of frames) {
+    if (largest === undefined || frame.width * frame.height > largest.width * largest.height) {
+      largest = frame;
+    }
+  }
   if (largest === undefined) return undefined;
   if (largest.type === 'png') return decodePng(largest.data);
   return {

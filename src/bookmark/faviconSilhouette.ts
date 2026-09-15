@@ -15,14 +15,14 @@ export const FAVICON_THEME_COLORS = {
 // Keep runtime favicons aligned with deck-terminal from generate-tree-icons.py.
 const FAVICON_INK_SCALE = 0.7;
 const TREE_MIDLINE_FRACTION = 9.6 / 16;
-const OPAQUE_ALPHA = 128;
+const MIN_INK_ALPHA = 128;
 const TRANSPARENT_BACKGROUND_FRACTION = 0.15;
 
 export function createFaviconSilhouette(
   source: RgbaImage,
   color: readonly [number, number, number, number],
 ): RgbaImage {
-  const mask = extractInk(source);
+  const mask = extractInkMask(source);
 
   const bounds = maskBounds(mask, source.width, source.height);
   const output = new Uint8ClampedArray(FAVICON_CANVAS_SIZE * FAVICON_CANVAS_SIZE * 4);
@@ -86,24 +86,35 @@ function resizeMask(
   return resized;
 }
 
-function extractInk(source: RgbaImage): Uint8ClampedArray {
+function extractInkMask(source: RgbaImage): Uint8ClampedArray {
+  if (hasMeaningfullyTransparentBackground(source)) return extractAlphaMask(source);
+  return extractContrastMask(source);
+}
+
+function hasMeaningfullyTransparentBackground(source: RgbaImage): boolean {
   const pixelCount = source.width * source.height;
   let transparentPixels = 0;
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
-    if (source.data[pixel * 4 + 3] < OPAQUE_ALPHA) transparentPixels += 1;
+    if (source.data[pixel * 4 + 3] < MIN_INK_ALPHA) transparentPixels += 1;
   }
-  if (transparentPixels / pixelCount > TRANSPARENT_BACKGROUND_FRACTION) {
-    const alpha = new Uint8ClampedArray(pixelCount);
-    for (let pixel = 0; pixel < pixelCount; pixel += 1) {
-      const value = source.data[pixel * 4 + 3];
-      alpha[pixel] = value >= OPAQUE_ALPHA ? value : 0;
-    }
-    return alpha;
-  }
+  return transparentPixels / pixelCount > TRANSPARENT_BACKGROUND_FRACTION;
+}
 
+function extractAlphaMask(source: RgbaImage): Uint8ClampedArray {
+  const pixelCount = source.width * source.height;
+  const mask = new Uint8ClampedArray(pixelCount);
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const alpha = source.data[pixel * 4 + 3];
+    mask[pixel] = alpha >= MIN_INK_ALPHA ? alpha : 0;
+  }
+  return mask;
+}
+
+function extractContrastMask(source: RgbaImage): Uint8ClampedArray {
+  const pixelCount = source.width * source.height;
   const luminance = new Uint8ClampedArray(pixelCount);
   const histogram = new Array<number>(256).fill(0);
-  let opaquePixels = 0;
+  let visiblePixels = 0;
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const offset = pixel * 4;
     const value = Math.round(
@@ -112,21 +123,21 @@ function extractInk(source: RgbaImage): Uint8ClampedArray {
       + 0.114 * source.data[offset + 2],
     );
     luminance[pixel] = value;
-    if (source.data[offset + 3] >= OPAQUE_ALPHA) {
+    if (source.data[offset + 3] >= MIN_INK_ALPHA) {
       histogram[value] += 1;
-      opaquePixels += 1;
+      visiblePixels += 1;
     }
   }
 
   const threshold = otsuThreshold(histogram);
   let darkPixels = 0;
   for (let level = 0; level <= threshold; level += 1) darkPixels += histogram[level];
-  const darkIsInk = darkPixels <= opaquePixels / 2;
+  const darkIsInk = darkPixels <= visiblePixels / 2;
   const mask = new Uint8ClampedArray(pixelCount);
   for (let pixel = 0; pixel < pixelCount; pixel += 1) {
     const isDark = luminance[pixel] <= threshold;
     const alpha = source.data[pixel * 4 + 3];
-    mask[pixel] = isDark === darkIsInk && alpha >= OPAQUE_ALPHA ? 255 : 0;
+    mask[pixel] = isDark === darkIsInk && alpha >= MIN_INK_ALPHA ? 255 : 0;
   }
   return mask;
 }
