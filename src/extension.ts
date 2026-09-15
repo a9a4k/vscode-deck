@@ -81,6 +81,9 @@ import { BookmarkOpener } from './bookmark/bookmarkOpener';
 import { RemoveBookmarkCommand } from './bookmark/removeBookmarkCommand';
 import { BookmarkCascade } from './bookmark/bookmarkCascade';
 import { RenameBookmarkCommand } from './bookmark/renameBookmarkCommand';
+import { FaviconCache } from './bookmark/faviconCache';
+import { FaviconFetcher } from './bookmark/faviconFetcher';
+import { FaviconProvider } from './bookmark/faviconProvider';
 
 let terminalSnapshotRuntime: TerminalSnapshotRuntime | undefined;
 
@@ -230,6 +233,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const worktreeOrders = new WorktreeOrderStore(context.globalState);
   const terminalOrders = new TerminalOrderStore(context.globalState);
   const bookmarks = new BookmarkStore(context.globalState);
+  const faviconFetcher = new FaviconFetcher();
+  const favicons = new FaviconProvider(
+    new FaviconCache(context.globalState),
+    (hostname) => faviconFetcher.fetch(hostname),
+  );
   const terminalModel = new TerminalModel();
   const worktreeListCache = new WorktreeListCacheStore(context.globalState);
   const pendingTerminalOpens = new PendingTerminalOpenStore(context.globalState);
@@ -250,6 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentStatuses,
     terminalOrders,
     bookmarks,
+    favicons,
   );
   let lastRevealedActiveTerminalSessionName: string | undefined;
   const revealActiveTerminalIfNeeded = async (

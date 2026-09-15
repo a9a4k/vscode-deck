@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const vscodeState = vi.hoisted(() => ({
@@ -47,6 +49,7 @@ vi.mock('vscode', () => ({
   },
   Uri: {
     file: (fsPath: string) => ({ fsPath }),
+    parse: (value: string) => ({ value }),
     from: (value: { scheme: string; authority: string; path: string; query: string }) => value,
   },
   window: {
@@ -121,6 +124,13 @@ import { TerminalModel } from '../src/terminal/terminalModel';
 import { WorktreeReconciler } from '../src/worktree/worktreeReconciler';
 import { AddBookmarkCommand } from '../src/bookmark/addBookmarkCommand';
 import { BookmarkStore } from '../src/bookmark/bookmarkStore';
+import { FaviconCache } from '../src/bookmark/faviconCache';
+import { FaviconProvider } from '../src/bookmark/faviconProvider';
+
+const FAVICON_BYTES = readFileSync(join(
+  __dirname,
+  '../prototypes/bookmark-row-icon-label/spike-composite/github-raw.png',
+));
 
 function registry(repositories = ['/work/alpha-main', '/work/beta-main']) {
   return {
@@ -177,7 +187,29 @@ function knownCommonDirs(): RepositoryCommonDirCache {
   } as unknown as RepositoryCommonDirCache;
 }
 
-function createBookmarkTree(sessions: Parameters<TerminalModel['apply']>[0]) {
+function createDeferredFaviconProvider() {
+  let resolveFetch!: (bytes: Uint8Array) => void;
+  const fetchFavicon = vi.fn(() => new Promise<Uint8Array>((resolve) => {
+    resolveFetch = resolve;
+  }));
+  const values: Record<string, unknown> = {};
+  const cache = new FaviconCache({
+    get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
+    update: async (key: string, value: unknown) => {
+      values[key] = value;
+    },
+  });
+  return {
+    fetchFavicon,
+    favicons: new FaviconProvider(cache, fetchFavicon),
+    resolveFetch: () => resolveFetch(FAVICON_BYTES),
+  };
+}
+
+function createBookmarkTree(
+  sessions: Parameters<TerminalModel['apply']>[0],
+  favicons?: FaviconProvider,
+) {
   const values: Record<string, unknown> = {};
   const memento = {
     get: <T>(key: string, defaultValue: T) => (values[key] as T | undefined) ?? defaultValue,
@@ -199,6 +231,7 @@ function createBookmarkTree(sessions: Parameters<TerminalModel['apply']>[0]) {
     undefined,
     terminalOrders,
     bookmarks,
+    favicons,
   );
   return { bookmarks, provider, terminalOrders };
 }
@@ -1129,6 +1162,57 @@ describe('RepositoryTreeProvider', () => {
         iconPath: expect.objectContaining({ id: 'deck-bookmark-globe' }),
         command: expect.objectContaining({ command: 'deck.openBookmark' }),
       }),
+    ]);
+  });
+
+  it('renders a Bookmark fallback immediately, then refreshes that row with its favicon', async () => {
+    const { favicons, fetchFavicon, resolveFetch } = createDeferredFaviconProvider();
+    const { bookmarks, provider } = createBookmarkTree([], favicons);
+    await bookmarks.add('/work/alpha-main', { url: 'https://github.com/org/repo' });
+
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync Repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+    const rows = provider.getChildren(worktrees[0]);
+    if (!Array.isArray(rows)) throw new Error('expected sync Worktree children');
+    const bookmark = rows[0];
+
+    expect(bookmark.iconPath).toEqual(expect.objectContaining({ id: 'deck-bookmark-globe' }));
+    expect(fetchFavicon).toHaveBeenCalledWith('github.com');
+    resolveFetch();
+    await vi.waitFor(() => {
+      expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(bookmark);
+    });
+
+    expect(bookmark.iconPath).toEqual({
+      light: { value: expect.stringMatching(/^data:image\/png;base64,/) },
+      dark: { value: expect.stringMatching(/^data:image\/png;base64,/) },
+    });
+  });
+
+  it('refreshes every Bookmark row sharing a hostname after one fetch', async () => {
+    const { favicons, fetchFavicon, resolveFetch } = createDeferredFaviconProvider();
+    const { bookmarks, provider } = createBookmarkTree([], favicons);
+    await bookmarks.add('/work/alpha-main', { url: 'https://github.com/org/one' });
+    await bookmarks.add('/work/alpha-main', { url: 'https://github.com/org/two' });
+    const repositories = provider.getChildren();
+    if (!Array.isArray(repositories)) throw new Error('expected sync Repository roots');
+    const worktrees = provider.getChildren(repositories[0]);
+    if (!Array.isArray(worktrees)) throw new Error('expected sync Worktree rows');
+    const rows = provider.getChildren(worktrees[0]);
+    if (!Array.isArray(rows)) throw new Error('expected sync Worktree children');
+
+    expect(fetchFavicon).toHaveBeenCalledOnce();
+    resolveFetch();
+    await vi.waitFor(() => {
+      expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(rows[1]);
+    });
+
+    expect(vscodeState.emitters[0].fire).toHaveBeenCalledWith(rows[0]);
+    expect(rows.map((row) => row.iconPath)).toEqual([
+      expect.objectContaining({ light: expect.any(Object), dark: expect.any(Object) }),
+      expect.objectContaining({ light: expect.any(Object), dark: expect.any(Object) }),
     ]);
   });
 

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { Worktree } from '../git/worktrees';
 import { deriveBookmarkLabel } from '../bookmark/bookmarkLabel';
 import type { Bookmark, BookmarkStore } from '../bookmark/bookmarkStore';
+import type { FaviconProvider } from '../bookmark/faviconProvider';
 import { RepositoryCommonDirCache, resolveCommonDirSafe } from '../repository/repositoryCommonDirCache';
 import { RepositoryRegistryStore } from '../repository/repositoryRegistryStore';
 import { ActiveWorktreeStore } from '../switch/activeWorktreeStore';
@@ -169,9 +170,13 @@ class TerminalNode extends vscode.TreeItem {
 }
 
 class BookmarkNode extends vscode.TreeItem {
+  private readonly onFaviconSettled: () => void;
+
   constructor(
     public bookmark: Bookmark,
     public readonly worktreeNode: WorktreeNode,
+    private readonly favicons: Pick<FaviconProvider, 'getCachedIcon' | 'ensureFetched'> | undefined,
+    onDidChangeIcon: (node: BookmarkNode) => void,
   ) {
     super(bookmark.label ?? deriveBookmarkLabel(bookmark.url), vscode.TreeItemCollapsibleState.None);
     this.id = `bookmark::${worktreeNode.worktree.path}::${bookmark.url}`;
@@ -183,6 +188,11 @@ class BookmarkNode extends vscode.TreeItem {
       title: 'Open Bookmark',
       arguments: [this],
     };
+    this.onFaviconSettled = () => {
+      this.updateIcon();
+      onDidChangeIcon(this);
+    };
+    this.updateIcon();
   }
 
   get repositoryPath(): string {
@@ -196,6 +206,19 @@ class BookmarkNode extends vscode.TreeItem {
   update(bookmark: Bookmark): void {
     this.bookmark = bookmark;
     this.label = bookmark.label ?? deriveBookmarkLabel(bookmark.url);
+    this.updateIcon();
+  }
+
+  private updateIcon(): void {
+    const hostname = bookmarkHostname(this.bookmark.url);
+    const icon = hostname === undefined ? undefined : this.favicons?.getCachedIcon(hostname);
+    this.iconPath = icon === undefined
+      ? new vscode.ThemeIcon('deck-bookmark-globe')
+      : {
+          light: vscode.Uri.parse(icon.light),
+          dark: vscode.Uri.parse(icon.dark),
+        };
+    if (hostname !== undefined) this.favicons?.ensureFetched(hostname, this.onFaviconSettled);
   }
 }
 
@@ -243,6 +266,7 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
     private readonly agentStatuses?: AgentStatusLookup,
     private readonly terminalOrders?: Pick<TerminalOrderStore, 'get'>,
     private readonly bookmarks?: Pick<BookmarkStore, 'list'>,
+    private readonly favicons?: Pick<FaviconProvider, 'getCachedIcon' | 'ensureFetched'>,
   ) {
     this.syncAgentStatuses();
     this.resolveActiveRepository(false);
@@ -619,7 +643,12 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
         existing.update(bookmark);
         return existing;
       }
-      const node = new BookmarkNode(bookmark, element);
+      const node = new BookmarkNode(
+        bookmark,
+        element,
+        this.favicons,
+        (changed) => this._onDidChangeTreeData.fire(changed),
+      );
       this.renderedBookmarks.set(key, node);
       return node;
     });
@@ -756,6 +785,14 @@ export class RepositoryTreeProvider implements vscode.TreeDataProvider<Repositor
   private syncAgentStatuses(): void {
     const statuses = [...(this.agentStatuses?.entries() ?? [])];
     this.agentStatusDecorationRollups.setStatuses(statuses);
+  }
+}
+
+function bookmarkHostname(url: string): string | undefined {
+  try {
+    return new URL(url).hostname || undefined;
+  } catch {
+    return undefined;
   }
 }
 
