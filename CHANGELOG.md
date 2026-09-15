@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.1
+
+A Terminal running a full-screen app — lazygit, vim, an agent TUI — now keeps
+its mouse, cursor and key handling when you Switch away to another Worktree and
+back. Previously the app kept running but its reattached tab lost the terminal
+modes the app had set at startup: clicks stopped reaching it, a stray cursor
+could sit in its UI, and arrow keys could send the wrong sequences. Restarting
+the app was the only way out.
+
 ## 0.25.0
 
 Bookmark rows now show the site's own icon — a flat, theme-colored silhouette
