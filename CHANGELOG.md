@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.25.2
+
+Pasting multi-line text into a Terminal now behaves the same after you Switch
+away to another Worktree and back. Previously the reattached tab forgot that the
+program running in it had asked for bracketed paste, so a multi-line paste
+arrived as if typed — a shell ran every line, an editor staircased the
+indentation, and an agent submitted the prompt on the first newline. This
+completes the mode restoration started in 0.25.1 and works on every tmux version
+Deck supports, not only those new enough to report the mode themselves.
+
 ## 0.25.1
 
 A Terminal running a full-screen app — lazygit, vim, an agent TUI — now keeps
