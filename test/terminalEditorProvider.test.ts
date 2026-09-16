@@ -884,11 +884,11 @@ describe('TerminalEditorProvider', () => {
     provider.resolveCustomEditor(document, terminalPanel as never);
 
     // Deliberately coupled to generated source: a raw input regression is silent
-    // until a multi-line paste executes commands in a live Terminal.
-    expect(terminalPanel.webview.html).toContain('if (text) terminal.paste(text)');
-    expect(terminalPanel.webview.html).not.toContain(
-      "if (text) vscode.postMessage({ type: 'input', payload: text })",
-    );
+    // until a multi-line paste executes commands in a live Terminal. Matched
+    // loosely so reformatting the handler cannot smuggle the raw path back in —
+    // `payload: text` is unique to it, every other input post sends a literal.
+    expect(terminalPanel.webview.html).toContain('terminal.paste(text)');
+    expect(terminalPanel.webview.html).not.toMatch(/payload:\s*text\b/);
   });
 
   it('wires file-drop capture, path forwarding, and raw image fallback', () => {
