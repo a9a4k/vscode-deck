@@ -727,7 +727,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         } catch (_) {
         }
         const text = await navigator.clipboard.readText();
-        if (text) vscode.postMessage({ type: 'input', payload: text });
+        if (text) terminal.paste(text);
       }
 
       function claimFileDrag(event) {

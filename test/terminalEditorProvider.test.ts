@@ -877,6 +877,20 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("navigator.clipboard.readText()");
   });
 
+  it('delegates context-menu text paste to xterm instead of posting raw input', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    // Deliberately coupled to generated source: a raw input regression is silent
+    // until a multi-line paste executes commands in a live Terminal.
+    expect(terminalPanel.webview.html).toContain('if (text) terminal.paste(text)');
+    expect(terminalPanel.webview.html).not.toContain(
+      "if (text) vscode.postMessage({ type: 'input', payload: text })",
+    );
+  });
+
   it('wires file-drop capture, path forwarding, and raw image fallback', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
