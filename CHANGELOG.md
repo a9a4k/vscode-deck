@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.25.3
+
+Pasting into a Terminal from the right-click menu now behaves the same as
+`Cmd+V`. Previously the menu sent the clipboard straight to the pane as if it
+had been typed, so a multi-line paste ran every line in a shell, staircased the
+indentation in an editor, and submitted an agent prompt on the first newline —
+while the keyboard shortcut handled the same clipboard correctly. Both gestures
+now go through the Terminal itself, which also fixes the line ending the menu
+sent for Enter.
+
 ## 0.25.2
 
 Pasting multi-line text into a Terminal now behaves the same after you Switch
