@@ -2,19 +2,19 @@ const BRACKETED_PASTE_MODE = 2004;
 
 type ScannerState = 'text' | 'escape' | 'csi' | 'osc' | 'osc-escape' | 'dcs' | 'dcs-escape';
 
-export class DecModeScanner {
-  private readonly modes = new Map<number, boolean>();
+export class BracketedPasteModeScanner {
+  private enabled: boolean | undefined;
   private state: ScannerState = 'text';
-  private privateCsi = false;
+  private isPrivateCsi = false;
   private parameterValue = 0;
   private parameterHasDigits = false;
   private parameterTooLarge = false;
-  private containsBracketedPaste = false;
-  private validModeSequence = true;
+  private includesBracketedPaste = false;
+  private isValidModeSequence = true;
 
-  accept(output: string): ReadonlyMap<number, boolean> {
+  accept(output: string): boolean | undefined {
     for (const character of output) this.acceptCharacter(character);
-    return this.modes;
+    return this.enabled;
   }
 
   private acceptCharacter(character: string): void {
@@ -57,16 +57,16 @@ export class DecModeScanner {
       this.state = 'dcs';
       return;
     }
-    if (character === 'c') this.modes.set(BRACKETED_PASTE_MODE, false);
+    if (character === 'c') this.enabled = false;
     this.state = 'text';
   }
 
   private beginCsi(): void {
     this.state = 'csi';
-    this.privateCsi = false;
+    this.isPrivateCsi = false;
     this.resetParameter();
-    this.containsBracketedPaste = false;
-    this.validModeSequence = true;
+    this.includesBracketedPaste = false;
+    this.isValidModeSequence = true;
   }
 
   private acceptCsi(character: string): void {
@@ -74,8 +74,8 @@ export class DecModeScanner {
       this.state = 'escape';
       return;
     }
-    if (character === '?' && !this.parameterHasDigits && !this.privateCsi) {
-      this.privateCsi = true;
+    if (character === '?' && !this.parameterHasDigits && !this.isPrivateCsi) {
+      this.isPrivateCsi = true;
       return;
     }
     if (character >= '0' && character <= '9') {
@@ -92,17 +92,17 @@ export class DecModeScanner {
     }
     if (character === 'h' || character === 'l') {
       this.finishParameter();
-      if (this.privateCsi && this.containsBracketedPaste && this.validModeSequence) {
-        this.modes.set(BRACKETED_PASTE_MODE, character === 'h');
+      if (this.isPrivateCsi && this.includesBracketedPaste && this.isValidModeSequence) {
+        this.enabled = character === 'h';
       }
     }
     if (character >= '@' && character <= '~') this.state = 'text';
-    else this.validModeSequence = false;
+    else this.isValidModeSequence = false;
   }
 
   private finishParameter(): void {
     if (this.parameterHasDigits && !this.parameterTooLarge && this.parameterValue === BRACKETED_PASTE_MODE) {
-      this.containsBracketedPaste = true;
+      this.includesBracketedPaste = true;
     }
     this.resetParameter();
   }
