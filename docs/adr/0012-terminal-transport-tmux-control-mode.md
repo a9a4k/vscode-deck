@@ -92,7 +92,7 @@ Alternatives considered:
    loses mouse input; the post-seed SIGWINCH repaint does not recover
    them because TUIs do not re-send modes on redraw.
 
-   The modes are **queried from tmux, not tracked from the stream.** The
+   Modes tmux exposes are **queried from tmux, not tracked from the stream.** The
    alternative — scan `%output` for DECSET/DECRST and replay the
    accumulated set — is what the comparable xterm.js reattach fixes do
    (acorn #902, mulmoterminal #1977), and it is the only route for a mode
@@ -109,6 +109,14 @@ Alternatives considered:
    before tmux 3.7 (it expands empty on 3.6), so that mode degrades
    silently until the floor moves. Hence the comma-separated format: an
    unknown field expands to empty instead of shifting the ones after it.
+
+   Bracketed paste is the bounded exception while the tmux floor remains 3.1.
+   Deck scans pane output for mode 2004 only and writes transitions to the
+   pane-scoped `@deck_bracket_paste` user option. That option survives Switches
+   and extension-host restarts, is removed with the pane, and is replayed as one
+   more row in the same mode table. On tmux 3.7+ the native flag remains in the
+   table; when both rows report the mode on, duplicate DECSET replay is harmless.
+   The stream fallback does not replace native flags for other modes.
 
    iTerm2 (`TmuxStateParser.m`, `TmuxWindowOpener.m`) reads the same flags
    but applies them differently — it sets its own emulator's state

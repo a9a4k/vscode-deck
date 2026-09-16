@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Readable, Writable } from 'node:stream';
 import { TextDecoder } from 'node:util';
+import { DecModeScanner } from './decModeScanner';
 
 export interface TmuxControlChild {
   stdout: Readable;
@@ -27,11 +28,11 @@ interface PendingReply {
 
 // Terminal modes a TUI sets once at startup and that a freshly created xterm
 // starts without (mouse reporting, hidden cursor, application cursor keys /
-// keypad, bracketed paste). tmux tracks them per pane and exposes each as a
-// format flag; the seed replays the ones that are on so a reattached tab
-// behaves like the tab the TUI originally configured — a redraw (SIGWINCH)
-// alone does not make TUIs re-send them. Format name, flag value that needs
-// a replay, and the sequence that sets it.
+// keypad, bracketed paste). The seed replays the ones that are on so a
+// reattached tab behaves like the tab the TUI originally configured — a redraw
+// (SIGWINCH) alone does not make TUIs re-send them. tmux exposes the native
+// flags; @deck_bracket_paste is the stream-scanned fallback for tmux < 3.7.
+// Format name, flag value that needs a replay, and the sequence that sets it.
 const PANE_MODES: ReadonlyArray<[format: string, whenFlagIs: '0' | '1', sequence: string]> = [
   ['mouse_standard_flag', '1', '\x1b[?1000h'],
   ['mouse_button_flag', '1', '\x1b[?1002h'],
@@ -41,12 +42,14 @@ const PANE_MODES: ReadonlyArray<[format: string, whenFlagIs: '0' | '1', sequence
   ['keypad_cursor_flag', '1', '\x1b[?1h'],
   ['keypad_flag', '1', '\x1b='],
   ['bracket_paste_flag', '1', '\x1b[?2004h'],
+  ['@deck_bracket_paste', '1', '\x1b[?2004h'],
 ];
 
 // Comma-separated so a format tmux does not know (older than our preflight
 // floor may lack bracket_paste_flag) expands to an empty field instead of
 // shifting the ones after it.
 const PANE_STATE_FORMAT = ['#{pane_id}', '#{cursor_y}', '#{cursor_x}', '#{alternate_on}', ...PANE_MODES.map(([format]) => `#{${format}}`)].join(',');
+const RECORDED_BRACKET_PASTE_INDEX = PANE_MODES.findIndex(([format]) => format === '@deck_bracket_paste');
 
 export class TmuxControlClient {
   private child: TmuxControlChild | undefined;
@@ -61,13 +64,17 @@ export class TmuxControlClient {
   private readonly renameHandlers = new Set<() => void>();
   private readonly exitHandlers = new Set<(code: number | null) => void>();
   private readonly paneDecoder = new TextDecoder();
+  private readonly decModeScanner = new DecModeScanner();
+  private observedBracketedPaste: boolean | undefined;
+  private bracketedPasteEnabled = false;
   private titleFilterState: TitleFilterState = 'text';
   private exitFired = false;
   // Pane bytes streamed before the seed capture-pane reply are already inside
-  // the capture; the gate drops them so the seed is the single source and
-  // reattach never duplicates content (ADR-0012 decision 5). The gate opens
-  // synchronously when the seed reply's %end is parsed, so seed-then-live
-  // ordering is exact stream order.
+  // the capture; the gate drops them from rendering so the seed is the single
+  // source and reattach never duplicates content (ADR-0012 decision 5). Mode
+  // scanning still sees them because capture-pane cannot preserve control
+  // sequences. The gate opens synchronously when the seed reply's %end is
+  // parsed, so seed-then-live ordering is exact stream order.
   private outputGated = true;
 
   constructor(
@@ -129,6 +136,11 @@ export class TmuxControlClient {
     }
     const [paneId, cursorRow, cursorColumn, alternateOn, ...modeFlags] = fields[0].split(',');
     this.paneId = paneId;
+    this.bracketedPasteEnabled = modeFlags[RECORDED_BRACKET_PASTE_INDEX] === '1';
+    if (this.observedBracketedPaste !== undefined) {
+      modeFlags[RECORDED_BRACKET_PASTE_INDEX] = this.observedBracketedPaste ? '1' : '0';
+      this.persistBracketedPaste(this.observedBracketedPaste);
+    }
 
     // A full-screen TUI (Claude, vim, …) runs in the terminal's alternate screen.
     // capture-pane grabs the *visible* screen, so when one is active the seed is a
@@ -321,7 +333,6 @@ export class TmuxControlClient {
   }
 
   private acceptOutput(line: Buffer): void {
-    if (this.outputGated) return;
     const firstSpace = line.indexOf(0x20);
     const secondSpace = line.indexOf(0x20, firstSpace + 1);
     if (secondSpace === -1) return;
@@ -330,7 +341,27 @@ export class TmuxControlClient {
     const bytes = this.stripScreenTitleSequences(decodeOctalEscapes(payload));
     const output = this.paneDecoder.decode(bytes, { stream: true });
     if (output.length === 0) return;
+    this.recordBracketedPaste(output);
+    if (this.outputGated) return;
     for (const handler of this.outputHandlers) handler(output);
+  }
+
+  private recordBracketedPaste(output: string): void {
+    const enabled = this.decModeScanner.accept(output).get(2004);
+    if (enabled === undefined || enabled === this.observedBracketedPaste) return;
+    this.observedBracketedPaste = enabled;
+    if (this.outputGated && this.paneId) {
+      for (const handler of this.seedHandlers) handler(enabled ? '\x1b[?2004h' : '\x1b[?2004l');
+    }
+    if (this.paneId) this.persistBracketedPaste(enabled);
+  }
+
+  private persistBracketedPaste(enabled: boolean): void {
+    if (enabled === this.bracketedPasteEnabled || !this.paneId) return;
+    this.bracketedPasteEnabled = enabled;
+    void this.command(`set-option -p -t ${this.paneId} @deck_bracket_paste ${enabled ? '1' : '0'}`).catch((error) => {
+      console.warn('Deck: recording bracketed-paste mode failed', error);
+    });
   }
 
   // Shells under TERM=tmux-256color emit screen-style title sequences

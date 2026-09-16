@@ -35,7 +35,7 @@ describe('TmuxControlClient', () => {
       '/work/repo',
     ], { cwd: '/work/repo', stdio: 'pipe' });
     expect(child.writes).toEqual([
-      'list-panes -s -t "=wt-_work_repo__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag}"\n',
+      'list-panes -s -t "=wt-_work_repo__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag},#{@deck_bracket_paste}"\n',
       'capture-pane -p -e -q -J -N -S -5000\n',
     ]);
   });
@@ -54,7 +54,7 @@ describe('TmuxControlClient', () => {
     await started;
 
     expect(child.writes[0]).toBe(
-      'list-panes -s -t "=wt-_work_my \\"repo\\"\\\\branch__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag}"\n',
+      'list-panes -s -t "=wt-_work_my \\"repo\\"\\\\branch__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag},#{@deck_bracket_paste}"\n',
     );
   });
 
@@ -90,6 +90,27 @@ describe('TmuxControlClient', () => {
     await started;
 
     expect(events).toEqual(['seed:history', 'live:fresh']);
+  });
+
+  it('records and replays bracketed paste enabled before the initial seed', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    const seeds: string[] = [];
+    client.onSeed((seed) => seeds.push(seed));
+
+    const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
+    child.emitStdout('%output %0 \\033[?2004h\n%begin 1 1 0\n%end 1 1 0\n');
+    await untilWrites(child, 1);
+    child.emitStdout('%begin 1 2 1\n%0,0,0,0,0,0,0,0,1,0,0,,\n%end 1 2 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 3 1\n%end 1 3 1\n%begin 1 4 1\n$ \n%end 1 4 1\n');
+    await started;
+
+    expect(child.writes.slice(1)).toEqual([
+      'set-option -p -t %0 @deck_bracket_paste 1\n',
+      'capture-pane -p -e -q -J -N -S -5000\n',
+    ]);
+    expect(seeds).toEqual(['\x1b[?2004h', '$ ', '\x1b[1;1H']);
   });
 
   it('repositions the cursor from the pane state after seeding the content', async () => {
@@ -172,6 +193,23 @@ describe('TmuxControlClient', () => {
     expect(seeds).toEqual(['\x1b[?1000h\x1b[?1006h', '$ ', '\x1b[1;1H']);
   });
 
+  it('replays bracketed paste from the pane option when tmux lacks its native flag', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    const seeds: string[] = [];
+    client.onSeed((seed) => seeds.push(seed));
+
+    const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
+    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
+    await untilWrites(child, 1);
+    child.emitStdout('%begin 1 2 1\n%0,0,0,0,0,0,0,0,1,0,0,,1\n%end 1 2 1\n');
+    await untilWrites(child, 2);
+    child.emitStdout('%begin 1 3 1\n$ \n%end 1 3 1\n');
+    await started;
+
+    expect(seeds).toEqual(['\x1b[?2004h', '$ ', '\x1b[1;1H']);
+  });
+
   it('opens the output gate even when the seed capture errors', async () => {
     const child = fakeChild();
     const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
@@ -228,6 +266,30 @@ describe('TmuxControlClient', () => {
     expect(output.mock.calls.map(([data]) => data).join('')).toBe(
       'abc \x1b[32mgreen\x1b[39m',
     );
+  });
+
+  it('records bracketed-paste transitions once when the pane repeats them', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    await startClient(client, child);
+
+    child.emitStdout('%output %0 \\033[?2004h\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\n%end 1 4 1\n');
+    child.emitStdout('%output %0 \\033[?2004h\n');
+
+    expect(child.writes.slice(2)).toEqual([
+      'set-option -p -t %0 @deck_bracket_paste 1\n',
+    ]);
+
+    child.emitStdout('%output %0 \\033[?2004l\n');
+    await untilWrites(child, 4);
+    child.emitStdout('%output %0 \\033[?2004l\n');
+
+    expect(child.writes.slice(2)).toEqual([
+      'set-option -p -t %0 @deck_bracket_paste 1\n',
+      'set-option -p -t %0 @deck_bracket_paste 0\n',
+    ]);
   });
 
   it('writes all sendKeys chunks of at most 4096 bytes in one burst', async () => {
