@@ -805,9 +805,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (action === 'selectAll') terminal.selectAll();
         if (action === 'clear') {
           terminal.clear();
-          // Also clear tmux's scrollback so the clear survives reload/reattach
-          // (the seed comes from capture-pane); otherwise it reseeds the
-          // "cleared" content. Mirrors iTerm2's clear -> tmux clear-history.
+          // clear-history frees tmux's scrollback but leaves the visible pane
+          // alone, so the reattach seed (capture-pane) brings that one page
+          // back (#212). Matches iTerm2's tmux control mode, which likewise
+          // sends clear-history and nothing else. The tempting extra —
+          // send-keys -R — resets the pane modes PANE_MODES replays on
+          // reattach and blanks a live TUI's frame without telling it to
+          // repaint.
           vscode.postMessage({ type: 'clearHistory' });
         }
       }
