@@ -134,6 +134,16 @@ over an active selection, with the selection preserved.
   `terminal.paste(text)` delegation that keeps bracketed paste intact (#208,
   #210), and `Clear`'s `clearHistory` message that clears tmux's scrollback.
 
+- **The context attribute is scoped to the Terminal element, not the webview
+  body — deliberately.** VS Code merges `data-vscode-context` from the clicked
+  element upward through its ancestors, so the attribute on the Terminal element
+  covers everything xterm renders inside it. The Find widget and the file-drop
+  overlay are siblings rather than descendants and inherit nothing: right-
+  clicking the Find input falls through to VS Code's built-in webview menu, which
+  is the right menu for a text field, where Deck's own items would offer Select
+  All and Clear meaning the Terminal buffer. Hoisting the attribute to the body
+  would look like a tidy-up and would be a regression.
+
 - **Both of Deck's right-click menus are now the same mechanism.** The
   inconsistency between the tree's native menu and the Terminal's hand-drawn one
   is removed.
