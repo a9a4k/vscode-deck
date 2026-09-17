@@ -32,10 +32,10 @@ describe('OpenTerminalCommand', () => {
     vscodeState.workspaceFolders = [{ uri: { fsPath: '/work/alpha-main' } }];
   });
 
-  it('opens a same-worktree terminal row as a Deck custom editor', async () => {
+  it('opens and focuses a same-worktree terminal row as a Deck custom editor', async () => {
     const terminalPanels = {
       panelFor: vi.fn(() => undefined),
-      preserveFocusOnNextActivation: vi.fn(),
+      focusTerminal: vi.fn(),
     };
 
     await new OpenTerminalCommand({ terminalPanels }).run({
@@ -43,9 +43,6 @@ describe('OpenTerminalCommand', () => {
       worktreePath: '/work/alpha-main',
     });
 
-    expect(terminalPanels.preserveFocusOnNextActivation).toHaveBeenCalledWith(
-      'wt-_work_alpha-main__term-1',
-    );
     expect(vscodeState.executeCommand).toHaveBeenCalledWith(
       'vscode.openWith',
       {
@@ -53,16 +50,20 @@ describe('OpenTerminalCommand', () => {
         path: '/work/alpha-main/term-1',
       },
       'deck.terminal',
-      { viewColumn: -1, preserveFocus: true },
+      { viewColumn: -1 },
+    );
+    expect(terminalPanels.focusTerminal).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
+    expect(vscodeState.executeCommand.mock.invocationCallOrder[0]).toBeLessThan(
+      terminalPanels.focusTerminal.mock.invocationCallOrder[0],
     );
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();
   });
 
-  it('reveals an existing custom-editor tab on re-click without taking focus', async () => {
-    const panel = { reveal: vi.fn() };
+  it('reveals and focuses an existing inactive custom-editor tab', async () => {
+    const panel = { active: false, reveal: vi.fn() };
     const terminalPanels = {
       panelFor: vi.fn(() => panel),
-      preserveFocusOnNextActivation: vi.fn(),
+      focusTerminal: vi.fn(),
     };
 
     await new OpenTerminalCommand({ terminalPanels }).run({
@@ -71,12 +72,26 @@ describe('OpenTerminalCommand', () => {
     });
 
     expect(terminalPanels.panelFor).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
-    expect(terminalPanels.preserveFocusOnNextActivation).toHaveBeenCalledWith(
-      'wt-_work_alpha-main__term-1',
-    );
-    expect(panel.reveal).toHaveBeenCalledWith(undefined, true);
+    expect(panel.reveal).toHaveBeenCalledWith();
+    expect(terminalPanels.focusTerminal).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
     expect(vscodeState.executeCommand).not.toHaveBeenCalled();
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();
+  });
+
+  it('focuses an existing already-active custom-editor tab', async () => {
+    const panel = { active: true, reveal: vi.fn() };
+    const terminalPanels = {
+      panelFor: vi.fn(() => panel),
+      focusTerminal: vi.fn(),
+    };
+
+    await new OpenTerminalCommand({ terminalPanels }).run({
+      terminal: { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+      worktreePath: '/work/alpha-main',
+    });
+
+    expect(panel.reveal).toHaveBeenCalledWith();
+    expect(terminalPanels.focusTerminal).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
   });
 
   it('opens a foreign-worktree terminal row in place without switching', async () => {
@@ -92,7 +107,7 @@ describe('OpenTerminalCommand', () => {
         path: '/work/beta-main/term-1',
       },
       'deck.terminal',
-      { viewColumn: -1, preserveFocus: true },
+      { viewColumn: -1 },
     );
     expect(vscodeState.executeCommand).toHaveBeenCalledOnce();
     expect(vscodeState.createTerminal).not.toHaveBeenCalled();
@@ -111,7 +126,7 @@ describe('OpenTerminalCommand', () => {
         path: '/work/alpha-main/term-7',
       },
       'deck.terminal',
-      { viewColumn: -1, preserveFocus: true },
+      { viewColumn: -1 },
     );
   });
 });

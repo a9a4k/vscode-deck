@@ -124,7 +124,7 @@ A TerminalLauncher flag (`runOnWorktreeCreate: true`) that makes Deck fire that 
 _Avoid_: post-create hook (it is launcher data, not a script Deck owns), provisioning script, autorun (ambiguous about which event)
 
 **Terminal**:
-A persistent shell owned by Deck — one tmux session on the DeckSocket — shown as a row under a Worktree and opened as an xterm.js editor tab addressed by `deck-terminal:/<worktree>/term-N`. Like a file, the Terminal is the durable thing and its tab is just a view onto it: closing the tab leaves the Terminal running, and any Terminal can be opened from any mounted Worktree without a Switch. Its Worktree is fixed when it is created and never changes — a Terminal cannot move to another Worktree or Repository.
+A persistent shell owned by Deck — one tmux session on the DeckSocket — shown as a row under a Worktree and opened focused as an xterm.js editor tab addressed by `deck-terminal:/<worktree>/term-N`. Like a file, the Terminal is the durable thing and its tab is just a view onto it: closing the tab leaves the Terminal running, and any Terminal can be opened from any mounted Worktree without a Switch. Opening its row moves keyboard focus to the tab for immediate typing; the tree row still highlights the active tab without retaining focus. Its Worktree is fixed when it is created and never changes — a Terminal cannot move to another Worktree or Repository.
 _Avoid_: tmux session, tmux window, pane (the backing mechanism); tab (a disposable view, not the Terminal itself)
 
 **DisconnectedTab**:
@@ -217,7 +217,7 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 > **Domain expert:** "No — the tab is just a view, like an editor over a file. The **Terminal** keeps running; reopen its row anytime. Destroying it is **TerminalRemoval**."
 >
 > **Dev:** "What happens when I click a **Terminal** that belongs to a **Worktree** I'm not in?"
-> **Domain expert:** "Its tab opens right here in the current window — no **Switch**. Any **Terminal** opens from anywhere, the way you'd open a file."
+> **Domain expert:** "Its tab opens focused right here in the current window — no **Switch**. Any **Terminal** opens from anywhere, ready for typing."
 
 ## Flagged ambiguities
 
@@ -227,6 +227,7 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 - "agent session" could mean a Deck-managed entity (with its own tree rows / chat surface) or an observed attribute of a Terminal — resolved: it is an **AgentSession**, an observed attribute. Deck never launches agents; it discovers the session via agent hooks keyed to the Terminal and resumes it by rewriting the TerminalSnapshot. (The intro's "agent chat sessions are planned" is this, not a separate chat UI.)
 - "tmux session" was used for **Terminal** — resolved: the session is the backing mechanism; **Terminal** is the domain concept.
 - "close" conflated closing a **Terminal**'s editor tab with destroying the **Terminal** — resolved: closing the tab is a non-destructive view operation; destroying is **TerminalRemoval** ("Delete"). Reverses ADR-0011 §6's kill-on-tab-close.
+- Opening a **Terminal** row was treated like previewing a file, leaving keyboard focus in the tree — resolved: a **Terminal** is a typing surface, so opening or re-clicking its row focuses its tab, restoring ADR-0008 §7.
 - An uncurated **WorktreeOrder** implied a curated order but had no *defined* default — git listed worktrees alphabetically by path, so a newly added Worktree surfaced mid-list, not last. Resolved: the default is **creation order** (newest last), main pinned first — mirroring the append-at-bottom invariant ADR-0028 built for TerminalOrder. See ADR-0048.
 - "Project" was the canonical term for a registered repo — resolved: renamed to **Repository** for precision (it is literally a git repo, keyed by common dir). "project" is now avoided because a VS Code user reads the open *folder* as their "project," and that folder is a **Worktree** in Deck.
 - "unpushed commits" was the only committed-work warning in WorktreeRemoval, but it is measured against `@{u}` and a branch with no upstream reports none — so a branch whose only ref held unique work warned nothing, and `git branch -d` refused after the fact. Resolved: branch deletion is gated by **UnmergedCommits** (vs. the default branch and remotes); "unpushed" remains a Worktree-removal signal only.
