@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.25.7
+
+The Delete Terminal confirmation now names the terminal the way its row actually
+reads in the sidebar — an agent's live title, if it has one — instead of the raw
+tmux window name underneath. Previously an agent Terminal's dialog could read
+"claude" even though the row itself showed something else, making it easy to
+misjudge which Terminal was about to be deleted.
+
 ## 0.25.6
 
 Deleting a Terminal by keyboard (`cmd+backspace`) has been removed. It relied on the
