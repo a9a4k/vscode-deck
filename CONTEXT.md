@@ -59,7 +59,7 @@ Delisting a Repository from Deck without touching its git repository or files.
 _Avoid_: delete repository, uninstall
 
 **TerminalRemoval**:
-Destroying a Terminal — killing its tmux session and removing its row. Surfaced as "Delete Terminal" (right-click or `cmd+backspace`). Also happens when the shell `exit`s or when the Terminal's Worktree or Repository is removed. Closing the editor tab does **not** trigger it.
+Destroying a Terminal — killing its tmux session and removing its row. Surfaced as "Delete Terminal" (right-click, or `cmd+backspace` while the tree holds focus — reached by arrow keys or by focusing the Deck view, never by clicking a Terminal row, since that focuses the Terminal). Also happens when the shell `exit`s or when the Terminal's Worktree or Repository is removed. Closing the editor tab does **not** trigger it.
 _Avoid_: close (closing a tab is non-destructive), kill
 
 ### Ordering
@@ -217,7 +217,7 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 > **Domain expert:** "No — the tab is just a view, like an editor over a file. The **Terminal** keeps running; reopen its row anytime. Destroying it is **TerminalRemoval**."
 >
 > **Dev:** "What happens when I click a **Terminal** that belongs to a **Worktree** I'm not in?"
-> **Domain expert:** "Its tab opens right here in the current window — no **Switch**. Any **Terminal** opens from anywhere, the way you'd open a file."
+> **Domain expert:** "Its tab opens right here in the current window — no **Switch**. Any **Terminal** opens from anywhere, and you're typing in it the moment it opens — like switching to a chat channel, not previewing a file. The tree never keeps the keyboard after opening a **Terminal**."
 
 ## Flagged ambiguities
 
@@ -233,4 +233,5 @@ _Avoid_: terminal cache (a cache implies the live path exists and this is an opt
 - "Dropping an image on the agent" was assumed to be the same gesture as pasting one, so ADR-0024 treated drop as a variant of paste and declined it. Resolved: they are two gestures with different mechanisms, because the image is in a different place. Paste forwards a keystroke and Deck never sees the image; **ImageDrop** has no keystroke to forward, so Deck materializes the file and pastes its path. The surface is a **Terminal** (a tab running an agent), never the **AgentSession** itself — that remains an observed attribute, not something you can drop onto.
 - An **ImageDrop** was assumed to be the only FileDrop a webview could use because a dropped `File` exposes bytes but no path. Resolved: VS Code's own Shift-gated drags carry URI lists across the webview boundary, so a `file:` URI becomes the real path and accepts files, folders, and editor tabs without copying. ImageDrop is now the fallback for image sources that carry bytes but no usable path.
 - "browser rows next to terminal rows" implied Deck would embed a browser. Resolved: the row is a **Bookmark** — a pinned URL — and Deck embeds nothing. VS Code 1.133 ships its own Integrated Browser (a real Electron web view, so unlike a webview it renders sites that refuse framing); Deck hands it a URL and owns only the row. "Browser" is avoided because it names a surface Deck does not own, and because a Bookmark may open in the default browser instead.
+- Opening a **Terminal** row was modeled on the Explorer opening a file: the tab appeared but the tree kept keyboard focus, so `cmd+backspace` could delete the row. Typing then went into the tree's type-navigation, hopping the highlight between rows and opening the wrong Terminal on Enter. Resolved: a **Terminal** is a typing surface, not a document — opening one focuses it, by every path (click, Enter, agent toast, Add Terminal). Keyboard delete now needs the tree focused first. Restores ADR-0008 §7.
 - A **Worktree** was assumed to always have a branch, so a branchless one fell back to showing its full filesystem path as the row label — resolved: a **Detached Worktree** is a real checkout and stays shown, labelled by folder name + short commit; a **Bare Worktree** has no working tree and is hidden, because Switching to one would mount git internals and poison the **ActiveWorktree**.
