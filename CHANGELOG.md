@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.5
+
+Opening a Terminal from the sidebar now puts your cursor in it. Previously a
+row click left keyboard focus on the tree instead — typing was invisibly
+captured by the tree's own type-ahead navigation, which could jump the
+selection to another row and open the wrong Terminal on Enter. Clicking a
+row, pressing Enter on one, opening from an agent-status notification, Add
+Terminal and Run Launcher all now focus the Terminal the moment its tab
+opens, including re-clicking the tab that's already active. Deleting a
+Terminal by keyboard (`cmd+backspace`) now requires the tree to hold focus
+first — reach it with the arrow keys or by right-clicking a row for Delete
+Terminal, since clicking a row focuses the Terminal instead.
+
 ## 0.25.4
 
 The right-click menu in a Terminal is now the same menu VS Code draws everywhere
