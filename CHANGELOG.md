@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.6
+
+Deleting a Terminal by keyboard (`cmd+backspace`) has been removed. It relied on the
+tree's arrow-highlighted row matching its separately-tracked selection, and VS Code
+gives extensions no way to keep those in sync — arrow keys move the highlight but never
+the selection, so the shortcut could delete a different Terminal than the one you were
+looking at. In manual testing this destroyed a live shell. Right-click → Delete Terminal
+is unaffected and remains the only way to delete a Terminal.
+
 ## 0.25.5
 
 Opening a Terminal from the sidebar now puts your cursor in it. Previously a
