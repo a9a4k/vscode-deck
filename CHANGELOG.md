@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.25.4
+
+The right-click menu in a Terminal is now the same menu VS Code draws everywhere
+else in the editor. Escape dismisses it — and the escape no longer reaches the
+program running in the Terminal, so backing out of a menu cannot cancel what
+your shell or agent was doing. Arrow keys and type-ahead move through the items,
+the menu follows your colour theme, it can no longer be clipped at the edge of
+the screen, and screen readers can see it. Copy, Paste, Select All and Clear do
+exactly what they did before, including forwarding an image paste to a running
+agent and clearing tmux's scrollback.
+
 ## 0.25.3
 
 Pasting into a Terminal from the right-click menu now behaves the same as
