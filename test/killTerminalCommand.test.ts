@@ -100,6 +100,20 @@ describe('TerminalRemovalCommand', () => {
     expect(tmux.killSession).toHaveBeenCalledWith('wt-_work_repo__term-1');
   });
 
+  it('names the clicked Terminal row in the confirmation', async () => {
+    const tmux = {
+      killSession: vi.fn(async () => undefined),
+    };
+    const confirm = vi.fn(async () => false);
+
+    await new TerminalRemovalCommand(tmux, vi.fn(), confirm).run({
+      label: 'fix-keyboard-delete-focus',
+      terminal: { sessionName: 'wt-_work_repo__term-1', windowName: 'claude' },
+    });
+
+    expect(confirm).toHaveBeenCalledWith('fix-keyboard-delete-focus');
+  });
+
   it('no-ops on a non-Terminal selection (Worktree/Repository row)', async () => {
     const tmux = {
       killSession: vi.fn(async () => undefined),
