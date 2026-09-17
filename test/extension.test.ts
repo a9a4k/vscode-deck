@@ -91,6 +91,7 @@ const vscodeState = vi.hoisted(() => ({
   openTerminalRun: vi.fn(),
   openTerminalArgs: undefined as unknown[] | undefined,
   repositoryTreeArgs: undefined as unknown[] | undefined,
+  repositoryTreeFindTerminal: vi.fn(),
   repositoryTreeInstances: [] as Array<{
     findBookmark: ReturnType<typeof vi.fn>;
     findTerminal: ReturnType<typeof vi.fn>;
@@ -369,7 +370,7 @@ vi.mock('../src/tree/repositoryTree', () => ({
       getDecorationStatus: vi.fn(),
     };
     findBookmark = vi.fn();
-    findTerminal = vi.fn();
+    findTerminal = vscodeState.repositoryTreeFindTerminal;
     findTerminalBySessionName = vi.fn();
     describeSession = vi.fn();
     refresh = vi.fn();
@@ -652,6 +653,7 @@ describe('activate', () => {
     vscodeState.lifecycleOrder = [];
     vscodeState.openTerminalArgs = undefined;
     vscodeState.repositoryTreeArgs = undefined;
+    vscodeState.repositoryTreeFindTerminal.mockReset();
     vscodeState.repositoryTreeInstances = [];
     vscodeState.removeWorktreeArgs = undefined;
     vscodeState.settingsRepositories = ['/settings/repo'];
@@ -1693,6 +1695,23 @@ describe('activate', () => {
       'wt-_work_alpha-main__term-1',
       '/work/alpha-main',
     );
+    expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(
+      terminalNode,
+      { select: true, focus: false },
+    );
+  });
+
+  it('selects a restored active Terminal row during activation without taking focus', async () => {
+    const context = createContext();
+    const terminalNode = {
+      terminal: { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+      worktreePath: '/work/alpha-main',
+    };
+    vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
+    vscodeState.repositoryTreeFindTerminal.mockResolvedValue(terminalNode);
+
+    await activate(context as never);
+
     expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(
       terminalNode,
       { select: true, focus: false },

@@ -520,6 +520,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dragAndDropController,
     canSelectMany: false,
   });
+  await revealActiveTerminalIfNeeded();
   const deckDecorationProvider = new DeckDecorationProvider(
     agentStatuses,
     tree.agentStatusDecorationRollups,
