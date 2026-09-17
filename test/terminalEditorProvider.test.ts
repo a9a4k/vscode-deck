@@ -785,6 +785,31 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'find' });
   });
 
+  it('posts a menu action to the Terminal panel that most recently received focus', () => {
+    const firstPanel = panel();
+    const secondPanel = panel();
+    let focusFirst: ((message: { type: 'focused' }) => void) | undefined;
+    firstPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof focusFirst) => {
+      focusFirst = handler;
+      return { dispose: vi.fn() };
+    });
+    const { provider, document: firstDocument } = providerDocument();
+    const secondDocument = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-2',
+    } as never);
+    provider.resolveCustomEditor(firstDocument, firstPanel as never);
+    provider.resolveCustomEditor(secondDocument, secondPanel as never);
+    firstPanel.webview.postMessage.mockClear();
+    secondPanel.webview.postMessage.mockClear();
+
+    focusFirst?.({ type: 'focused' });
+    provider.runMenuAction('clear');
+
+    expect(firstPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'menu', action: 'clear' });
+    expect(secondPanel.webview.postMessage).not.toHaveBeenCalled();
+  });
+
   it('renders terminal feel hooks in the webview html', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
@@ -802,9 +827,6 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("{ prefix: '?', final: 'n' }");
     expect(terminalPanel.webview.html).toContain('clipboard.writeText');
     expect(terminalPanel.webview.html).toContain('clipboard.readText');
-    expect(terminalPanel.webview.html).toContain('context-menu');
-    // Context menu clamps into the viewport so a bottom/right click doesn't clip it.
-    expect(terminalPanel.webview.html).toContain('window.innerHeight - contextMenu.offsetHeight');
     expect(terminalPanel.webview.html).toContain('searchAddon.findNext');
     expect(terminalPanel.webview.html).toContain("matchBackground: '#5c3300'");
     expect(terminalPanel.webview.html).not.toContain('rgba(');
@@ -824,24 +846,25 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.html).toContain("window.addEventListener('focus', () => terminal.focus())");
   });
 
-  it('renders Copy Link as a contextual terminal link menu action', () => {
+  it('publishes native Terminal menu context from both link routes without hand-drawn menu chrome', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
     provider.resolveCustomEditor(document, terminalPanel as never);
 
-    const copyLinkIndex = terminalPanel.webview.html.indexOf('data-action="copy-link"');
-    const copyIndex = terminalPanel.webview.html.indexOf('data-action="copy"');
-    expect(copyLinkIndex).toBeGreaterThan(-1);
-    expect(copyLinkIndex).toBeLessThan(copyIndex);
-    expect(terminalPanel.webview.html).toContain('let hoveredLink');
-    expect(terminalPanel.webview.html).toContain('let contextMenuLink');
-    expect(terminalPanel.webview.html).toContain('hover: (_event, uri) => { hoveredLink = uri; }');
-    expect(terminalPanel.webview.html).toContain('leave: () => { hoveredLink = undefined; }');
-    expect(terminalPanel.webview.html).toContain('contextMenuLink = hoveredLink');
-    expect(terminalPanel.webview.html).toContain("copyLinkButton.style.display = contextMenuLink ? 'block' : 'none'");
-    expect(terminalPanel.webview.html).toContain("if (action === 'copy-link' && contextMenuLink)");
-    expect(terminalPanel.webview.html).toContain('navigator.clipboard.writeText(contextMenuLink)');
+    const html = terminalPanel.webview.html;
+    expect(html).toContain('terminalElement.dataset.vscodeContext = JSON.stringify({');
+    expect(html).toContain('preventDefaultContextMenuItems: true');
+    expect(html).toContain('deckTerminal: true');
+    expect(html).toContain('deckHoveredLink: hoveredLink ?? null');
+    expect(html.match(/hover: \(_event, uri\) => \{ hoveredLink = uri; updateVsCodeContext\(\); \}/g)).toHaveLength(2);
+    expect(html.match(/leave: \(\) => \{ hoveredLink = undefined; updateVsCodeContext\(\); \}/g)).toHaveLength(2);
+    expect(html).not.toContain('id="context-menu"');
+    expect(html).not.toContain('#context-menu');
+    expect(html).not.toContain("terminalElement.addEventListener('contextmenu'");
+    expect(html).not.toContain('window.innerHeight - contextMenu.offsetHeight');
+    expect(html).not.toContain('hideContextMenu');
+    expect(html).not.toContain('contextMenu.addEventListener');
   });
 
   it('routes OSC 8 hyperlinks through linkHandler so agent-emitted links are copyable and openable', () => {

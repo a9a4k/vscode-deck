@@ -649,6 +649,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       terminalRemoval.run(node ?? treeView.selection[0]),
     ),
     vscode.commands.registerCommand('deck.terminal.find', () => terminalEditorProvider.showFind()),
+    vscode.commands.registerCommand('deck.terminal.copyLink', (context?: { deckHoveredLink?: string }) => {
+      if (context?.deckHoveredLink) void vscode.env.clipboard.writeText(context.deckHoveredLink);
+    }),
+    vscode.commands.registerCommand('deck.terminal.copy', () => terminalEditorProvider.runMenuAction('copy')),
+    vscode.commands.registerCommand('deck.terminal.paste', () => terminalEditorProvider.runMenuAction('paste')),
+    vscode.commands.registerCommand('deck.terminal.selectAll', () =>
+      terminalEditorProvider.runMenuAction('selectAll'),
+    ),
+    vscode.commands.registerCommand('deck.terminal.clear', () => terminalEditorProvider.runMenuAction('clear')),
     vscode.commands.registerCommand('deck.reopenTerminals', () => disconnectedTabs.reopenUnwiredTabs()),
     vscode.commands.registerCommand('deck.installAgentHooks', () => agentSetupPrompt.run({ explicit: true })),
     vscode.commands.registerCommand('deck.removeAgentHooks', () => agentSetupPrompt.uninstall()),

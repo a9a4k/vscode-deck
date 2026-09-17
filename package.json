@@ -299,6 +299,26 @@
         "title": "Deck Terminal: Find"
       },
       {
+        "command": "deck.terminal.copyLink",
+        "title": "Copy Link"
+      },
+      {
+        "command": "deck.terminal.copy",
+        "title": "Copy"
+      },
+      {
+        "command": "deck.terminal.paste",
+        "title": "Paste"
+      },
+      {
+        "command": "deck.terminal.selectAll",
+        "title": "Select All"
+      },
+      {
+        "command": "deck.terminal.clear",
+        "title": "Clear"
+      },
+      {
         "command": "deck.reopenTerminals",
         "title": "Deck: Reopen Terminals"
       },
@@ -340,6 +360,33 @@
       }
     ],
     "menus": {
+      "webview/context": [
+        {
+          "command": "deck.terminal.copyLink",
+          "when": "deckTerminal && deckHoveredLink",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "deck.terminal.copy",
+          "when": "deckTerminal",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "deck.terminal.paste",
+          "when": "deckTerminal",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "deck.terminal.selectAll",
+          "when": "deckTerminal",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "deck.terminal.clear",
+          "when": "deckTerminal",
+          "group": "3_terminal@1"
+        }
+      ],
       "view/title": [
         {
           "command": "deck.addRepository",
@@ -413,6 +460,26 @@
         {
           "command": "deck.terminal.find",
           "when": "activeCustomEditorId == 'deck.terminal'"
+        },
+        {
+          "command": "deck.terminal.copyLink",
+          "when": "false"
+        },
+        {
+          "command": "deck.terminal.copy",
+          "when": "false"
+        },
+        {
+          "command": "deck.terminal.paste",
+          "when": "false"
+        },
+        {
+          "command": "deck.terminal.selectAll",
+          "when": "false"
+        },
+        {
+          "command": "deck.terminal.clear",
+          "when": "false"
         },
         {
           "command": "deck.reopenTerminals"

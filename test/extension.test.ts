@@ -158,6 +158,7 @@ const vscodeState = vi.hoisted(() => ({
   showInformationMessage: vi.fn(),
   showInputBox: vi.fn(),
   clipboardText: 'https://example.com/docs',
+  clipboardWriteText: vi.fn(async () => undefined),
   withProgress: vi.fn((_options, task: (progress: { report(update: unknown): void }) => Promise<unknown>) =>
     task({ report: vi.fn() }),
   ),
@@ -204,6 +205,7 @@ vi.mock('vscode', () => ({
   env: {
     clipboard: {
       readText: vi.fn(async () => vscodeState.clipboardText),
+      writeText: vscodeState.clipboardWriteText,
     },
     openExternal: vscodeState.openExternal,
   },
@@ -697,6 +699,7 @@ describe('activate', () => {
     vscodeState.showWarningMessage.mockClear();
     vscodeState.showInformationMessage.mockReset();
     vscodeState.clipboardText = 'https://example.com/docs';
+    vscodeState.clipboardWriteText.mockClear();
     vscodeState.showInputBox.mockResolvedValue('https://example.com/docs');
     vscodeState.worktreeActionPickerRun.mockResolvedValue(undefined);
     vscodeState.withProgress.mockClear();
@@ -2066,6 +2069,93 @@ describe('activate', () => {
       'deck.terminal.find',
       expect.any(Function),
     );
+  });
+
+  it('keeps Terminal menu contributions, registered commands, and webview actions aligned', async () => {
+    const context = createContext();
+    const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')) as {
+      contributes: {
+        commands: Array<{ command: string; title: string }>;
+        menus: Record<string, Array<{ command: string; when: string; group: string }>>;
+      };
+    };
+    const menu = pkg.contributes.menus['webview/context'];
+    const expectedMenu = [
+      { command: 'deck.terminal.copyLink', when: 'deckTerminal && deckHoveredLink', group: '1_copy@1' },
+      { command: 'deck.terminal.copy', when: 'deckTerminal', group: '1_copy@2' },
+      { command: 'deck.terminal.paste', when: 'deckTerminal', group: '2_edit@1' },
+      { command: 'deck.terminal.selectAll', when: 'deckTerminal', group: '2_edit@2' },
+      { command: 'deck.terminal.clear', when: 'deckTerminal', group: '3_terminal@1' },
+    ];
+
+    expect(menu).toEqual(expectedMenu);
+    expect(pkg.contributes.commands).toEqual(expect.arrayContaining([
+      { command: 'deck.terminal.copyLink', title: 'Copy Link' },
+      { command: 'deck.terminal.copy', title: 'Copy' },
+      { command: 'deck.terminal.paste', title: 'Paste' },
+      { command: 'deck.terminal.selectAll', title: 'Select All' },
+      { command: 'deck.terminal.clear', title: 'Clear' },
+    ]));
+    expect(pkg.contributes.menus.commandPalette).toEqual(expect.arrayContaining(
+      menu.map(({ command }) => ({ command, when: 'false' })),
+    ));
+
+    await activate(context as never);
+    const registrations = new Map(vscodeState.registerCommand.mock.calls.map(([id, handler]) => [id, handler]));
+    expect([...registrations.keys()]).toEqual(expect.arrayContaining(menu.map(({ command }) => command)));
+
+    const provider = vscodeState.registerCustomEditorProvider.mock.calls[0]?.[1] as {
+      openCustomDocument(uri: unknown): unknown;
+      resolveCustomEditor(document: unknown, panel: unknown): void;
+    };
+    const panel = {
+      active: true,
+      visible: true,
+      webview: {
+        options: {},
+        html: '',
+        cspSource: 'vscode-resource:',
+        asWebviewUri: (uri: unknown) => uri,
+        postMessage: vi.fn(async () => true),
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+      },
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeViewState: vi.fn(() => ({ dispose: vi.fn() })),
+    };
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    });
+    provider.resolveCustomEditor(document, panel);
+
+    for (const [command, action] of [
+      ['deck.terminal.copy', 'copy'],
+      ['deck.terminal.paste', 'paste'],
+      ['deck.terminal.selectAll', 'selectAll'],
+      ['deck.terminal.clear', 'clear'],
+    ]) {
+      panel.webview.postMessage.mockClear();
+      await registrations.get(command)?.();
+      expect(panel.webview.postMessage).toHaveBeenCalledWith({ type: 'menu', action });
+      expect(panel.webview.html).toContain(`if (action === '${action}')`);
+    }
+  });
+
+  it('copies only the hovered link supplied by the Terminal context menu', async () => {
+    const context = createContext();
+    await activate(context as never);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.terminal.copyLink',
+    );
+    if (!registration) throw new Error('missing deck.terminal.copyLink registration');
+
+    await registration[1]();
+    await registration[1]({});
+    expect(vscodeState.clipboardWriteText).not.toHaveBeenCalled();
+
+    await registration[1]({ deckHoveredLink: 'https://example.com/docs' });
+    expect(vscodeState.clipboardWriteText).toHaveBeenCalledOnce();
+    expect(vscodeState.clipboardWriteText).toHaveBeenCalledWith('https://example.com/docs');
   });
 
   it('wakes Terminal reconciliation without killing tmux when a Deck custom-editor tab is disposed', async () => {

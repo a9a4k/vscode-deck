@@ -204,6 +204,11 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     if (panel) void panel.webview.postMessage({ type: 'find' });
   }
 
+  runMenuAction(action: 'copy' | 'paste' | 'selectAll' | 'clear'): void {
+    const panel = this.activePanel ?? this.panels.values().next().value;
+    if (panel) void panel.webview.postMessage({ type: 'menu', action });
+  }
+
   resolveCustomEditor(document: TerminalDocument, panel: vscode.WebviewPanel): void {
     const existing = this.panels.get(document.sessionName);
     if (existing) {
@@ -403,30 +408,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
          visually balances the 20px on the left. */
       padding: 0 6px 0 20px;
     }
-    #context-menu {
-      position: fixed;
-      display: none;
-      min-width: 128px;
-      padding: 4px 0;
-      background: var(--vscode-menu-background);
-      color: var(--vscode-menu-foreground);
-      border: 1px solid var(--vscode-menu-border);
-      z-index: 20;
-    }
-    #context-menu button {
-      display: block;
-      width: 100%;
-      padding: 5px 12px;
-      border: 0;
-      background: transparent;
-      color: inherit;
-      text-align: left;
-      font: inherit;
-    }
-    #context-menu button:hover {
-      background: var(--vscode-menu-selectionBackground);
-      color: var(--vscode-menu-selectionForeground);
-    }
     #file-drop-overlay {
       position: fixed;
       inset: 8px;
@@ -482,13 +463,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     <button id="find-prev" type="button">Prev</button>
     <button id="find-next" type="button">Next</button>
     <button id="find-close" type="button">x</button>
-  </div>
-  <div id="context-menu">
-    <button type="button" data-action="copy-link" style="display: none;">Copy Link</button>
-    <button type="button" data-action="copy">Copy</button>
-    <button type="button" data-action="paste">Paste</button>
-    <button type="button" data-action="select-all">Select All</button>
-    <button type="button" data-action="clear">Clear</button>
   </div>
   <script nonce="${nonce}" src="${xtermJs}"></script>
   <script nonce="${nonce}" src="${fitJs}"></script>
@@ -559,15 +533,22 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       const fitAddon = new FitAddon.FitAddon();
       const searchAddon = new SearchAddon.SearchAddon();
       const unicode11Addon = new Unicode11Addon.Unicode11Addon();
-      // Track whichever link is under the pointer so the context menu can offer
-      // Copy Link. Two providers can own a link: WebLinksAddon (bare-URL regex)
-      // and xterm's built-in OSC 8 provider (hyperlinks emitted by agent TUIs
-      // like Claude Code). The OSC provider registers first and wins, and only
-      // routes hover/activate through terminal.options.linkHandler — so without
-      // it, agent-emitted links neither open (its default window.open is blocked
-      // by the webview CSP) nor become copyable. Wire both to one openLink path.
+      // Track whichever link is under the pointer so the native context menu can
+      // offer Copy Link. Two providers can own a link: WebLinksAddon (bare-URL
+      // regex) and xterm's built-in OSC 8 provider (hyperlinks emitted by agent
+      // TUIs like Claude Code). The OSC provider registers first and wins, and
+      // only routes hover/activate through terminal.options.linkHandler — so
+      // without it, agent-emitted links neither open (its default window.open is
+      // blocked by the webview CSP) nor become copyable.
       let hoveredLink;
-      let contextMenuLink;
+      function updateVsCodeContext() {
+        terminalElement.dataset.vscodeContext = JSON.stringify({
+          preventDefaultContextMenuItems: true,
+          deckTerminal: true,
+          deckHoveredLink: hoveredLink ?? null,
+        });
+      }
+      updateVsCodeContext();
       function openLink(event, uri) {
         if (event.metaKey || event.ctrlKey) {
           event.preventDefault();
@@ -575,13 +556,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
       }
       const webLinksAddon = new WebLinksAddon.WebLinksAddon(openLink, {
-        hover: (_event, uri) => { hoveredLink = uri; },
-        leave: () => { hoveredLink = undefined; },
+        hover: (_event, uri) => { hoveredLink = uri; updateVsCodeContext(); },
+        leave: () => { hoveredLink = undefined; updateVsCodeContext(); },
       });
       terminal.options.linkHandler = {
         activate: openLink,
-        hover: (_event, uri) => { hoveredLink = uri; },
-        leave: () => { hoveredLink = undefined; },
+        hover: (_event, uri) => { hoveredLink = uri; updateVsCodeContext(); },
+        leave: () => { hoveredLink = undefined; updateVsCodeContext(); },
       };
       let resizeTimer;
       let lastCols = 0;
@@ -689,8 +670,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       });
       terminal.element.addEventListener('focusin', () => vscode.postMessage({ type: 'focused' }));
 
-      const contextMenu = document.getElementById('context-menu');
-      const copyLinkButton = contextMenu.querySelector('[data-action="copy-link"]');
       const fileDropOverlay = document.getElementById('file-drop-overlay');
       const findWidget = document.getElementById('find-widget');
       const findInput = document.getElementById('find-input');
@@ -704,11 +683,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           activeMatchColorOverviewRuler: '#ffd60a'
         }
       };
-
-      function hideContextMenu() {
-        contextMenu.style.display = 'none';
-        contextMenuLink = undefined;
-      }
 
       function copySelection() {
         const text = terminal.getSelection();
@@ -797,18 +771,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         searchAddon.findPrevious(findInput.value, findOptions);
       }
 
-      terminalElement.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-        contextMenuLink = hoveredLink;
-        copyLinkButton.style.display = contextMenuLink ? 'block' : 'none';
-        // Show first so the menu has measurable dimensions, then clamp into the
-        // viewport so a click near the bottom/right edge doesn't clip it.
-        contextMenu.style.display = 'block';
-        const maxLeft = Math.max(0, window.innerWidth - contextMenu.offsetWidth);
-        const maxTop = Math.max(0, window.innerHeight - contextMenu.offsetHeight);
-        contextMenu.style.left = Math.min(event.clientX, maxLeft) + 'px';
-        contextMenu.style.top = Math.min(event.clientY, maxTop) + 'px';
-      });
       terminalElement.addEventListener('paste', (event) => {
         const items = Array.from(event.clipboardData?.items || []);
         if (!items.some((item) => item.type.startsWith('image/'))) return;
@@ -826,7 +788,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (!event.relatedTarget) hideFileDrop();
       }, true);
       document.addEventListener('dragend', hideFileDrop, true);
-      document.addEventListener('click', hideContextMenu);
       document.addEventListener('keydown', (event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
           event.preventDefault();
@@ -836,12 +797,10 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           closeFindWidget();
         }
       });
-      contextMenu.addEventListener('click', (event) => {
-        const action = event.target.dataset.action;
-        if (action === 'copy-link' && contextMenuLink) void navigator.clipboard.writeText(contextMenuLink);
+      function runMenuAction(action) {
         if (action === 'copy') copySelection();
         if (action === 'paste') void pasteClipboard();
-        if (action === 'select-all') terminal.selectAll();
+        if (action === 'selectAll') terminal.selectAll();
         if (action === 'clear') {
           terminal.clear();
           // Also clear tmux's scrollback so the clear survives reload/reattach
@@ -849,8 +808,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           // "cleared" content. Mirrors iTerm2's clear -> tmux clear-history.
           vscode.postMessage({ type: 'clearHistory' });
         }
-        hideContextMenu();
-      });
+      }
       findInput.addEventListener('input', findNext);
       findInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && event.shiftKey) findPrevious();
@@ -872,6 +830,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           fitAddon.fit();
         }
         if (message.type === 'find') openFindWidget();
+        if (message.type === 'menu') runMenuAction(message.action);
         if (message.type === 'focus') terminal.focus();
         if (message.type === 'exit') {
           terminal.writeln('\\r\\n[process exited ' + message.code + ']');
