@@ -29,6 +29,7 @@ const vscodeState = vi.hoisted(() => ({
   agentSidecarStoreRemove: vi.fn(async () => undefined),
   agentStatusStoreArgs: undefined as unknown[] | undefined,
   agentStatusStoreMarkRead: vi.fn(async () => undefined),
+  agentStatusStoreRemove: vi.fn(async () => undefined),
   agentStatusStoreChange: undefined as (() => void) | undefined,
   agentStatusStoreEntries: [] as Array<[
     string,
@@ -75,8 +76,6 @@ const vscodeState = vi.hoisted(() => ({
   executeCommand: vi.fn(),
   getCommands: vi.fn(async () => ['workbench.action.browser.open']),
   openExternal: vi.fn(async () => true),
-  terminalRemovalRun: vi.fn(),
-  terminalRemovalArgs: undefined as unknown[] | undefined,
   lifecycleOrder: [] as string[],
   activeTab: undefined as { input?: unknown } | undefined,
   onDidCloseTerminal: vi.fn(() => ({ dispose: vi.fn() })),
@@ -484,6 +483,7 @@ vi.mock('../src/agent/agentStatusStore', () => ({
   AgentStatusStore: class {
     get = vi.fn();
     markRead = vscodeState.agentStatusStoreMarkRead;
+    remove = vscodeState.agentStatusStoreRemove;
     entries = vi.fn(() => vscodeState.agentStatusStoreEntries.values());
     onDidChange = vi.fn((listener: () => void) => {
       vscodeState.agentStatusStoreChangeListeners.push(listener);
@@ -606,16 +606,6 @@ vi.mock('../src/terminal/openTerminalInNewWindowCommand', () => ({
   },
 }));
 
-vi.mock('../src/terminal/killTerminalCommand', () => ({
-  TerminalRemovalCommand: class {
-    constructor(...args: unknown[]) {
-      vscodeState.terminalRemovalArgs = args;
-    }
-
-    run = vscodeState.terminalRemovalRun;
-  },
-}));
-
 import * as vscode from 'vscode';
 import { activate, deactivate, openPendingTerminalForCurrentWorktree } from '../src/extension';
 import { resolveCommonDirSafe } from '../src/repository/repositoryCommonDirCache';
@@ -657,7 +647,7 @@ describe('activate', () => {
     vscodeState.hookInstallerReconcile.mockClear();
     vscodeState.hookInstallerRemove.mockResolvedValue([]);
     vscodeState.externalWatchDisposables = [];
-    vscodeState.terminalRemovalArgs = undefined;
+    vscodeState.agentStatusStoreRemove.mockResolvedValue(undefined);
     vscodeState.activeTab = undefined;
     vscodeState.lifecycleOrder = [];
     vscodeState.openTerminalArgs = undefined;
@@ -2028,8 +2018,9 @@ describe('activate', () => {
     expect(vscodeState.createTreeView.mock.results[0].value.reveal).not.toHaveBeenCalled();
   });
 
-  it('registers deck.killTerminal through TerminalRemovalCommand', async () => {
+  it('deletes the Terminal passed to deck.killTerminal', async () => {
     const context = createContext();
+    vscodeState.showInformationMessage.mockResolvedValue('Delete');
 
     await activate(context as never);
     const terminalRemovalRegistration = vscodeState.registerCommand.mock.calls.find(
@@ -2038,14 +2029,11 @@ describe('activate', () => {
     if (!terminalRemovalRegistration) throw new Error('missing deck.killTerminal registration');
     await terminalRemovalRegistration[1]({ terminal: { sessionName: 's', windowName: 'zsh' } });
 
-    expect(vscodeState.terminalRemovalRun).toHaveBeenCalledWith({
-      terminal: { sessionName: 's', windowName: 'zsh' },
-    });
-    (vscodeState.terminalRemovalArgs?.[1] as (() => void) | undefined)?.();
+    expect(vscodeState.tmuxInstances[0].killSession).toHaveBeenCalledWith('s');
     expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
-  it('does not fall back to the selected Terminal when deck.killTerminal has no node', async () => {
+  it('does not delete the selected Terminal when deck.killTerminal has no node', async () => {
     const context = createContext();
     const selectedTerminal = { terminal: { sessionName: 's', windowName: 'zsh' } };
 
@@ -2057,7 +2045,7 @@ describe('activate', () => {
     if (!registration) throw new Error('missing deck.killTerminal registration');
     await registration[1]();
 
-    expect(vscodeState.terminalRemovalRun).toHaveBeenCalledWith(undefined);
+    expect(vscodeState.tmuxInstances[0].killSession).not.toHaveBeenCalled();
   });
 
   it('registers deck.terminal.find', async () => {
