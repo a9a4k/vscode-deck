@@ -144,6 +144,36 @@ over an active selection, with the selection preserved.
   All and Clear meaning the Terminal buffer. Hoisting the attribute to the body
   would look like a tidy-up and would be a regression.
 
+- **This does not generalise to the webview's remaining chrome.** The obvious
+  next move — "Deck hand-draws nothing the workbench could render" — was
+  considered and rejected, because the two remaining pieces were checked against
+  it rather than assumed, and both fail.
+
+  The **Find widget** is the trap, because VS Code genuinely does offer one:
+  `WebviewPanelOptions.enableFindWidget`. It cannot be adapted to a Terminal.
+  The option is a bare boolean and the only find-related entry in the whole
+  extension API — no provider, no query event, no way to return results. The
+  protocol runs between the workbench and VS Code's *own* preload frame (`find`
+  and `find-stop` in, `did-find` out), so Deck's script — a nested iframe that is
+  the search's *target*, not a participant — never sees it. The preload
+  implements the search as `contentWindow.find(value, …)`
+  (`webview/browser/pre/index.html`), the legacy DOM find-in-page: it matches
+  rendered text only, while xterm's DOM renderer materialises just the visible
+  rows and keeps the scrollback in its buffer. Adopting it would therefore search
+  one screen instead of the configured 5000 lines, hardcode `caseSensitive` and
+  `wholeWord` off, and leave its DOM selection invisible to
+  `terminal.getSelection()` — breaking Copy after a find. That
+  `@xterm/addon-search` exists at all is the corroboration: nobody writes a
+  buffer-searching addon if DOM find can search a terminal.
+
+  The **file-drop overlay** fails for an unrelated reason: per ADR-0055 the
+  webview claims the drag itself so the workbench will not handle it, which
+  leaves the drop feedback to the extension by construction.
+
+  Both are hand-drawn out of necessity, not neglect. The rule worth carrying
+  forward is narrower than the tempting one: prefer workbench chrome where it can
+  carry the behaviour, hand-draw only where it cannot, and record which it was.
+
 - **Both of Deck's right-click menus are now the same mechanism.** The
   inconsistency between the tree's native menu and the Terminal's hand-drawn one
   is removed.
