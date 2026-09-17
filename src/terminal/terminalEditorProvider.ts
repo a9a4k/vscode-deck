@@ -103,7 +103,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly readyPanels = new Set<vscode.WebviewPanel>();
   private readonly pendingTerminalFocus = new Set<string>();
-  private readonly pendingPreserveFocus = new Set<string>();
   // Sessions whose decoration we skipped while hidden — re-applied when shown.
   private readonly staleDecorations = new Set<string>();
   private readonly configChangeSubscription: vscode.Disposable;
@@ -183,15 +182,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     void panel.webview.postMessage({ type: 'focus' });
   }
 
-  preserveFocusOnNextActivation(sessionName: string): void {
-    // panel.active also becomes true when a reveal changes tabs but leaves
-    // keyboard focus in the tree, so carry that user intent to the view event.
-    const panel = this.panels.get(sessionName);
-    if (!panel?.active && !panel?.visible) {
-      this.pendingPreserveFocus.add(sessionName);
-    }
-  }
-
   refreshTitles(changedSessionNames: readonly string[]): void {
     for (const sessionName of changedSessionNames) {
       const panel = this.panels.get(sessionName);
@@ -253,7 +243,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       // tab switch does no work when nothing changed while the tab was hidden.
       panel.onDidChangeViewState(() => {
         if (panel.visible && this.staleDecorations.has(document.sessionName)) applyTabDecoration();
-        if (this.consumeActiveFocusIntent(document.sessionName, panel)) {
+        if (panel.active) {
           this.focusTerminal(document.sessionName);
         }
       }),
@@ -262,8 +252,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           const { cols = 80, rows = 24 } = message;
           this.readyPanels.add(panel);
           const focusRequested = this.pendingTerminalFocus.delete(document.sessionName);
-          const activeFocus = this.consumeActiveFocusIntent(document.sessionName, panel);
-          if (focusRequested || activeFocus) {
+          if (focusRequested || panel.active) {
             void panel.webview.postMessage({ type: 'focus' });
           }
           void this.beforeReattach().then(() => {
@@ -304,7 +293,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         this.panels.delete(document.sessionName);
         this.staleDecorations.delete(document.sessionName);
         this.pendingTerminalFocus.delete(document.sessionName);
-        this.pendingPreserveFocus.delete(document.sessionName);
       }
       this.readyPanels.delete(panel);
       if (this.activePanel === panel) this.activePanel = undefined;
@@ -312,11 +300,6 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       transport.dispose();
       for (const disposable of transportDisposables.splice(0)) disposable.dispose();
     });
-  }
-
-  private consumeActiveFocusIntent(sessionName: string, panel: vscode.WebviewPanel): boolean {
-    const preserveFocus = panel.visible && this.pendingPreserveFocus.delete(sessionName);
-    return panel.active && !preserveFocus;
   }
 
   private applyTabDecoration(sessionName: string, panel: vscode.WebviewPanel): void {

@@ -206,19 +206,6 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
   });
 
-  it('does not focus an active Terminal with pending preserve-focus intent at ready time', () => {
-    const { terminalPanel, ready } = focusLifecycle(true);
-    const { provider, document } = providerDocument();
-
-    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
-    provider.resolveCustomEditor(document, terminalPanel as never);
-    terminalPanel.webview.postMessage.mockClear();
-
-    ready();
-
-    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
-  });
-
   it('delivers an explicit terminal focus request immediately when the webview is ready', () => {
     const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
@@ -239,49 +226,6 @@ describe('TerminalEditorProvider', () => {
     provider.resolveCustomEditor(document, terminalPanel as never);
     ready();
     terminalPanel.webview.postMessage.mockClear();
-
-    setViewState(true);
-
-    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
-  });
-
-  it('does not focus a never-focused Terminal when a tree reveal activates its panel', () => {
-    const { terminalPanel, ready, setViewState } = focusLifecycle();
-    const { provider, document } = providerDocument();
-
-    provider.resolveCustomEditor(document, terminalPanel as never);
-    ready();
-    terminalPanel.webview.postMessage.mockClear();
-    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
-
-    setViewState(true);
-
-    expect(terminalPanel.webview.postMessage).not.toHaveBeenCalledWith({ type: 'focus' });
-  });
-
-  it('focuses a preserved new Terminal on its first later keyboard activation', () => {
-    const { terminalPanel, ready, setViewState } = focusLifecycle(true);
-    const { provider, document } = providerDocument();
-
-    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
-    provider.resolveCustomEditor(document, terminalPanel as never);
-    ready();
-    terminalPanel.webview.postMessage.mockClear();
-
-    setViewState(false);
-    setViewState(true);
-
-    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({ type: 'focus' });
-  });
-
-  it('focuses an already-visible Terminal on its next keyboard activation', () => {
-    const { terminalPanel, ready, setViewState } = focusLifecycle(false, true);
-    const { provider, document } = providerDocument();
-
-    provider.resolveCustomEditor(document, terminalPanel as never);
-    ready();
-    terminalPanel.webview.postMessage.mockClear();
-    provider.preserveFocusOnNextActivation('wt-_work_alpha-main__term-1');
 
     setViewState(true);
 

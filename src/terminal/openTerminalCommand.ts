@@ -12,12 +12,12 @@ interface TerminalNodeLike {
 }
 
 interface TerminalEditorPanelLike {
-  reveal(viewColumn?: vscode.ViewColumn, preserveFocus?: boolean): void;
+  reveal(): void;
 }
 
 interface TerminalEditorPanelRegistryLike {
   panelFor(sessionName: string): TerminalEditorPanelLike | undefined;
-  preserveFocusOnNextActivation(sessionName: string): void;
+  focusTerminal(sessionName: string): void;
 }
 
 interface OpenTerminalCommandOptions {
@@ -33,13 +33,13 @@ export class OpenTerminalCommand {
   async run(node: TerminalNodeLike | undefined): Promise<void> {
     if (!node) return;
 
-    // Single-click reveals the Terminal but keeps focus on the tree, like the
-    // Explorer opening a file in preview — so cmd+backspace deletes the row.
-    // Clicking into the Terminal focuses it for typing.
+    // A Terminal is a typing surface: opening one focuses it per ADR-0008 §7.
+    // The explicit request also covers re-clicking an already-active tab,
+    // which emits no view-state change.
     const existing = this.options.terminalPanels?.panelFor(node.terminal.sessionName);
     if (existing) {
-      this.options.terminalPanels?.preserveFocusOnNextActivation(node.terminal.sessionName);
-      existing.reveal(undefined, true);
+      existing.reveal();
+      this.options.terminalPanels?.focusTerminal(node.terminal.sessionName);
       return;
     }
 
@@ -49,12 +49,12 @@ export class OpenTerminalCommand {
     const term = terminalSessionNumber(cwd, node.terminal.sessionName);
     if (!term) return;
 
-    this.options.terminalPanels?.preserveFocusOnNextActivation(node.terminal.sessionName);
     await vscode.commands.executeCommand(
       'vscode.openWith',
       this.sessionUriCodec.encode({ worktreePath: cwd, term }),
       terminalEditorViewType,
-      { viewColumn: vscode.ViewColumn.Active, preserveFocus: true },
+      { viewColumn: vscode.ViewColumn.Active },
     );
+    this.options.terminalPanels?.focusTerminal(node.terminal.sessionName);
   }
 }
