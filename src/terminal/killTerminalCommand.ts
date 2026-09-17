@@ -7,6 +7,7 @@ export interface TerminalRemovalTmuxCli {
 }
 
 interface TerminalNodeLike {
+  label?: string;
   terminal?: {
     sessionName?: string;
     windowName?: string;
@@ -28,7 +29,7 @@ export class TerminalRemovalCommand {
     const session = node?.terminal?.sessionName;
     if (!session) return;
 
-    if (!(await this.confirm(node?.terminal?.windowName ?? session))) return;
+    if (!(await this.confirm(node?.label ?? node?.terminal?.windowName ?? session))) return;
 
     await this.tmux.killSession(session);
     await this.onSessionKilled(session);
