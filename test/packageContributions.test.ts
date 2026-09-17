@@ -443,7 +443,7 @@ describe('package contributions', () => {
     ).toBe(false);
   });
 
-  it('contributes Delete Terminal as a context-menu and keybinding action on Terminal rows', () => {
+  it('contributes Delete Terminal as a context-menu action on Terminal rows', () => {
     expect(pkg.contributes.commands).toContainEqual({
       command: 'deck.killTerminal',
       title: 'Delete Terminal',
@@ -461,14 +461,6 @@ describe('package contributions', () => {
     expect(pkg.contributes.menus.commandPalette).toContainEqual({
       command: 'deck.killTerminal',
       when: 'false',
-    });
-    // cmd+backspace deletes the selected Terminal (Worktree delete is right-click
-    // only — VS Code can't pass the keyboard-focused row, microsoft/vscode#130880).
-    expect(pkg.contributes.keybindings).toContainEqual({
-      command: 'deck.killTerminal',
-      key: 'ctrl+backspace',
-      mac: 'cmd+backspace',
-      when: "focusedView == 'deck.repositories' && deck.tmuxAvailable",
     });
   });
 

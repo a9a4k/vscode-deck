@@ -351,12 +351,6 @@
         "key": "ctrl+f",
         "mac": "cmd+f",
         "when": "activeCustomEditorId == 'deck.terminal'"
-      },
-      {
-        "command": "deck.killTerminal",
-        "key": "ctrl+backspace",
-        "mac": "cmd+backspace",
-        "when": "focusedView == 'deck.repositories' && deck.tmuxAvailable"
       }
     ],
     "menus": {

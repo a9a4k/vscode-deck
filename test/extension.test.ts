@@ -2045,7 +2045,7 @@ describe('activate', () => {
     expect(vscodeState.terminalPollInstances[0].wake).toHaveBeenCalled();
   });
 
-  it('deletes the selected Terminal when deck.killTerminal is invoked from a keybinding', async () => {
+  it('does not fall back to the selected Terminal when deck.killTerminal has no node', async () => {
     const context = createContext();
     const selectedTerminal = { terminal: { sessionName: 's', windowName: 'zsh' } };
 
@@ -2057,7 +2057,7 @@ describe('activate', () => {
     if (!registration) throw new Error('missing deck.killTerminal registration');
     await registration[1]();
 
-    expect(vscodeState.terminalRemovalRun).toHaveBeenCalledWith(selectedTerminal);
+    expect(vscodeState.terminalRemovalRun).toHaveBeenCalledWith(undefined);
   });
 
   it('registers deck.terminal.find', async () => {

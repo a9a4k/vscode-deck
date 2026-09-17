@@ -607,9 +607,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 
       // macOS line/word editing, mirroring VS Code's integrated terminal
       // sendSequence defaults (terminal.sendSequence.contribution.ts): readline
-      // control sequences for cmd/alt + backspace/delete/arrows. Sent here, gated
-      // by real webview focus, so cmd+backspace never collides with the
-      // tree-focused Delete Terminal keybinding.
+      // control sequences for cmd/alt + backspace/delete/arrows.
       const isMac = navigator.userAgent.includes('Mac');
       terminal.attachCustomKeyEventHandler((event) => {
         // Let VS Code own editor-tab navigation (Ctrl+Tab / Ctrl+Shift+Tab)

@@ -640,14 +640,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('deck.openTerminalInNewWindow', (node) =>
       openTerminalInNewWindow.run(node),
     ),
-    // cmd+backspace (keybinding) passes no node, so fall back to the selected
-    // row. Scoped to Terminals only: a Worktree row can't be selected by keyboard
-    // without switching (its click reloads the window), and VS Code gives no API
-    // to read the keyboard-focused tree item (microsoft/vscode#130880) — so
-    // Worktree delete lives in the right-click menu, which does receive the row.
-    vscode.commands.registerCommand('deck.killTerminal', (node) =>
-      terminalRemoval.run(node ?? treeView.selection[0]),
-    ),
+    vscode.commands.registerCommand('deck.killTerminal', (node) => terminalRemoval.run(node)),
     vscode.commands.registerCommand('deck.terminal.find', () => terminalEditorProvider.showFind()),
     vscode.commands.registerCommand('deck.terminal.copyLink', (context?: { deckHoveredLink?: string }) => {
       if (context?.deckHoveredLink) void vscode.env.clipboard.writeText(context.deckHoveredLink);

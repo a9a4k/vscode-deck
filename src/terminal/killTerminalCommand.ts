@@ -25,8 +25,6 @@ export class TerminalRemovalCommand {
   ) {}
 
   async run(node: TerminalNodeLike | undefined): Promise<void> {
-    // The cmd+backspace keybinding fires for any focused Deck tree row, so a
-    // non-Terminal selection (Worktree/Repository) reaches here — no-op it.
     const session = node?.terminal?.sessionName;
     if (!session) return;
 
