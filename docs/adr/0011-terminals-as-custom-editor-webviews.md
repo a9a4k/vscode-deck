@@ -105,6 +105,9 @@ the editor tab and how reload is handled.
 
 4. **Webview ↔ extension protocol.** Pure message schema:
 
+   > **Historical as of [ADR-0057](./0057-terminal-context-menu-is-rendered-by-the-workbench.md).** The six messages below were the protocol at cutover; it has since grown to roughly fourteen. The code is the source of truth — no ADR restates the schema.
+
+
    ```
    Outbound (ext → webview):
      { type: 'data',   payload: string }
@@ -148,7 +151,10 @@ the editor tab and how reload is handled.
    deliberate — closing a terminal tab terminates its work. "Reopen by
    accident-recovery" is `+`, not zombie sessions.
 
-7. **xterm.js owns the in-tab feel.** Copy/paste, mouse selection,
+7. **xterm.js owns the in-tab feel.**
+   > **Narrowed by [ADR-0057](./0057-terminal-context-menu-is-rendered-by-the-workbench.md):** the *actions* live in the webview, but chrome the workbench can render is the workbench's. The context menu is contributed through `webview/context`; Cmd+F was already `deck.terminal.find`, a host command posting into the webview.
+
+   Copy/paste, mouse selection,
    `Cmd/Ctrl+click` web links (xterm-addon-web-links), Cmd+F search
    (xterm-addon-search), scrollback inside the buffer (xterm's own,
    independent of tmux's `history-limit`), and live resize
