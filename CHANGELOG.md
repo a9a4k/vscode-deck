@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.9
+
+Switching to a Worktree could bring a deleted Terminal back as a blank shell.
+VS Code restores each folder's editor tabs on its own, and a Terminal's tab can
+live in several folders' saved layouts; deleting it from one folder left stale
+tabs in the others, and reopening such a tab recreated the tmux session behind
+it. Deck now checks tmux before reattaching a restored tab and closes the tab
+when its Terminal is gone — including tabs restored in the background that you
+never click — so a Switch or reload never creates a Terminal you didn't ask
+for. The check matches session names exactly (a stale `term-6` can no longer be
+mistaken for a live `term-64`), and it fails safe: if tmux can't be reached for
+a moment, tabs are left alone rather than closed.
+
 ## 0.25.8
 
 The Deck sidebar now keeps its selection pointed at whichever Terminal you're
