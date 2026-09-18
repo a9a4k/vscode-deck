@@ -622,6 +622,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     terminalEditorProvider,
     disconnectedTabs,
+    vscode.commands.registerCommand('deck.focusCurrentTerminalRow', async () => {
+      await vscode.commands.executeCommand('workbench.view.extension.deck');
+      const activeTerminal = activeDeckTerminal();
+      if (!activeTerminal) return;
+      await revealActiveTerminalInTree(tree, treeView, activeTerminal, true);
+    }),
     vscode.commands.registerCommand('deck.refresh', async () => {
       await worktreeReconciler.reconcileAll().catch((error) => {
         console.warn('Deck: reconciling Worktrees during manual refresh failed', error);
@@ -942,6 +948,7 @@ async function revealActiveTerminalInTree(
   tree: RepositoryTreeProvider,
   treeView: vscode.TreeView<RepositoryTreeNode>,
   activeTerminal: { sessionName: string; worktreePath: string },
+  focus = false,
 ): Promise<'revealed' | 'missing' | 'failed'> {
   let terminalNode: RepositoryTreeNode | undefined;
   try {
@@ -956,7 +963,7 @@ async function revealActiveTerminalInTree(
   if (!terminalNode) return 'missing';
 
   try {
-    await treeView.reveal(terminalNode, { select: true, focus: false });
+    await treeView.reveal(terminalNode, { select: true, focus });
     return 'revealed';
   } catch (error) {
     console.warn('Deck: revealing the active terminal failed', error);

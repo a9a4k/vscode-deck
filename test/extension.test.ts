@@ -1701,6 +1701,38 @@ describe('activate', () => {
     );
   });
 
+  it('focuses the active Terminal row after opening Deck through its shortcut command', async () => {
+    const context = createContext();
+    const terminalNode = {
+      terminal: { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' },
+      worktreePath: '/work/alpha-main',
+    };
+
+    await activate(context as never);
+    vscodeState.repositoryTreeInstances[0].findTerminal.mockResolvedValue(terminalNode);
+    vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
+    const registration = vscodeState.registerCommand.mock.calls.find(
+      ([command]) => command === 'deck.focusCurrentTerminalRow',
+    );
+    if (!registration) throw new Error('missing deck.focusCurrentTerminalRow registration');
+    let finishOpeningDeck = () => undefined;
+    vscodeState.executeCommand.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      finishOpeningDeck = resolve;
+    }));
+
+    const focusing = registration[1]();
+    await vi.waitFor(() => {
+      expect(vscodeState.executeCommand).toHaveBeenCalledWith('workbench.view.extension.deck');
+    });
+    const reveal = vscodeState.createTreeView.mock.results[0].value.reveal;
+    expect(reveal).not.toHaveBeenCalled();
+
+    finishOpeningDeck();
+    await focusing;
+
+    expect(reveal).toHaveBeenCalledWith(terminalNode, { select: true, focus: true });
+  });
+
   it('selects a restored active Terminal row during activation without taking focus', async () => {
     const context = createContext();
     const terminalNode = {

@@ -224,6 +224,10 @@
     ],
     "commands": [
       {
+        "command": "deck.focusCurrentTerminalRow",
+        "title": "Deck: Focus Active Terminal"
+      },
+      {
         "command": "deck.addRepository",
         "title": "Deck: Add Repository",
         "icon": "$(add)"
@@ -342,7 +346,7 @@
     ],
     "keybindings": [
       {
-        "command": "workbench.view.extension.deck",
+        "command": "deck.focusCurrentTerminalRow",
         "key": "ctrl+shift+.",
         "mac": "cmd+shift+."
       },

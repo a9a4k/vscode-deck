@@ -49,8 +49,12 @@ describe('package contributions', () => {
       id: 'deck.repositories',
       name: 'Repositories & Worktrees',
     });
+    expect(pkg.contributes.commands).toContainEqual({
+      command: 'deck.focusCurrentTerminalRow',
+      title: 'Deck: Focus Active Terminal',
+    });
     expect(pkg.contributes.keybindings).toContainEqual({
-      command: 'workbench.view.extension.deck',
+      command: 'deck.focusCurrentTerminalRow',
       key: 'ctrl+shift+.',
       mac: 'cmd+shift+.',
     });
