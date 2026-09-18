@@ -1891,7 +1891,7 @@ describe('activate', () => {
     }
   });
 
-  it('keeps the active Terminal row selected when the poll observes a different Terminal', async () => {
+  it('selects an unresolved active Terminal row after a later poll observes a different Terminal', async () => {
     const context = createContext(['/work/alpha-main']);
     const activeSession = { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' };
     const terminalNode = {
@@ -1917,9 +1917,10 @@ describe('activate', () => {
     repositoryCommonDirCache.get.mockReturnValue('/git/alpha');
     vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
     await vscodeState.terminalPollInstances[0].reconcileObservation([activeSession]);
-    tree.findTerminal.mockResolvedValue(terminalNode);
     const reveal = vscodeState.createTreeView.mock.results[0].value.reveal;
-    reveal.mockClear();
+    expect(reveal).not.toHaveBeenCalled();
+
+    tree.findTerminal.mockResolvedValue(terminalNode);
 
     await vscodeState.terminalPollInstances[0].reconcileObservation([
       activeSession,
