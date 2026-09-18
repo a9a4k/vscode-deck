@@ -382,7 +382,7 @@ describe('TmuxCli', () => {
     ]);
   });
 
-  it('reads a single session window name and pane title via display-message', async () => {
+  it('reads a single session through an exact session-qualified pane target', async () => {
     const runner = new MockRunner([{ code: 0, stdout: 'claude\t✳ fix tab label\n', stderr: '' }]);
     const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
 
@@ -399,7 +399,7 @@ describe('TmuxCli', () => {
       'display-message',
       '-p',
       '-t',
-      '=wt-_work_repo__term-1',
+      '=wt-_work_repo__term-1:',
       '#{window_name}\t#{pane_title}',
     ]);
   });

@@ -57,7 +57,7 @@ export class TmuxCli {
       ...this.baseArgs(),
       'has-session',
       '-t',
-      exactTarget(session),
+      exactSessionTarget(session),
     ]);
     return result.code === 0;
   }
@@ -118,7 +118,7 @@ export class TmuxCli {
       ...this.baseArgs(),
       'kill-session',
       '-t',
-      exactTarget(session),
+      exactSessionTarget(session),
     ]);
     if (result.code === 0 || isMissingSession(result)) return;
     throw new Error(result.stderr || result.stdout || `tmux kill-session failed: ${result.code}`);
@@ -171,7 +171,7 @@ export class TmuxCli {
       'display-message',
       '-p',
       '-t',
-      exactTarget(session),
+      exactPaneTarget(session),
       '#{window_name}\t#{pane_title}',
     ]);
     if (result.code !== 0) {
@@ -218,7 +218,7 @@ export class TmuxCli {
   }
 
   attachShellArgs(session: string): string[] {
-    return [...this.baseArgs(), 'attach-session', '-t', exactTarget(session)];
+    return [...this.baseArgs(), 'attach-session', '-t', exactSessionTarget(session)];
   }
 
   async runShell(scriptPath: string): Promise<void> {
@@ -334,8 +334,12 @@ export class TmuxCli {
   }
 }
 
-function exactTarget(session: string): string {
+function exactSessionTarget(session: string): string {
   return `=${session}`;
+}
+
+function exactPaneTarget(session: string): string {
+  return `${exactSessionTarget(session)}:`;
 }
 
 function isDuplicateSession(result: CommandResult): boolean {
