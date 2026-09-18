@@ -171,10 +171,13 @@ export class TmuxCli {
       'display-message',
       '-p',
       '-t',
-      session,
+      exactTarget(session),
       '#{window_name}\t#{pane_title}',
     ]);
-    if (result.code !== 0) return undefined;
+    if (result.code !== 0) {
+      if (isTargetSessionMissing(result)) return undefined;
+      throw new Error(result.stderr || result.stdout || `tmux display-message failed: ${result.code}`);
+    }
 
     const [windowName = '', paneTitle = ''] = result.stdout.trim().split('\t', 2);
     if (!windowName) return undefined;
@@ -339,6 +342,11 @@ function isDuplicateSession(result: CommandResult): boolean {
   return `${result.stdout}\n${result.stderr}`.includes('duplicate session');
 }
 
+function isTargetSessionMissing(result: CommandResult): boolean {
+  const output = `${result.stdout}\n${result.stderr}`;
+  return output.includes("can't find session") || output.includes('session not found');
+}
+
 function isMissingSession(result: CommandResult): boolean {
   // Shapes from tmux when the target session is gone:
   //   "can't find session: <name>" — kill-session/most -t commands, target absent
@@ -350,8 +358,7 @@ function isMissingSession(result: CommandResult): boolean {
   // and abort the tab-dispose cleanup, leaving a stale sidebar row.
   const output = `${result.stdout}\n${result.stderr}`;
   return (
-    output.includes("can't find session") ||
-    output.includes('session not found') ||
+    isTargetSessionMissing(result) ||
     output.includes('no server running') ||
     output.includes('error connecting')
   );

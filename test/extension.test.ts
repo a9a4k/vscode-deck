@@ -1602,6 +1602,36 @@ describe('activate', () => {
     );
   });
 
+  it('does not report a Terminal stopped when its notification action lookup fails', async () => {
+    const context = createContext();
+    const sessionName = 'wt-_work_alpha-feature__term-9';
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vscodeState.showWarningMessage.mockResolvedValue('Open Terminal');
+
+    try {
+      await activate(context as never);
+      vscodeState.tmuxInstances[0].terminalSession.mockRejectedValue(new Error('DeckSocket unavailable'));
+      vscodeState.agentStatusStoreEntries = [[sessionName, {
+        status: 'needsInput',
+        statusAt: 1710000000,
+        agent: 'claude',
+      }]];
+      vscodeState.agentStatusStoreChangeListeners.at(-1)?.();
+
+      await vi.waitFor(() => {
+        expect(consoleWarn).toHaveBeenCalledWith(
+          'Deck: opening agent status Terminal failed',
+          expect.objectContaining({ message: 'DeckSocket unavailable' }),
+        );
+      });
+      expect(vscodeState.showInformationMessage)
+        .not.toHaveBeenCalledWith('This Terminal is no longer running.');
+      expect(vscodeState.openTerminalRun).not.toHaveBeenCalled();
+    } finally {
+      consoleWarn.mockRestore();
+    }
+  });
+
   it.each([
     ['completed', 'finished'],
     ['needsInput', 'needs input'],

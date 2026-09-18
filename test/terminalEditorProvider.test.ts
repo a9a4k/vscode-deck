@@ -391,6 +391,29 @@ describe('TerminalEditorProvider', () => {
     });
   });
 
+  it('leaves tab decoration unchanged when the Terminal lookup fails', async () => {
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => bridge(),
+      undefined,
+      undefined,
+      async () => { throw new Error('DeckSocket unavailable'); },
+    );
+    const terminalPanel = panel();
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    await flush();
+
+    expect(terminalPanel.title).toBe('');
+    expect((terminalPanel as { iconPath?: unknown }).iconPath).toBeUndefined();
+  });
+
   it('titles a known agent tab from AgentTitle when the window name is a volatile process name', async () => {
     const terminalSessions = vi.fn(async () => ({
       sessionName: 'wt-_work_alpha-main__term-1',
@@ -646,6 +669,44 @@ describe('TerminalEditorProvider', () => {
 
     expect(terminalPanel.dispose).toHaveBeenCalledOnce();
     expect(terminalBridge.start).not.toHaveBeenCalled();
+  });
+
+  it('reattaches a restored Terminal tab when checking its Terminal fails', async () => {
+    let receiveMessage: ((message: { type: string; cols?: number; rows?: number }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.visible = false;
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const terminalBridge = bridge();
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => terminalBridge,
+      undefined,
+      undefined,
+      async () => { throw new Error('DeckSocket unavailable'); },
+    );
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    receiveMessage?.({ type: 'ready', cols: 100, rows: 30 });
+    await flush();
+
+    expect(terminalBridge.start).toHaveBeenCalledWith(
+      'wt-_work_alpha-main__term-1',
+      '/work/alpha-main',
+      100,
+      30,
+    );
+    expect(terminalPanel.dispose).not.toHaveBeenCalled();
   });
 
   it('waits for the restore barrier before reattaching, so it never beats restore with a blank session', async () => {

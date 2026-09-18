@@ -399,9 +399,35 @@ describe('TmuxCli', () => {
       'display-message',
       '-p',
       '-t',
-      'wt-_work_repo__term-1',
+      '=wt-_work_repo__term-1',
       '#{window_name}\t#{pane_title}',
     ]);
+  });
+
+  it.each([
+    'no server running on /tmp/tmux-1000/deck',
+    'error connecting to /tmp/tmux-1000/deck (Connection refused)',
+    'server exited unexpectedly',
+  ])('rejects when the Terminal lookup fails: %s', async (stderr) => {
+    const runner = new MockRunner([{
+      code: 1,
+      stdout: '',
+      stderr,
+    }]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.terminalSession('wt-_work_repo__term-1'))
+      .rejects.toThrow(stderr);
+  });
+
+  it.each([
+    "can't find session: wt-_work_repo__term-1",
+    'session not found: wt-_work_repo__term-1',
+  ])('returns undefined when the Terminal target is absent: %s', async (stderr) => {
+    const runner = new MockRunner([{ code: 1, stdout: '', stderr }]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.terminalSession('wt-_work_repo__term-1')).resolves.toBeUndefined();
   });
 
   it('returns undefined when the window name query fails', async () => {

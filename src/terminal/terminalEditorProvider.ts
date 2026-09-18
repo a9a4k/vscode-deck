@@ -256,9 +256,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
             void panel.webview.postMessage({ type: 'focus' });
           }
           void this.beforeReattach().then(async () => {
-            if (!await this.resolveTerminalSession(document.sessionName)) {
-              panel.dispose();
-              return;
+            try {
+              if (!await this.resolveTerminalSession(document.sessionName)) {
+                panel.dispose();
+                return;
+              }
+            } catch {
+              // A transient DeckSocket failure must not permanently close the tab.
             }
             transport.start(document.sessionName, document.cwd, cols, rows);
           });
@@ -325,7 +329,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       panel.title = resolveTerminalLabel(terminal.windowName, terminal.paneTitle, terminal.agentName ?? agentName);
       panel.iconPath = this.resolveTabIcon(terminal.windowName, terminal.agentName ?? agentName);
       this.staleDecorations.delete(sessionName);
-    });
+    }).catch(() => undefined);
   }
 
   // Identity only — no working/AgentStatus state. The tab is not Deck's live
