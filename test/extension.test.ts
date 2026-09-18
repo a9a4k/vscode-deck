@@ -1718,6 +1718,31 @@ describe('activate', () => {
     );
   });
 
+  it('selects a restored active Terminal row after a later unchanged poll can resolve it', async () => {
+    const context = createContext(['/work/alpha-main']);
+    const session = { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' };
+    const terminalNode = {
+      terminal: session,
+      worktreePath: '/work/alpha-main',
+    };
+    vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
+    vscodeState.repositoryTreeFindTerminal.mockResolvedValue(undefined);
+
+    await activate(context as never);
+    const poll = vscodeState.terminalPollInstances[0];
+
+    await poll.reconcileObservation([session]);
+    expect(vscodeState.createTreeView.mock.results[0].value.reveal).not.toHaveBeenCalled();
+
+    vscodeState.repositoryTreeFindTerminal.mockResolvedValue(terminalNode);
+    await poll.reconcileObservation([session]);
+
+    expect(vscodeState.createTreeView.mock.results[0].value.reveal).toHaveBeenCalledWith(
+      terminalNode,
+      { select: true, focus: false },
+    );
+  });
+
   it('reports a failed active Terminal reveal and retries it on the next tab event', async () => {
     const context = createContext();
     const terminalNode = {
@@ -1840,9 +1865,7 @@ describe('activate', () => {
         branch: 'main',
       }]);
       repositoryCommonDirCache.get.mockReturnValue('/git/alpha');
-      tree.findTerminal
-        .mockResolvedValueOnce(undefined)
-        .mockResolvedValue(terminalNode);
+      tree.findTerminal.mockResolvedValue(undefined);
       vscodeState.activeTab = activeTab;
 
       await vscodeState.terminalPollInstances[0].reconcileObservation([
@@ -1854,6 +1877,7 @@ describe('activate', () => {
       );
       expect(vscodeState.createTreeView.mock.results[0].value.reveal).not.toHaveBeenCalled();
 
+      tree.findTerminal.mockResolvedValue(terminalNode);
       const tabChangeHandler = vscodeState.onDidChangeTabs.mock.calls[0]?.[0];
       if (!tabChangeHandler) throw new Error('missing tab change listener');
       await tabChangeHandler({ opened: [], closed: [], changed: [activeTab] });
@@ -1867,8 +1891,13 @@ describe('activate', () => {
     }
   });
 
-  it('does not reveal when a newly observed Terminal is not the active tab', async () => {
+  it('keeps the active Terminal row selected when the poll observes a different Terminal', async () => {
     const context = createContext(['/work/alpha-main']);
+    const activeSession = { sessionName: 'wt-_work_alpha-main__term-1', windowName: 'zsh' };
+    const terminalNode = {
+      terminal: activeSession,
+      worktreePath: '/work/alpha-main',
+    };
 
     await activate(context as never);
     const tree = vscodeState.repositoryTreeInstances[0];
@@ -1887,13 +1916,17 @@ describe('activate', () => {
     }]);
     repositoryCommonDirCache.get.mockReturnValue('/git/alpha');
     vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
+    await vscodeState.terminalPollInstances[0].reconcileObservation([activeSession]);
+    tree.findTerminal.mockResolvedValue(terminalNode);
+    const reveal = vscodeState.createTreeView.mock.results[0].value.reveal;
+    reveal.mockClear();
 
     await vscodeState.terminalPollInstances[0].reconcileObservation([
+      activeSession,
       { sessionName: 'wt-_work_alpha-main__term-2', windowName: 'zsh' },
     ]);
 
-    expect(tree.findTerminal).not.toHaveBeenCalled();
-    expect(vscodeState.createTreeView.mock.results[0].value.reveal).not.toHaveBeenCalled();
+    expect(reveal).toHaveBeenCalledWith(terminalNode, { select: true, focus: false });
   });
 
   it('does not re-reveal when the active Deck Terminal tab only changes decorations', async () => {

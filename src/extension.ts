@@ -416,7 +416,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   terminalPoll = tmuxAvailability.available
     ? new TerminalPoll({
         listSessions: () => tmux.listSessions(),
-        reconcileObservation: (sessions) => terminalReconciler.reconcile(sessions),
+        reconcileObservation: async (sessions) => {
+          await terminalReconciler.reconcile(sessions);
+          await revealActiveTerminalIfNeeded();
+        },
         isFocused: () => vscode.window.state.focused,
         onDidChangeFocus: (listener) =>
           vscode.window.onDidChangeWindowState((state) => listener(state.focused)),
