@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.25.8
+
+The Deck sidebar now keeps its selection pointed at whichever Terminal you're
+actually in. Reopening VS Code with a Terminal already active now highlights
+its row on its own within a couple of seconds, instead of leaving nothing
+selected until you click something. `Cmd/Ctrl+Shift+.` now also moves the
+keyboard cursor onto that row, not just the highlight — pressing the arrow
+keys right after now starts from the active Terminal's row instead of
+jumping to the top of the tree. Passive tracking (switching Terminal tabs
+without the shortcut) still never steals keyboard focus out of a Terminal.
+
 ## 0.25.7
 
 The Delete Terminal confirmation now names the terminal the way its row actually
