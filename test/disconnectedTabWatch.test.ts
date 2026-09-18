@@ -21,6 +21,70 @@ describe('DisconnectedTabWatch', () => {
     vi.useFakeTimers();
   });
 
+  it('closes only restored Deck tabs whose Terminals no longer exist', async () => {
+    const surface = new FakeSurface([
+      tab('live', false),
+      tab('stale', false),
+    ]);
+    const listSessions = vi.fn(async () => [{ sessionName: 'live' }]);
+    const reopen = vi.fn(async () => undefined);
+    const watch = createWatch(surface, {
+      listSessions,
+      beforeSweep: async () => undefined,
+      reopen,
+    });
+
+    watch.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(surface.closedSessionNames).toEqual(['stale']);
+    expect(listSessions).toHaveBeenCalledOnce();
+    expect(reopen).not.toHaveBeenCalled();
+  });
+
+  it('waits for TerminalSnapshot restore before judging restored tabs', async () => {
+    const surface = new FakeSurface([tab('restored', false)]);
+    let restored = false;
+    let finishRestore = () => undefined;
+    const beforeSweep = () => new Promise<void>((resolve) => {
+      finishRestore = () => {
+        restored = true;
+        resolve();
+      };
+    });
+    const listSessions = vi.fn(async () => restored ? [{ sessionName: 'restored' }] : []);
+    const watch = createWatch(surface, { beforeSweep, listSessions });
+
+    watch.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(listSessions).not.toHaveBeenCalled();
+    expect(surface.closedSessionNames).toEqual([]);
+
+    finishRestore();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(listSessions).toHaveBeenCalledOnce();
+    expect(surface.closedSessionNames).toEqual([]);
+  });
+
+  it('leaves restored tabs open when the DeckSocket listing fails', async () => {
+    const surface = new FakeSurface([tab('term-1', false)]);
+    const listSessions = vi.fn(async (): Promise<Array<{ sessionName: string }>> => {
+      throw new Error('DeckSocket unavailable');
+    });
+    const watch = createWatch(surface, {
+      beforeSweep: async () => undefined,
+      listSessions,
+    });
+
+    watch.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(listSessions).toHaveBeenCalledOnce();
+    expect(surface.closedSessionNames).toEqual([]);
+  });
+
   it('badges and prompts only after an active Deck tab stays unwired past grace', async () => {
     const surface = new FakeSurface([tab('term-1', true)]);
     const notifications = fakeNotifications(undefined);
@@ -235,11 +299,24 @@ function tab(sessionName: string, isActive: boolean) {
 
 class FakeSurface implements DisconnectedTabWatchSurface {
   private listener: ((event: { closedSessionNames: readonly string[] }) => void) | undefined;
+  readonly closedSessionNames: string[] = [];
 
   constructor(private readonly tabs: Array<ReturnType<typeof tab>>) {}
 
   activeDeckTabs(): ReturnType<typeof tab>[] {
     return this.tabs.filter((candidate) => candidate.isActive);
+  }
+
+  allDeckTabs(): ReturnType<typeof tab>[] {
+    return this.tabs;
+  }
+
+  async closeTabs(sessionNames: ReadonlySet<string>): Promise<void> {
+    this.closedSessionNames.push(
+      ...this.tabs
+        .filter((candidate) => sessionNames.has(candidate.sessionName))
+        .map((candidate) => candidate.sessionName),
+    );
   }
 
   onDidChangeTabs(listener: (event: { closedSessionNames: readonly string[] }) => void) {

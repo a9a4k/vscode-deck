@@ -16,6 +16,8 @@ export interface DisconnectedDeckTab {
 
 export interface DisconnectedTabWatchSurface {
   activeDeckTabs(): readonly DisconnectedDeckTab[];
+  allDeckTabs(): readonly DisconnectedDeckTab[];
+  closeTabs(sessionNames: ReadonlySet<string>): Promise<void>;
   onDidChangeTabs(listener: (event: { closedSessionNames: readonly string[] }) => void): vscode.Disposable;
 }
 
@@ -35,6 +37,8 @@ interface DisconnectedTabWatchOptions {
   notifications?: DisconnectedTabWatchNotifications;
   timers?: TimerPort;
   reopen?: () => Promise<void>;
+  beforeSweep?: () => Promise<void>;
+  listSessions?: () => Promise<ReadonlyArray<{ sessionName: string }>>;
 }
 
 type PanelLookup = (sessionName: string) => unknown;
@@ -45,6 +49,8 @@ export class DisconnectedTabWatch implements vscode.Disposable {
   private readonly notifications: DisconnectedTabWatchNotifications;
   private readonly timers: TimerPort;
   private readonly reopen: () => Promise<void>;
+  private readonly beforeSweep: () => Promise<void>;
+  private readonly listSessions: (() => Promise<ReadonlyArray<{ sessionName: string }>>) | undefined;
   private readonly disconnected = new Map<string, vscode.Uri>();
   private readonly listeners = new Set<(uris: readonly vscode.Uri[]) => void>();
   private readonly pendingJudgments = new Map<string, unknown>();
@@ -63,6 +69,8 @@ export class DisconnectedTabWatch implements vscode.Disposable {
       now: () => Date.now(),
     };
     this.reopen = options.reopen ?? (() => reopenUnwiredTerminalTabs(this.panelFor));
+    this.beforeSweep = options.beforeSweep ?? (() => Promise.resolve());
+    this.listSessions = options.listSessions;
   }
 
   start(): void {
@@ -74,6 +82,7 @@ export class DisconnectedTabWatch implements vscode.Disposable {
       this.startupJudgment = undefined;
       this.judgeActiveDeckTabs();
     }, STARTUP_GRACE_MS);
+    void this.closeStaleTabs();
   }
 
   isDisconnected(sessionName: string): boolean {
@@ -109,6 +118,25 @@ export class DisconnectedTabWatch implements vscode.Disposable {
       }
       if (this.disconnected.has(tab.sessionName)) continue;
       this.scheduleJudgment(tab.sessionName);
+    }
+  }
+
+  private async closeStaleTabs(): Promise<void> {
+    if (!this.listSessions) return;
+
+    try {
+      await this.beforeSweep();
+      const liveSessionNames = new Set(
+        (await this.listSessions()).map((session) => session.sessionName),
+      );
+      const staleSessionNames = new Set(
+        this.surface.allDeckTabs()
+          .map((tab) => tab.sessionName)
+          .filter((sessionName) => !liveSessionNames.has(sessionName)),
+      );
+      if (staleSessionNames.size > 0) await this.surface.closeTabs(staleSessionNames);
+    } catch {
+      return;
     }
   }
 
@@ -249,6 +277,20 @@ class VsCodeDisconnectedTabSurface implements DisconnectedTabWatchSurface {
 
   activeDeckTabs(): readonly DisconnectedDeckTab[] {
     return this.deckTabs().filter((tab) => tab.isActive);
+  }
+
+  allDeckTabs(): readonly DisconnectedDeckTab[] {
+    return this.deckTabs();
+  }
+
+  async closeTabs(sessionNames: ReadonlySet<string>): Promise<void> {
+    const tabs = vscode.window.tabGroups.all
+      .flatMap((group) => group.tabs)
+      .filter((tab) => {
+        const decoded = this.decodeDeckTab(tab);
+        return decoded !== undefined && sessionNames.has(decoded.sessionName);
+      });
+    if (tabs.length > 0) await vscode.window.tabGroups.close(tabs, true);
   }
 
   onDidChangeTabs(listener: (event: { closedSessionNames: readonly string[] }) => void): vscode.Disposable {

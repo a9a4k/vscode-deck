@@ -226,6 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await restoreCoordinator.ensureRestored();
       }
     : () => Promise.resolve();
+  let activationRestore: Promise<unknown> | undefined;
   const repositoryRegistry = new RepositoryRegistryStore(context.globalState);
 
   const activeWorktrees = new ActiveWorktreeStore(context.globalState);
@@ -412,6 +413,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   const disconnectedTabs = new DisconnectedTabWatch({
     panelFor: (sessionName) => terminalEditorProvider.panelFor(sessionName),
+    beforeSweep: async () => {
+      await (activationRestore ?? ensureSnapshotRestored());
+    },
+    listSessions: () => tmux.listSessions(),
   });
   terminalPoll = tmuxAvailability.available
     ? new TerminalPoll({
@@ -546,7 +551,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   // Kick off the reboot restore after the tree view exists so restore feedback
   // can show the sidebar banner while the snapshot is being restored.
-  const activationRestore = restoreCoordinator?.ensureRestored();
+  activationRestore = restoreCoordinator?.ensureRestored();
   if (activationRestore) {
     void activationRestore
       .then(() => terminalPoll?.wake())

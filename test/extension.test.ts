@@ -61,6 +61,7 @@ const vscodeState = vi.hoisted(() => ({
   hookInstallerRemove: vi.fn(),
   configUpdate: vi.fn(),
   externalWatchDisposables: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>,
+  closeTabs: vi.fn(async () => true),
   tabGroups: [] as Array<{ viewColumn: number; tabs: Array<{ input?: unknown }> }>,
   createTreeView: vi.fn(() => ({
     message: undefined as string | undefined,
@@ -240,6 +241,7 @@ vi.mock('vscode', () => ({
       return {
         all: vscodeState.tabGroups,
         activeTabGroup: { activeTab: vscodeState.activeTab },
+        close: vscodeState.closeTabs,
         onDidChangeTabGroups: vscodeState.onDidChangeTabGroups,
         onDidChangeTabs: vscodeState.onDidChangeTabs,
       };
@@ -917,6 +919,30 @@ describe('activate', () => {
     expect(runtime.restoreOnActivation).toHaveBeenCalledOnce();
   });
 
+  it('closes stale background Deck Terminal tabs after activation restore', async () => {
+    const liveTab = terminalEditorTab('/work/alpha-main', 1);
+    const staleTab = terminalEditorTab('/work/alpha-main', 2);
+    const fileTab = {
+      input: {
+        viewType: 'default',
+        uri: { scheme: 'file', path: '/work/alpha-main/readme.md' },
+      },
+    };
+    vscodeState.tabGroups = [{ viewColumn: 1, tabs: [liveTab, staleTab, fileTab] }];
+    const context = createContext();
+
+    await activate(context as never);
+    await vi.waitFor(() => expect(vscodeState.closeTabs).toHaveBeenCalledOnce());
+
+    expect(vscodeState.closeTabs).toHaveBeenCalledWith([staleTab], true);
+    expect(vscodeState.executeCommand).not.toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('constructs the agent exit sweep from the sidecar store', async () => {
     const context = createContext();
 
@@ -1266,9 +1292,11 @@ describe('activate', () => {
     expect(vscodeState.onDidCloseTerminal).not.toHaveBeenCalled();
     expect(vscodeState.onDidChangeActiveTerminal).not.toHaveBeenCalled();
     // Tab restoration is now VS Code's native custom-editor restore — Deck no
-    // longer replays a snapshot. The pending-intent open and restore classifier
-    // each list tmux sessions; the agent exit sweep reads sidecars instead.
+    // longer replays a snapshot. The pending-intent open, restore classifier,
+    // and restored-tab sweep each list tmux sessions; the agent exit sweep
+    // reads sidecars instead.
     expect(vscodeState.lifecycleOrder).toEqual([
+      'pending-list',
       'pending-list',
       'pending-list',
     ]);
