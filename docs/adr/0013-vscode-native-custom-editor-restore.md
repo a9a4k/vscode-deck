@@ -61,6 +61,11 @@ The snapshot store sat between these and duplicated both, badly.
 - The `exit`/Cmd+W-then-reload resurrection bug disappears with the store:
   VS Code's native restore correctly omits closed tabs, and there is no
   longer a stale snapshot to replay.
+- A killed Terminal's tab can remain in another folder's persisted layout
+  when TerminalRemoval happens elsewhere. On native replay, Deck waits for
+  TerminalSnapshot restore, checks tmux for the Terminal, and closes the tab
+  without attaching when the session is absent. This prevents the transport's
+  create-or-attach command from resurrecting the Terminal as a blank shell.
 - `deck.terminalSnapshot` `workspaceState` entries become orphaned on
   upgrade. They are never read again; no migration needed (workspaceState
   is per-folder and self-prunes in practice). Not worth a cleanup pass.

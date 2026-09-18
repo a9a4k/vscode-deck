@@ -616,6 +616,38 @@ describe('TerminalEditorProvider', () => {
     expect(terminalPanel.dispose).toHaveBeenCalledOnce();
   });
 
+  it('closes a restored Terminal tab when its Terminal no longer exists', async () => {
+    let receiveMessage: ((message: { type: string; cols?: number; rows?: number }) => void) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation(
+      (handler: (message: { type: string }) => void) => {
+        receiveMessage = handler;
+        return { dispose: vi.fn() };
+      },
+    );
+    const terminalBridge = bridge();
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => terminalBridge,
+      undefined,
+      undefined,
+      async () => undefined,
+    );
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    receiveMessage?.({ type: 'ready', cols: 80, rows: 24 });
+    await flush();
+
+    expect(terminalPanel.dispose).toHaveBeenCalledOnce();
+    expect(terminalBridge.start).not.toHaveBeenCalled();
+  });
+
   it('waits for the restore barrier before reattaching, so it never beats restore with a blank session', async () => {
     let receiveMessage: ((message: { type: string; cols?: number; rows?: number }) => void) | undefined;
     const terminalPanel = panel();
@@ -626,9 +658,13 @@ describe('TerminalEditorProvider', () => {
       },
     );
     const terminalBridge = bridge();
+    let restoreComplete = false;
     let releaseRestore!: () => void;
     const restoreBarrier = new Promise<void>((resolve) => {
-      releaseRestore = resolve;
+      releaseRestore = () => {
+        restoreComplete = true;
+        resolve();
+      };
     });
     const provider = new TerminalEditorProvider(
       { fsPath: '/extension' } as never,
@@ -637,7 +673,13 @@ describe('TerminalEditorProvider', () => {
       () => terminalBridge,
       undefined,
       undefined,
-      undefined,
+      async () => restoreComplete
+        ? {
+            sessionName: 'wt-_work_alpha-main__term-1',
+            windowName: 'zsh',
+            paneTitle: ':/work/alpha-main',
+          }
+        : undefined,
       () => restoreBarrier,
     );
     const document = provider.openCustomDocument({
@@ -653,6 +695,7 @@ describe('TerminalEditorProvider', () => {
     releaseRestore();
     await flush();
     expect(terminalBridge.start).toHaveBeenCalledOnce();
+    expect(terminalPanel.dispose).not.toHaveBeenCalled();
   });
 
   it('posts terminal font config when resolving an editor (editor font when terminal font unset)', () => {

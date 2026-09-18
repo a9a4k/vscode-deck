@@ -255,7 +255,11 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
           if (focusRequested || panel.active) {
             void panel.webview.postMessage({ type: 'focus' });
           }
-          void this.beforeReattach().then(() => {
+          void this.beforeReattach().then(async () => {
+            if (!await this.resolveTerminalSession(document.sessionName)) {
+              panel.dispose();
+              return;
+            }
             transport.start(document.sessionName, document.cwd, cols, rows);
           });
           return;
