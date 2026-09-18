@@ -622,7 +622,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     terminalEditorProvider,
     disconnectedTabs,
-    vscode.commands.registerCommand('deck.focusCurrentTerminalRow', async () => {
+    vscode.commands.registerCommand('deck.focusActiveTerminalRow', async () => {
       await vscode.commands.executeCommand('workbench.view.extension.deck');
       const activeTerminal = activeDeckTerminal();
       if (!activeTerminal) return;

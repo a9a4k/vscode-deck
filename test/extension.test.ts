@@ -1712,9 +1712,9 @@ describe('activate', () => {
     vscodeState.repositoryTreeInstances[0].findTerminal.mockResolvedValue(terminalNode);
     vscodeState.activeTab = terminalEditorTab('/work/alpha-main', 1);
     const registration = vscodeState.registerCommand.mock.calls.find(
-      ([command]) => command === 'deck.focusCurrentTerminalRow',
+      ([command]) => command === 'deck.focusActiveTerminalRow',
     );
-    if (!registration) throw new Error('missing deck.focusCurrentTerminalRow registration');
+    if (!registration) throw new Error('missing deck.focusActiveTerminalRow registration');
     let finishOpeningDeck = () => undefined;
     vscodeState.executeCommand.mockImplementationOnce(() => new Promise<void>((resolve) => {
       finishOpeningDeck = resolve;
