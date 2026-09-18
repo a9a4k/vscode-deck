@@ -30,7 +30,7 @@ describe('DisconnectedTabWatch', () => {
     const reopen = vi.fn(async () => undefined);
     const watch = createWatch(surface, {
       listSessions,
-      beforeSweep: async () => undefined,
+      beforeStaleTabSweep: async () => undefined,
       reopen,
     });
 
@@ -46,14 +46,14 @@ describe('DisconnectedTabWatch', () => {
     const surface = new FakeSurface([tab('restored', false)]);
     let restored = false;
     let finishRestore = () => undefined;
-    const beforeSweep = () => new Promise<void>((resolve) => {
+    const beforeStaleTabSweep = () => new Promise<void>((resolve) => {
       finishRestore = () => {
         restored = true;
         resolve();
       };
     });
     const listSessions = vi.fn(async () => restored ? [{ sessionName: 'restored' }] : []);
-    const watch = createWatch(surface, { beforeSweep, listSessions });
+    const watch = createWatch(surface, { beforeStaleTabSweep, listSessions });
 
     watch.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -74,7 +74,7 @@ describe('DisconnectedTabWatch', () => {
       throw new Error('DeckSocket unavailable');
     });
     const watch = createWatch(surface, {
-      beforeSweep: async () => undefined,
+      beforeStaleTabSweep: async () => undefined,
       listSessions,
     });
 
@@ -307,14 +307,10 @@ class FakeSurface implements DisconnectedTabWatchSurface {
     return this.tabs.filter((candidate) => candidate.isActive);
   }
 
-  allDeckTabs(): ReturnType<typeof tab>[] {
-    return this.tabs;
-  }
-
-  async closeTabs(sessionNames: ReadonlySet<string>): Promise<void> {
+  async closeDeckTabsWithoutSessions(liveSessionNames: ReadonlySet<string>): Promise<void> {
     this.closedSessionNames.push(
       ...this.tabs
-        .filter((candidate) => sessionNames.has(candidate.sessionName))
+        .filter((candidate) => !liveSessionNames.has(candidate.sessionName))
         .map((candidate) => candidate.sessionName),
     );
   }

@@ -16,8 +16,7 @@ export interface DisconnectedDeckTab {
 
 export interface DisconnectedTabWatchSurface {
   activeDeckTabs(): readonly DisconnectedDeckTab[];
-  allDeckTabs(): readonly DisconnectedDeckTab[];
-  closeTabs(sessionNames: ReadonlySet<string>): Promise<void>;
+  closeDeckTabsWithoutSessions(liveSessionNames: ReadonlySet<string>): Promise<void>;
   onDidChangeTabs(listener: (event: { closedSessionNames: readonly string[] }) => void): vscode.Disposable;
 }
 
@@ -37,7 +36,7 @@ interface DisconnectedTabWatchOptions {
   notifications?: DisconnectedTabWatchNotifications;
   timers?: TimerPort;
   reopen?: () => Promise<void>;
-  beforeSweep?: () => Promise<void>;
+  beforeStaleTabSweep?: () => Promise<void>;
   listSessions?: () => Promise<ReadonlyArray<{ sessionName: string }>>;
 }
 
@@ -49,7 +48,7 @@ export class DisconnectedTabWatch implements vscode.Disposable {
   private readonly notifications: DisconnectedTabWatchNotifications;
   private readonly timers: TimerPort;
   private readonly reopen: () => Promise<void>;
-  private readonly beforeSweep: () => Promise<void>;
+  private readonly beforeStaleTabSweep: () => Promise<void>;
   private readonly listSessions: (() => Promise<ReadonlyArray<{ sessionName: string }>>) | undefined;
   private readonly disconnected = new Map<string, vscode.Uri>();
   private readonly listeners = new Set<(uris: readonly vscode.Uri[]) => void>();
@@ -69,7 +68,7 @@ export class DisconnectedTabWatch implements vscode.Disposable {
       now: () => Date.now(),
     };
     this.reopen = options.reopen ?? (() => reopenUnwiredTerminalTabs(this.panelFor));
-    this.beforeSweep = options.beforeSweep ?? (() => Promise.resolve());
+    this.beforeStaleTabSweep = options.beforeStaleTabSweep ?? (() => Promise.resolve());
     this.listSessions = options.listSessions;
   }
 
@@ -125,16 +124,11 @@ export class DisconnectedTabWatch implements vscode.Disposable {
     if (!this.listSessions) return;
 
     try {
-      await this.beforeSweep();
+      await this.beforeStaleTabSweep();
       const liveSessionNames = new Set(
         (await this.listSessions()).map((session) => session.sessionName),
       );
-      const staleSessionNames = new Set(
-        this.surface.allDeckTabs()
-          .map((tab) => tab.sessionName)
-          .filter((sessionName) => !liveSessionNames.has(sessionName)),
-      );
-      if (staleSessionNames.size > 0) await this.surface.closeTabs(staleSessionNames);
+      await this.surface.closeDeckTabsWithoutSessions(liveSessionNames);
     } catch {
       return;
     }
@@ -279,16 +273,12 @@ class VsCodeDisconnectedTabSurface implements DisconnectedTabWatchSurface {
     return this.deckTabs().filter((tab) => tab.isActive);
   }
 
-  allDeckTabs(): readonly DisconnectedDeckTab[] {
-    return this.deckTabs();
-  }
-
-  async closeTabs(sessionNames: ReadonlySet<string>): Promise<void> {
+  async closeDeckTabsWithoutSessions(liveSessionNames: ReadonlySet<string>): Promise<void> {
     const tabs = vscode.window.tabGroups.all
       .flatMap((group) => group.tabs)
       .filter((tab) => {
         const decoded = this.decodeDeckTab(tab);
-        return decoded !== undefined && sessionNames.has(decoded.sessionName);
+        return decoded !== undefined && !liveSessionNames.has(decoded.sessionName);
       });
     if (tabs.length > 0) await vscode.window.tabGroups.close(tabs, true);
   }

@@ -413,7 +413,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   const disconnectedTabs = new DisconnectedTabWatch({
     panelFor: (sessionName) => terminalEditorProvider.panelFor(sessionName),
-    beforeSweep: async () => {
+    beforeStaleTabSweep: async () => {
       await (activationRestore ?? ensureSnapshotRestored());
     },
     listSessions: () => tmux.listSessions(),
