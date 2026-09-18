@@ -15,6 +15,7 @@ vi.mock('vscode', () => ({
 }));
 
 import { DisconnectedTabWatch, type DisconnectedTabWatchSurface } from '../src/terminal/disconnectedTabWatch';
+import { TERMINAL_SNAPSHOT_ANCHOR_SESSION } from '../src/terminal/terminalSnapshotRuntime';
 
 describe('DisconnectedTabWatch', () => {
   beforeEach(() => {
@@ -73,6 +74,36 @@ describe('DisconnectedTabWatch', () => {
     const listSessions = vi.fn(async (): Promise<Array<{ sessionName: string }>> => {
       throw new Error('DeckSocket unavailable');
     });
+    const watch = createWatch(surface, {
+      beforeStaleTabSweep: async () => undefined,
+      listSessions,
+    });
+
+    watch.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(listSessions).toHaveBeenCalledOnce();
+    expect(surface.closedSessionNames).toEqual([]);
+  });
+
+  it('leaves restored tabs open when the DeckSocket listing is empty', async () => {
+    const surface = new FakeSurface([tab('term-1', false)]);
+    const listSessions = vi.fn(async (): Promise<Array<{ sessionName: string }>> => []);
+    const watch = createWatch(surface, {
+      beforeStaleTabSweep: async () => undefined,
+      listSessions,
+    });
+
+    watch.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(listSessions).toHaveBeenCalledOnce();
+    expect(surface.closedSessionNames).toEqual([]);
+  });
+
+  it('leaves restored tabs open when the DeckSocket listing contains only the snapshot anchor', async () => {
+    const surface = new FakeSurface([tab('term-1', false)]);
+    const listSessions = vi.fn(async () => [{ sessionName: TERMINAL_SNAPSHOT_ANCHOR_SESSION }]);
     const watch = createWatch(surface, {
       beforeStaleTabSweep: async () => undefined,
       listSessions,

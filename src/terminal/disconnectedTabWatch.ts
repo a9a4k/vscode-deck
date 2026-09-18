@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { classifyObservation } from './observationTrust';
 import { planReopenUnwiredTerminalTabs, type ReopenPlanOperation, type ReopenPlanSnapshot } from './reopenPlan';
 import { SessionUriCodec, terminalUriScheme } from './sessionUriCodec';
 import { terminalEditorViewType } from './terminalEditorProvider';
@@ -125,8 +126,10 @@ export class DisconnectedTabWatch implements vscode.Disposable {
 
     try {
       await this.beforeStaleTabSweep();
+      const sessions = await this.listSessions();
+      if (classifyObservation(sessions) !== 'restored') return;
       const liveSessionNames = new Set(
-        (await this.listSessions()).map((session) => session.sessionName),
+        sessions.map((session) => session.sessionName),
       );
       await this.surface.closeDeckTabsWithoutSessions(liveSessionNames);
     } catch {
