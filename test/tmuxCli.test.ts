@@ -430,6 +430,13 @@ describe('TmuxCli', () => {
     await expect(tmux.terminalSession('wt-_work_repo__term-1')).resolves.toBeUndefined();
   });
 
+  it('returns undefined when tmux answers a missing exact target with an empty format (tmux >= 3.6)', async () => {
+    const runner = new MockRunner([{ code: 0, stdout: '\t\n', stderr: '' }]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.terminalSession('wt-_work_repo__term-1')).resolves.toBeUndefined();
+  });
+
   it('returns undefined when the window name query fails', async () => {
     const runner = new MockRunner([{ code: 1, stdout: '', stderr: 'no such session' }]);
     const tmux = new TmuxCli('/ext/resources/deck.conf', runner);

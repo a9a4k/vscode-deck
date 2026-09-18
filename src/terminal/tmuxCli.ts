@@ -180,6 +180,8 @@ export class TmuxCli {
     }
 
     const [windowName = '', paneTitle = ''] = result.stdout.trim().split('\t', 2);
+    // tmux >= 3.6 reports a missing exact target here — exit 0 with an empty
+    // format — rather than via the error branch above. Verified on 3.6b.
     if (!windowName) return undefined;
     return { sessionName: session, windowName, paneTitle };
   }
