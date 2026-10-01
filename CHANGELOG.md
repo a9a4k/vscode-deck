@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.25.10
+
+Scrolling with the trackpad in Codex (0.157 or newer) no longer fills the input
+line with old commands. Codex now draws a fullscreen transcript, which has no
+terminal scrollback of its own, and it only asks the terminal to send it mouse
+scrolling when tmux's `mouse` option is on. Deck's tmux had it off, so the
+terminal turned each scroll into an Up arrow key, which Codex reads as "previous
+command". Deck now turns `mouse` on, so the scroll reaches Codex and moves its
+transcript. The setting is read when Deck's tmux starts, so Terminals already
+running keep the old behaviour until tmux restarts.
+
 ## 0.25.9
 
 Switching to a Worktree could bring a deleted Terminal back as a blank shell.
