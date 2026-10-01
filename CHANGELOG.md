@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.25.11
+
+Programs running in a Terminal can now copy to your clipboard with OSC 52, the
+escape sequence terminals use for "copy this". This matters most over
+Remote-SSH: a TUI on the remote host, such as opencode or Neovim, has no
+`pbcopy` that reaches your machine, so OSC 52 is its only way to copy, and
+Deck used to drop it. Deck now writes the text to your local clipboard through
+VS Code's own clipboard, the same way VS Code's integrated terminal does. The
+copy lands immediately, even when the Terminal's tab is in the background or
+another window has focus. Copying is write-only: requests to read your
+clipboard are ignored, so nothing in a Terminal can see what you copied.
+
 ## 0.25.10
 
 Scrolling with the trackpad in Codex (0.157 or newer) no longer fills the input
