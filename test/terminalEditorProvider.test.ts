@@ -8,6 +8,7 @@ const cfg = vi.hoisted(() => ({
   editor: { fontFamily: 'JetBrains Mono', fontSize: 15 } as Record<string, unknown>,
   'terminal.integrated': { fontFamily: '', fontSize: 0 } as Record<string, unknown>,
 }));
+const clipboardWriteText = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock('vscode', () => ({
   ThemeIcon: class {
@@ -34,6 +35,11 @@ vi.mock('vscode', () => ({
   },
   window: {
     showErrorMessage: vi.fn(),
+  },
+  env: {
+    clipboard: {
+      writeText: clipboardWriteText,
+    },
   },
 }));
 
@@ -166,7 +172,51 @@ function dropLifecycle(dependencies: ImageDropDependencies) {
   };
 }
 
+function clipboardLifecycle() {
+  let receiveMessage: ((message: { type: 'clipboardWrite'; payload: string }) => Promise<void>) | undefined;
+  const terminalPanel = panel();
+  terminalPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof receiveMessage) => {
+    receiveMessage = handler;
+    return { dispose: vi.fn() };
+  });
+  const { provider, document } = providerDocument();
+  provider.resolveCustomEditor(document, terminalPanel as never);
+
+  return async (payload: string): Promise<void> => {
+    if (!receiveMessage) throw new Error('Webview message handler is not registered');
+    await receiveMessage({ type: 'clipboardWrite', payload });
+  };
+}
+
 describe('TerminalEditorProvider', () => {
+  it('writes decoded OSC 52 text to the system clipboard', async () => {
+    clipboardWriteText.mockClear();
+    const clipboardWrite = clipboardLifecycle();
+
+    await clipboardWrite('c;aGVsbG8=');
+
+    expect(clipboardWriteText).toHaveBeenCalledWith('hello');
+  });
+
+  it('clears the system clipboard for an empty OSC 52 write', async () => {
+    clipboardWriteText.mockClear();
+    const clipboardWrite = clipboardLifecycle();
+
+    await clipboardWrite('c;');
+
+    expect(clipboardWriteText).toHaveBeenCalledWith('');
+  });
+
+  it('leaves the clipboard untouched for OSC 52 reads and malformed writes', async () => {
+    clipboardWriteText.mockClear();
+    const clipboardWrite = clipboardLifecycle();
+
+    await clipboardWrite('c;?');
+    await clipboardWrite('c;%%%');
+
+    expect(clipboardWriteText).not.toHaveBeenCalled();
+  });
+
   it('queues an explicit terminal focus request until the webview is ready', () => {
     const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();

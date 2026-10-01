@@ -9,6 +9,7 @@ import {
   type ImageDropDependencies,
   type ImageDropPayload,
 } from './imageDrop';
+import { decodeOsc52 } from './osc52Decoder';
 import { SessionUriCodec } from './sessionUriCodec';
 import { TERMINAL_SCROLLBACK_LINES } from './terminalScrollback';
 import { TerminalTransport } from './terminalTransport';
@@ -48,6 +49,11 @@ interface OpenExternalMessage {
   payload: string;
 }
 
+interface ClipboardWriteMessage {
+  type: 'clipboardWrite';
+  payload: string;
+}
+
 interface ResizeMessage {
   type: 'resize';
   cols: number;
@@ -77,6 +83,7 @@ type TerminalWebviewMessage =
   | DropImagesMessage
   | DropPathsMessage
   | OpenExternalMessage
+  | ClipboardWriteMessage
   | ResizeMessage
   | ExitMessage
   | FocusedMessage
@@ -288,6 +295,12 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         }
         if (message.type === 'openExternal') {
           void vscode.env.openExternal(vscode.Uri.parse(message.payload));
+        }
+        if (message.type === 'clipboardWrite') {
+          const text = decodeOsc52(message.payload);
+          if (text !== undefined) {
+            void Promise.resolve(vscode.env.clipboard.writeText(text)).catch(() => undefined);
+          }
         }
         if (message.type === 'resize') transport.resize(message.cols, message.rows);
         if (message.type === 'clearHistory') transport.clearHistory();
@@ -602,6 +615,10 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       ]) {
         terminal.parser.registerCsiHandler(id, suppress);
       }
+      terminal.parser.registerOscHandler(52, (payload) => {
+        vscode.postMessage({ type: 'clipboardWrite', payload });
+        return true;
+      });
 
       terminal.open(terminalElement);
       fitAddon.fit();
