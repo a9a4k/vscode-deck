@@ -9,6 +9,23 @@
     "sanctel": "../sanctel",
     "iterm2": "../iterm2",
     "tmux": "../tmux",
-    "tmux-resurrect": "../tmux-resurrect"
+    "tmux-resurrect": "../tmux-resurrect",
+    "orca": "../orca",
+    "codex": "../codex",
+    "xterm.js": "../xterm.js",
+    "agntree": "../agntree",
+    "worktrunk": "../worktrunk",
+    "claude-squad": "../claude-squad",
+    "dmux": "../dmux",
+    "cctop": "../cctop",
+    "cmux": "../cmux",
+    "herdr": "../herdr",
+    "agent-deck": "../agent-deck",
+    "amux": "../amux",
+    "tuicommander": "../tuicommander",
+    "tmux-agent-sidebar": "../tmux-agent-sidebar",
+    "tmux-agent-status": "../tmux-agent-status",
+    "tmux-assistant-resurrect": "../tmux-assistant-resurrect",
+    "opencode": "../opencode"
   }
 }

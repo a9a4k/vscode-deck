@@ -17,6 +17,23 @@ Reference repos live as **siblings** in `~/code/`. Local paths are tracked in `.
 | **iterm2** | The canonical tmux control-mode (`-C`) client. Reference for the protocol handling behind ADR-0012: reply correlation, %output decoding, history seeding, flow control. |
 | **tmux** | The server side of ADR-0012's transport. Ground truth for what the control-mode protocol actually emits and accepts — read this instead of guessing from client behavior. |
 | **tmux-resurrect** | The save/restore engine vendored for ADR-0019. Ground truth for what `save.sh`/`restore.sh` actually do — the `cat <file>; exec <shell>` content-restore mechanism, the `@resurrect-processes` / `@resurrect-capture-pane-contents` knobs — read this instead of guessing from plugin docs. |
+| **orca** | Electron worktree + agent-terminal manager. The only reference that handles Codex's shared app-server daemon (launches `codex --no-daemon`, detects panes that joined the daemon). Also screen-scrape status predicates for Codex. |
+| **codex** | openai/codex source. Ground truth for Codex hooks (payload schema, how/where hooks are spawned), the shared app-server daemon, and `resume`. |
+| **opencode** | anomalyco/opencode source. Ground truth for OpenCode's process model (each TUI runs its own in-process server; sharing only via opt-in `opencode serve` + `attach`), plugin events, and session storage. |
+| **xterm.js** | The terminal emulator behind Deck's Terminal editor. Ground truth for parser, addon, and rendering behavior. |
+| **agntree** | VS Code extension: Claude Code session + worktree manager. Closest peer in the same host. |
+| **worktrunk** | Worktree CLI. Reference for worktree lifecycle UX (create / switch / remove / merge). |
+| **claude-squad** | tmux + worktrees per agent. Reference for content-diff ("is the pane changing") status. |
+| **dmux** | tmux + worktrees, parallel agents. Per-worktree Codex hooks that drop events whose pane id doesn't match. |
+| **cctop** | macOS menubar agent monitor. Keys session state by hook payload `session_id`, not env; reads Codex state sqlite / rollouts. |
+| **cmux** | Ghostty-based terminal with agent notifications. Hook install + `session_id` store (env still wins for routing). |
+| **herdr** | Agent pane manager. Hooks plus screen-content detection fallback for Codex. |
+| **agent-deck** | tmux agent command center. Codex via config.toml `notify`, capture-pane live status, rollout/state reading. |
+| **amux** | Agent control plane. No hooks: capture-pane scrape, `codex exec --json`, rollout ledger. |
+| **tuicommander** | Agent IDE. PTY-output spinner parsing; rollout-filename session binding. |
+| **tmux-agent-sidebar** | tmux sidebar tracking Claude/Codex/OpenCode panes. `TMUX_PANE`-routed hooks + process inspection. |
+| **tmux-agent-status** | tmux agent status sidebar. Hooks + legacy `notify` + `pgrep` process-tree polling. |
+| **tmux-assistant-resurrect** | Resumes agent sessions after tmux-resurrect restore. Finds session ids by process + cwd + start time (Codex `state_*.sqlite`, rollouts). |
 
 ## By subsystem
 
@@ -81,6 +98,25 @@ tree hierarchy. |
 | `tmux:cmd-capture-pane.c` | Exact semantics of the seed flags `-p -e -q -J -N -S`. |
 | `tmux:cmd-parse.y` | The command grammar whose yacc stack depth caps send-keys at <16384 args (why we chunk at 4096). |
 
+### Agent status, hooks & session resume
+
+| File | What it teaches |
+|---|---|
+| `codex:codex-rs/hooks/src/schema.rs` | Codex hook payloads (`session_id`, `transcript_path`, `cwd`, …). No terminal identity is passed. |
+| `codex:codex-rs/hooks/src/engine/command_runner.rs` | Hooks inherit the env of the process running the hook engine — the shared daemon when one is in use. |
+| `codex:codex-rs/tui/src/startup_orchestration.rs` | When the TUI joins the shared daemon; `--no-daemon` and `[features] daemon_auto_start` (auto-start only — a live daemon is still reused). |
+| `codex:codex-rs/tui/src/daemon_startup.rs` | Every launch condition that excludes the daemon. |
+| `orca:src/shared/codex-shell-function.ts` | Shell function that adds `--no-daemon` when `codex --help` supports it. |
+| `orca:src/main/codex/codex-shared-server-pane.ts` | Detecting a pane whose Codex joined the shared server; fix dialog in `codex-shared-server-fix.ts`. |
+| `orca:src/main/runtime/agent-state-rules/codex-screen-predicates.ts` | Codex busy/ready detection from the rendered TUI. |
+| `cctop:menubar/CctopMenubar/Hook/HookHandler.swift` | Session records keyed by payload `session_id`. |
+| `superset:packages/agent-setup/templates/codex-wrapper-exec.template.sh` | Per-terminal `CODEX_TUI_SESSION_LOG_PATH` tailing as a hook-independent signal. |
+| `opencode:packages/opencode/src/cli/cmd/tui.ts` | The TUI starts its own server as a Worker with a copy of its env (~line 210) — no shared server by default. |
+| `opencode:packages/opencode/src/plugin/index.ts` | Where server plugins run and the `event` hook payload (`sessionID`, directory-filtered). |
+| `herdr:src/integration/assets/opencode/herdr-tui-session.js` | Pane-local TUI plugin filtered to the TUI's selected session — survives a shared `opencode serve`. |
+| `orca:src/shared/agent-hook-listener/opencode-session-correlation.ts` | Heuristic session→pane binding (directory + client process lifetime) for a shared OpenCode server; TUI-side variant in `src/main/opencode/status-plugin-legacy-tui-source.ts`. |
+| `tmux-assistant-resurrect:scripts/save-assistant-sessions.sh` | Finding an agent's session id from process + cwd + start time. |
+
 ## Cloning fresh
 
 These are not vendored. Clone as siblings of `vscode-deck/`:
@@ -97,4 +133,21 @@ git clone --depth 1 git@github.com:sanctel/sanctel.git
 git clone --depth 1 https://github.com/gnachman/iTerm2 iterm2
 git clone --depth 1 https://github.com/tmux/tmux
 git clone --depth 1 https://github.com/tmux-plugins/tmux-resurrect
+git clone --depth 1 https://github.com/stablyai/orca
+git clone --depth 1 https://github.com/openai/codex
+git clone --depth 1 https://github.com/anomalyco/opencode
+git clone --depth 1 https://github.com/xtermjs/xterm.js
+git clone --depth 1 https://github.com/subhashkhileri/agntree
+git clone --depth 1 https://github.com/max-sixty/worktrunk
+git clone --depth 1 https://github.com/smtg-ai/claude-squad
+git clone --depth 1 https://github.com/formkit/dmux
+git clone --depth 1 https://github.com/st0012/cctop
+git clone --depth 1 https://github.com/manaflow-ai/cmux
+git clone --depth 1 https://github.com/ogulcancelik/herdr
+git clone --depth 1 https://github.com/asheshgoplani/agent-deck
+git clone --depth 1 https://github.com/mixpeek/amux
+git clone --depth 1 https://github.com/sstraus/tuicommander
+git clone --depth 1 https://github.com/hiroppy/tmux-agent-sidebar
+git clone --depth 1 https://github.com/samleeney/tmux-agent-status
+git clone --depth 1 https://github.com/timvw/tmux-assistant-resurrect
 ```
