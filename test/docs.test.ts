@@ -42,7 +42,7 @@ describe('domain docs', () => {
     expect(normalizedAdr).toContain('Pattern matching');
     expect(normalizedAdr).toContain('tmux user options');
     expect(normalizedAdr).toContain('Extending the AgentSession sidecar');
-    expect(normalizedAdr).toContain('Codex has a parity gap');
+    expect(normalizedAdr).toContain('Codex parity is conditional');
     expect(normalizedAdr).toContain('stale toast');
   });
 

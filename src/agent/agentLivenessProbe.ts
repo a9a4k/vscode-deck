@@ -9,6 +9,7 @@ export interface ProcessProbe {
   isAlive(pid: number): Promise<boolean>;
   children(pid: number): Promise<number[]>;
   startTime(pid: number): Promise<string>;
+  command(pid: number): Promise<string>;
 }
 
 export class AgentLivenessProbe {
@@ -16,7 +17,12 @@ export class AgentLivenessProbe {
 
   async isAgentAlive(process: AgentProcessIdentity): Promise<boolean> {
     if (!(await this.processes.isAlive(process.pid))) return false;
-    return (await this.processes.startTime(process.pid)) === process.startTime;
+    if ((await this.processes.startTime(process.pid)) !== process.startTime) return false;
+    try {
+      return !isCodexAppServer(await this.processes.command(process.pid));
+    } catch {
+      return true;
+    }
   }
 }
 
@@ -32,6 +38,10 @@ export class PsProcessProbe implements ProcessProbe {
 
   async startTime(pid: number): Promise<string> {
     return this.ps(pid, 'lstart=');
+  }
+
+  async command(pid: number): Promise<string> {
+    return this.ps(pid, 'command=');
   }
 
   async children(pid: number): Promise<number[]> {
@@ -58,4 +68,8 @@ export class PsProcessProbe implements ProcessProbe {
       });
     });
   }
+}
+
+function isCodexAppServer(command: string): boolean {
+  return /\bcodex\b.*\bapp-server\b/i.test(command);
 }

@@ -104,8 +104,8 @@ describe('SnapshotRewriter', () => {
     const rewritten = new SnapshotRewriter().rewrite(snapshot, sidecars);
 
     const lines = rewritten.split('\n');
-    expect(lines[0].split('\t')[10]).toBe(':codex resume codex-123');
-    expect(lines[1].split('\t')[10]).toBe(':codex resume codex-456');
+    expect(lines[0].split('\t')[10]).toBe(':codex --no-daemon resume codex-123');
+    expect(lines[1].split('\t')[10]).toBe(':codex --no-daemon resume codex-456');
   });
 
   it('restores panes without sidecars as plain shells', () => {
@@ -132,7 +132,7 @@ describe('SnapshotRewriter', () => {
       ['wt-_work_repo__term-1', sidecar('codex', 'codex-123')],
     ]));
 
-    expect(rewritten.split('\t')[10]).toBe(':codex resume codex-123');
+    expect(rewritten.split('\t')[10]).toBe(':codex --no-daemon resume codex-123');
   });
 
   it('uses the Codex resume template when rewriting a pane', () => {

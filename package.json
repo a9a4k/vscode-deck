@@ -76,8 +76,8 @@
         },
         "deck.agentResumeTemplates.codex": {
           "type": "string",
-          "default": "codex resume {id}",
-          "description": "Codex command template Deck uses to resume an AgentSession. Include {id} for the session id."
+          "default": "codex --no-daemon resume {id}",
+          "markdownDescription": "Codex command template Deck uses to resume an AgentSession. Include `{id}` for the session id. `--no-daemon` keeps Codex's hooks in this Terminal so Deck can show its status; remove it to use Codex's shared background server, and Deck then cannot observe the session."
         },
         "deck.notifyOnNeedsInput": {
           "type": "boolean",
@@ -102,7 +102,7 @@
         "deck.terminalLaunchers": {
           "type": "array",
           "default": [],
-          "markdownDescription": "TerminalLaunchers available in every repository. Each opens a Terminal and runs `command` (sequence steps with `&&`).\n\nExample:\n```json\n[{ \"label\": \"Claude\", \"command\": \"claude\", \"runOnWorktreeCreate\": true }]\n```",
+          "markdownDescription": "TerminalLaunchers available in every repository. Each opens a Terminal and runs `command` (sequence steps with `&&`). Codex launchers need `--no-daemon` for Deck to observe status and resume the AgentSession.\n\nExample:\n```json\n[{ \"label\": \"Claude\", \"command\": \"claude\", \"runOnWorktreeCreate\": true }]\n```",
           "items": {
             "type": "object",
             "properties": {
@@ -127,7 +127,7 @@
         "deck.repositoryLaunchers": {
           "type": "array",
           "default": [],
-          "markdownDescription": "TerminalLaunchers for a single Repository, kept in your user settings instead of committed to the repo (`.deck/launchers.json`). `repository` is any path inside the repo — a leading `~` is expanded, and it is matched by git common dir, so it applies to every Worktree.\n\nExample:\n```json\n[{ \"repository\": \"~/code/myapp\", \"launchers\": [\n  { \"label\": \"Bootstrap\", \"command\": \"mise install && pnpm bootstrap\", \"runOnWorktreeCreate\": true },\n  { \"label\": \"Claude\", \"command\": \"claude\" }\n] }]\n```",
+          "markdownDescription": "TerminalLaunchers for a single Repository, kept in your user settings instead of committed to the repo (`.deck/launchers.json`). `repository` is any path inside the repo — a leading `~` is expanded, and it is matched by git common dir, so it applies to every Worktree. Codex launchers need `--no-daemon` for Deck to observe status and resume the AgentSession.\n\nExample:\n```json\n[{ \"repository\": \"~/code/myapp\", \"launchers\": [\n  { \"label\": \"Bootstrap\", \"command\": \"mise install && pnpm bootstrap\", \"runOnWorktreeCreate\": true },\n  { \"label\": \"Claude\", \"command\": \"claude\" }\n] }]\n```",
           "items": {
             "type": "object",
             "properties": {

@@ -38,9 +38,42 @@ describe('renderAgentHookScript', () => {
       session_id: 'abc-123',
     });
     expect(typeof sidecar.pid).toBe('number');
-    expect(sidecar.pid).toBeGreaterThan(0);
+    expect(sidecar.pid).toBe(process.pid);
     expect(typeof sidecar.startTime).toBe('string');
     expect(sidecar.startTime.length).toBeGreaterThan(0);
+  });
+
+  it('records the agent process above a stayed hook shell', async () => {
+    const root = tempRoot();
+    const sidecarDir = join(root, 'hooks');
+    const scriptPath = writeScript(root, renderAgentHookScript(sidecarDir));
+
+    const shellPid = await runScriptThroughStayedShell(scriptPath, {
+      env: { ...process.env, DECK_SESSION: 'wt-_work_repo__term-1' },
+      input: '{"session_id":"abc-123","hook_event_name":"SessionStart"}',
+    });
+
+    const sidecar = JSON.parse(readFileSync(join(sidecarDir, 'wt-_work_repo__term-1.json'), 'utf8'));
+    expect(sidecar.pid).toBe(process.pid);
+    expect(sidecar.pid).not.toBe(shellPid);
+  });
+
+  it('does not resolve beyond four stayed hook shells', async () => {
+    const root = tempRoot();
+    const sidecarDir = join(root, 'hooks');
+    const hookPath = writeScript(root, renderAgentHookScript(sidecarDir));
+    const pidLogPath = join(root, 'shell-pids.log');
+
+    await runScriptThroughStayedShells(hookPath, pidLogPath, 5, {
+      env: { ...process.env, DECK_SESSION: 'wt-_work_repo__term-1' },
+      input: '{"session_id":"abc-123","hook_event_name":"SessionStart"}',
+    });
+
+    const shellPids = readFileSync(pidLogPath, 'utf8').trim().split('\n').map(Number);
+    const sidecar = JSON.parse(readFileSync(join(sidecarDir, 'wt-_work_repo__term-1.json'), 'utf8'));
+    expect(shellPids).toHaveLength(5);
+    expect(shellPids).toContain(sidecar.pid);
+    expect(sidecar.pid).not.toBe(process.pid);
   });
 
   it('writes a completed status on Stop without writing a sidecar', async () => {
@@ -421,6 +454,32 @@ describe('renderAgentHookScript', () => {
     expect(existsSync(statusDir)).toBe(false);
   });
 
+  it('refuses to attribute a Codex app-server hook to a Terminal', async () => {
+    const root = tempRoot();
+    const sidecarDir = join(root, 'hooks');
+    const statusDir = join(root, 'status');
+    const markerPath = join(root, 'codex-shared-server.json');
+    const scriptPath = writeScript(root, renderAgentHookScript(sidecarDir, 'codex'));
+
+    const serverPid = await runScriptFromCodexAppServer(scriptPath, {
+      env: { ...process.env, DECK_SESSION: 'wt-_work_repo__term-1' },
+      input: JSON.stringify({
+        session_id: 'codex-123',
+        cwd: '/work/repo',
+        hook_event_name: 'UserPromptSubmit',
+      }),
+    });
+
+    expect(existsSync(sidecarDir)).toBe(false);
+    expect(existsSync(statusDir)).toBe(false);
+    expect(JSON.parse(readFileSync(markerPath, 'utf8'))).toMatchObject({
+      serverPid,
+      sessionId: 'codex-123',
+      cwd: '/work/repo',
+    });
+    expect(typeof JSON.parse(readFileSync(markerPath, 'utf8')).at).toBe('number');
+  });
+
   it('writes Codex in-progress status on UserPromptSubmit without breaking the sidecar', async () => {
     const root = tempRoot();
     const sidecarDir = join(root, 'hooks');
@@ -629,6 +688,29 @@ function writeTmuxStub(root: string): string {
   return logPath;
 }
 
+function runScriptThroughStayedShells(
+  targetPath: string,
+  pidLogPath: string,
+  depth: number,
+  options: { env: NodeJS.ProcessEnv; input: string },
+): Promise<void> {
+  let command = quoteForShell(targetPath);
+  for (let index = 0; index < depth; index += 1) {
+    command = `printf '%s\\n' "$$" >> ${quoteForShell(pidLogPath)}; sh -c ${quoteForShell(command)}; :`;
+  }
+  return new Promise((resolve, reject) => {
+    const child = execFile('sh', ['-c', command], { env: options.env }, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    child.stdin?.end(options.input);
+  });
+}
+
+function quoteForShell(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
 function runScript(
   scriptPath: string,
   options: { args?: string[]; env: NodeJS.ProcessEnv; input: string },
@@ -653,6 +735,43 @@ function runScriptResult(
       } else {
         resolve({ code: 0, stdout });
       }
+    });
+    child.stdin?.end(options.input);
+  });
+}
+
+function runScriptFromCodexAppServer(
+  scriptPath: string,
+  options: { env: NodeJS.ProcessEnv; input: string },
+): Promise<number> {
+  const parent = [
+    "const { spawn } = require('node:child_process');",
+    'const hook = spawn(\'sh\', [\'-c\', \'"$DECK_TEST_HOOK"; :\'], { env: process.env, stdio: [\'pipe\', \'inherit\', \'inherit\'] });',
+    'hook.stdin.end(process.env.DECK_TEST_INPUT);',
+    'hook.on(\'exit\', (code) => process.exit(code ?? 1));',
+  ].join('');
+
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      process.execPath,
+      ['-e', parent, 'codex', 'app-server', scriptPath],
+      { env: { ...options.env, DECK_TEST_HOOK: scriptPath, DECK_TEST_INPUT: options.input } },
+      (error) => {
+        if (error) reject(error);
+        else resolve(child.pid!);
+      },
+    );
+  });
+}
+
+function runScriptThroughStayedShell(
+  scriptPath: string,
+  options: { env: NodeJS.ProcessEnv; input: string },
+): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = execFile('sh', ['-c', `'${scriptPath}'; :`], { env: options.env }, (error) => {
+      if (error) reject(error);
+      else resolve(child.pid!);
     });
     child.stdin?.end(options.input);
   });

@@ -105,11 +105,19 @@ Save a command as a launcher — your agent with its usual flags, or a project b
 ```jsonc
 "deck.terminalLaunchers": [
   { "label": "Claude", "command": "claude --dangerously-skip-permissions" },
-  { "label": "Codex", "command": "codex --dangerously-bypass-approvals-and-sandbox" }
+  { "label": "Codex", "command": "codex --no-daemon --dangerously-bypass-approvals-and-sandbox" }
 ]
 ```
 
 A launcher with `"runOnWorktreeCreate": true` runs when you create a worktree through Deck — only for Deck-created worktrees, not ones it discovers from the CLI.
+
+### Codex and shared servers
+
+Run Codex in a Deck Terminal with `--no-daemon` so its hooks stay tied to that Terminal. Deck can then show the correct status and notifications and safely resume its AgentSession after a reboot. Add the flag yourself to Codex TerminalLaunchers; Deck runs launcher commands exactly as written and never edits `.deck/launchers.json`.
+
+Without `--no-daemon`, current Codex versions attach to a shared background server. Its hooks do not identify which Terminal owns the event, so Deck deliberately shows no status and does not save that AgentSession. Deck warns once for each affected Worktree and shared server. Exit the attached Codex, then restart it with `codex --no-daemon` (plus your usual flags).
+
+Unshared mode gives up shared-server features for sessions in Deck Terminals, including `codex agents`, `codex queue`, and remote control. Remove `--no-daemon` if you prefer those features and accept that Deck cannot observe or resume the session.
 
 ## Getting started
 
@@ -131,7 +139,7 @@ A launcher with `"runOnWorktreeCreate": true` runs when you create a worktree th
 | `deck.notifyOnNeedsInput` | `true` | Notify when an agent needs input (suppressed while you're viewing that terminal). |
 | `deck.notifyOnCompleted` | `true` | Notify when an agent completes a turn (suppressed while you're viewing that terminal). |
 | `deck.agentResumeTemplates.claude` | — | Claude Code command template Deck uses to resume a session. Include `{id}` for the session id. |
-| `deck.agentResumeTemplates.codex` | — | Codex command template Deck uses to resume a session. Include `{id}` for the session id. |
+| `deck.agentResumeTemplates.codex` | `codex --no-daemon resume {id}` | Codex command template Deck uses to resume a session. `--no-daemon` lets Deck observe it. |
 | `deck.tmux.automaticRenameFormat` | — | tmux automatic-rename format for Deck terminals. |
 | `deck.terminalLaunchers` | `[]` | Launchers available in every repo — see [terminal launchers](#one-click-terminal-launchers). |
 | `deck.repositoryLaunchers` | `[]` | Per-repo launchers kept in user settings — see [terminal launchers](#one-click-terminal-launchers). |

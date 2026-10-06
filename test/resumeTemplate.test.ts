@@ -6,6 +6,12 @@ describe('ResumeTemplate', () => {
     expect(new ResumeTemplate().render('claude', 'abc-123')).toBe('claude --resume abc-123');
   });
 
+  it('runs the default Codex resume unshared', () => {
+    expect(new ResumeTemplate().render('codex', 'codex-123')).toBe(
+      'codex --no-daemon resume codex-123',
+    );
+  });
+
   it('renders a Codex override with the session id substituted', () => {
     expect(new ResumeTemplate({
       codex: 'codex --dangerously-bypass-approvals-and-sandbox resume {id}',
@@ -21,6 +27,6 @@ describe('ResumeTemplate', () => {
     });
 
     expect(template.render('claude', 'abc-123')).toBe('claude --resume abc-123');
-    expect(template.render('codex', 'codex-123')).toBe('codex resume codex-123');
+    expect(template.render('codex', 'codex-123')).toBe('codex --no-daemon resume codex-123');
   });
 });

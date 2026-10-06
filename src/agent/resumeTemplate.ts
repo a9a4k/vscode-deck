@@ -2,7 +2,7 @@ import type { AgentName } from './agentTypes';
 
 const DEFAULT_TEMPLATES: Record<AgentName, string> = {
   claude: 'claude --resume {id}',
-  codex: 'codex resume {id}',
+  codex: 'codex --no-daemon resume {id}',
 };
 
 export type ResumeTemplateSettings = Partial<Record<AgentName, string>>;

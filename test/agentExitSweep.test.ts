@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AgentExitSweep, type AgentExitSidecarStore, type AgentExitStatusStore } from '../src/agent/agentExitSweep';
-import type { AgentProcessIdentity } from '../src/agent/agentLivenessProbe';
+import { AgentLivenessProbe, type AgentProcessIdentity } from '../src/agent/agentLivenessProbe';
 import type { AgentSidecar } from '../src/agent/agentSidecar';
 import type { AgentStatus } from '../src/agent/agentStatusStore';
 
@@ -346,6 +346,38 @@ describe('AgentExitSweep', () => {
     await expect(sweep.runOnce()).resolves.toBe(true);
 
     expect(teardown.restoreAutomaticRename).toHaveBeenCalledWith('term-1');
+    expect(sidecars.removed).toEqual(['term-1']);
+    expect(statuses.removed).toEqual(['term-1']);
+  });
+
+  it('removes a sidecar and status that point at a Codex app-server', async () => {
+    const startTime = 'Thu Jun 11 20:01:00 2026';
+    const sidecars = new SidecarStore([
+      ['term-1', sidecar('codex', 'codex-123', 111, startTime)],
+    ]);
+    const statuses = new StatusStore([
+      ['term-1', { status: 'inProgress', statusAt: 1710000000, agent: 'codex' }],
+    ]);
+    const sweep = new AgentExitSweep({
+      sidecars,
+      statuses,
+      liveness: new AgentLivenessProbe({
+        isAlive: async () => true,
+        children: async () => [],
+        startTime: async () => startTime,
+        command: async () => '/usr/local/bin/codex app-server --listen unix://',
+      }),
+      teardown: {
+        restoreAutomaticRename: async () => undefined,
+        renameAgentWindow: async () => undefined,
+      },
+      serverStart: {
+        serverStartTime: async () => 'Thu Jun 11 20:00:00 2026',
+      },
+    });
+
+    await sweep.runOnce();
+
     expect(sidecars.removed).toEqual(['term-1']);
     expect(statuses.removed).toEqual(['term-1']);
   });

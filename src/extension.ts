@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import * as vscode from 'vscode';
 import { listWorktrees } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
@@ -63,6 +63,11 @@ import { AgentPaneProbe } from './agent/agentPaneProbe';
 import { DeckDecorationProvider } from './tree/deckDecorationProvider';
 import { AgentStatusNotifier } from './agent/agentStatusNotifier';
 import { AgentStatusStore } from './agent/agentStatusStore';
+import { SharedCodexServerMarkerFile } from './agent/sharedCodexServerMarkerFile';
+import {
+  SharedCodexServerNotice,
+  type SharedCodexWorktree,
+} from './agent/sharedCodexServerNotice';
 import { TerminalPoll } from './terminal/terminalPoll';
 import { TerminalModel } from './terminal/terminalModel';
 import { TerminalReconciler, type TerminalLocation } from './terminal/terminalReconciler';
@@ -588,6 +593,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       terminalModel.find(sessionName) ?? await tmux.terminalSession(sessionName),
     describeSession: (sessionName) => tree.describeSession(sessionName),
   }).start();
+  const sharedCodexServerNoticeWatch = new SharedCodexServerNotice({
+    marker: new SharedCodexServerMarkerFile(join(deckDir, 'codex-shared-server.json')),
+    worktrees: {
+      list: () => sharedCodexWorktrees(
+        repositoryRegistry,
+        repositoryCommonDirCache,
+        worktreeListCache,
+        pendingWorktreeRemovals,
+      ),
+    },
+    notifications: vscode.window,
+    openLauncherSettings: () => vscode.commands.executeCommand(
+      'workbench.action.openSettings',
+      '@ext:a9a4k.deck launcher',
+    ),
+    learnMore: async () => {
+      await vscode.env.openExternal(vscode.Uri.parse(
+        'https://github.com/a9a4k/vscode-deck#codex-and-shared-servers',
+      ));
+    },
+  }).start();
   const addRepository = new AddRepositoryCommand(
     new VsCodeRepositoryFolderPicker(),
     repositoryRegistry,
@@ -618,6 +644,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     agentStatusCollapseWatch,
     agentStatusExpandWatch,
     agentStatusNotifierWatch,
+    sharedCodexServerNoticeWatch,
     externalGitWatch,
     vscode.window.registerCustomEditorProvider(terminalEditorViewType, terminalEditorProvider, {
       webviewOptions: {
@@ -880,6 +907,30 @@ function terminalLocations(
     }
   }
   return locations;
+}
+
+function sharedCodexWorktrees(
+  repositoryRegistry: RepositoryRegistryReader,
+  repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
+  worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
+  pendingWorktreeRemovals: ReadonlySet<string>,
+): SharedCodexWorktree[] {
+  const registered: SharedCodexWorktree[] = [];
+  for (const repositoryPath of repositoryRegistry.list()) {
+    const commonDir = repositoryCommonDirCache.get(repositoryPath);
+    if (commonDir === undefined) continue;
+    const worktrees = worktreeListCache.get(commonDir);
+    if (worktrees === undefined) continue;
+    for (const worktree of worktrees) {
+      if (worktree.bare || pendingWorktreeRemovals.has(worktree.path)) continue;
+      registered.push({
+        path: worktree.path,
+        repo: basename(repositoryPath),
+        branch: worktree.branch ?? basename(worktree.path),
+      });
+    }
+  }
+  return registered;
 }
 
 async function registeredCommonDirs(

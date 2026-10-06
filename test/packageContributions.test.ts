@@ -90,7 +90,7 @@ describe('package contributions', () => {
     });
     expect(pkg.contributes.configuration?.properties?.['deck.agentResumeTemplates.codex']).toMatchObject({
       type: 'string',
-      default: 'codex resume {id}',
+      default: 'codex --no-daemon resume {id}',
     });
   });
 

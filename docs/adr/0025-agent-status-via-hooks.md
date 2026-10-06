@@ -147,8 +147,9 @@ issues #91-#95 and the rendering amendment from issue #105.
 
 ## Consequences
 
-- **Codex has a parity gap.** Codex Terminals still get agent-aware naming from
-  ADR-0023, but no AgentStatus until Codex exposes equivalent lifecycle hooks.
+- **Codex parity is conditional (superseded by ADR-0059).** Codex now exposes
+  equivalent lifecycle hooks, but Deck can attribute them to a Terminal only
+  when Codex runs unshared with `--no-daemon`.
 - **Status is best-effort observability, not source-of-truth state.** If a status
   record is missing or stale, Deck prefers to show nothing current rather than
   infer from output.
