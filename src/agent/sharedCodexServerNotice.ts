@@ -33,7 +33,7 @@ interface SharedCodexServerNoticeOptions {
 }
 
 export class SharedCodexServerNotice {
-  private readonly seen = new Map<number, Set<string>>();
+  private readonly seenLocationsByServerPid = new Map<number, Set<string>>();
 
   constructor(private readonly options: SharedCodexServerNoticeOptions) {}
 
@@ -54,10 +54,10 @@ export class SharedCodexServerNotice {
 
     const worktree = containingWorktree(marker.cwd, this.options.worktrees.list());
     const locationKey = worktree?.path ?? '';
-    const seenLocations = this.seen.get(marker.serverPid) ?? new Set<string>();
+    const seenLocations = this.seenLocationsByServerPid.get(marker.serverPid) ?? new Set<string>();
     if (seenLocations.has(locationKey)) return;
     seenLocations.add(locationKey);
-    this.seen.set(marker.serverPid, seenLocations);
+    this.seenLocationsByServerPid.set(marker.serverPid, seenLocations);
 
     const prefix = worktree ? `${worktree.repo}/${worktree.branch}: ` : '';
     const choice = await this.options.notifications.showWarningMessage(
@@ -66,21 +66,22 @@ export class SharedCodexServerNotice {
       LEARN_MORE,
     );
     if (choice === OPEN_LAUNCHER_SETTINGS) await this.options.openLauncherSettings();
-    if (choice === LEARN_MORE) await this.options.learnMore();
+    else if (choice === LEARN_MORE) await this.options.learnMore();
   }
 }
 
 function parseMarker(value: unknown): SharedCodexServerMarker | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { serverPid, sessionId, cwd, at } = value as Record<string, unknown>;
   if (
-    typeof value !== 'object'
-    || value === null
-    || !Number.isInteger((value as { serverPid?: unknown }).serverPid)
-    || (value as { serverPid: number }).serverPid <= 0
-    || typeof (value as { sessionId?: unknown }).sessionId !== 'string'
-    || typeof (value as { cwd?: unknown }).cwd !== 'string'
-    || typeof (value as { at?: unknown }).at !== 'number'
+    typeof serverPid !== 'number'
+    || !Number.isInteger(serverPid)
+    || serverPid <= 0
+    || typeof sessionId !== 'string'
+    || typeof cwd !== 'string'
+    || typeof at !== 'number'
   ) return undefined;
-  return value as SharedCodexServerMarker;
+  return { serverPid, sessionId, cwd, at };
 }
 
 function containingWorktree(

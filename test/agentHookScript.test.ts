@@ -472,12 +472,13 @@ describe('renderAgentHookScript', () => {
 
     expect(existsSync(sidecarDir)).toBe(false);
     expect(existsSync(statusDir)).toBe(false);
-    expect(JSON.parse(readFileSync(markerPath, 'utf8'))).toMatchObject({
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+    expect(marker).toMatchObject({
       serverPid,
       sessionId: 'codex-123',
       cwd: '/work/repo',
     });
-    expect(typeof JSON.parse(readFileSync(markerPath, 'utf8')).at).toBe('number');
+    expect(typeof marker.at).toBe('number');
   });
 
   it('writes Codex in-progress status on UserPromptSubmit without breaking the sidecar', async () => {

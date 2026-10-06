@@ -2,7 +2,7 @@ import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import * as vscode from 'vscode';
-import { listWorktrees } from './git/worktrees';
+import { listWorktrees, type Worktree } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
 import { ActiveWorktreeStore } from './switch/activeWorktreeStore';
 import { DetachedOpener } from './switch/detachedOpener';
@@ -889,24 +889,26 @@ interface RepositoryRegistryReader {
   list(): readonly string[];
 }
 
+interface RegisteredWorktree {
+  repositoryPath: string;
+  worktree: Worktree;
+}
+
 function terminalLocations(
   repositoryRegistry: RepositoryRegistryReader,
   repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
   worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
   pendingWorktreeRemovals: ReadonlySet<string>,
 ): TerminalLocation[] {
-  const locations: TerminalLocation[] = [];
-  for (const repositoryPath of repositoryRegistry.list()) {
-    const commonDir = repositoryCommonDirCache.get(repositoryPath);
-    if (commonDir === undefined) continue;
-    const worktrees = worktreeListCache.get(commonDir);
-    if (worktrees === undefined) continue;
-    for (const worktree of worktrees) {
-      if (worktree.bare || pendingWorktreeRemovals.has(worktree.path)) continue;
-      locations.push({ repositoryPath, worktreePath: worktree.path });
-    }
-  }
-  return locations;
+  return registeredWorktrees(
+    repositoryRegistry,
+    repositoryCommonDirCache,
+    worktreeListCache,
+    pendingWorktreeRemovals,
+  ).map(({ repositoryPath, worktree }) => ({
+    repositoryPath,
+    worktreePath: worktree.path,
+  }));
 }
 
 function sharedCodexWorktrees(
@@ -915,7 +917,25 @@ function sharedCodexWorktrees(
   worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
   pendingWorktreeRemovals: ReadonlySet<string>,
 ): SharedCodexWorktree[] {
-  const registered: SharedCodexWorktree[] = [];
+  return registeredWorktrees(
+    repositoryRegistry,
+    repositoryCommonDirCache,
+    worktreeListCache,
+    pendingWorktreeRemovals,
+  ).map(({ repositoryPath, worktree }) => ({
+    path: worktree.path,
+    repo: basename(repositoryPath),
+    branch: worktree.branch ?? basename(worktree.path),
+  }));
+}
+
+function registeredWorktrees(
+  repositoryRegistry: RepositoryRegistryReader,
+  repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
+  worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
+  pendingWorktreeRemovals: ReadonlySet<string>,
+): RegisteredWorktree[] {
+  const registered: RegisteredWorktree[] = [];
   for (const repositoryPath of repositoryRegistry.list()) {
     const commonDir = repositoryCommonDirCache.get(repositoryPath);
     if (commonDir === undefined) continue;
@@ -923,11 +943,7 @@ function sharedCodexWorktrees(
     if (worktrees === undefined) continue;
     for (const worktree of worktrees) {
       if (worktree.bare || pendingWorktreeRemovals.has(worktree.path)) continue;
-      registered.push({
-        path: worktree.path,
-        repo: basename(repositoryPath),
-        branch: worktree.branch ?? basename(worktree.path),
-      });
+      registered.push({ repositoryPath, worktree });
     }
   }
   return registered;
