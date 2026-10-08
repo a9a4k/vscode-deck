@@ -16,6 +16,7 @@ export interface TmuxSession {
   sessionName: string;
   windowName: string;
   paneTitle?: string;
+  paneCommand?: string;
   agentName?: AgentName;
 }
 
@@ -127,11 +128,13 @@ export class TmuxCli {
   async listSessions(prefix?: string): Promise<TmuxSession[]> {
     // Read `#{window_name}` for agent identity and `#{pane_title}` for the
     // user-facing label. Plain terminals ignore the pane title.
+    // `#{pane_current_command}` names the foreground program even when the
+    // window name is pinned or comes from a custom automatic-rename-format.
     const result = await this.runner.run('tmux', [
       ...this.baseArgs(),
       'list-sessions',
       '-F',
-      '#{session_name}\t#{window_name}\t#{pane_title}',
+      '#{session_name}\t#{window_name}\t#{pane_current_command}\t#{pane_title}',
     ]);
     if (result.code !== 0 && (isMissingSession(result) || isWedged(result))) return [];
     if (result.code !== 0) {
@@ -143,8 +146,8 @@ export class TmuxCli {
       .split('\n')
       .filter(Boolean)
       .map((line) => {
-        const [sessionName, windowName = '', paneTitle = ''] = line.split('\t', 3);
-        return { sessionName, windowName, paneTitle };
+        const [sessionName, windowName = '', paneCommand = '', paneTitle = ''] = line.split('\t', 4);
+        return { sessionName, windowName, paneCommand, paneTitle };
       })
       .filter((session) => prefix === undefined || session.sessionName.startsWith(prefix));
   }
@@ -201,29 +204,47 @@ export class TmuxCli {
     return Number.isInteger(pid) && pid > 0 ? pid : undefined;
   }
 
-  async paneForegroundCommandLine(session: string): Promise<string | undefined> {
-    const panePid = await this.panePid(session);
-    if (panePid === undefined) return undefined;
+  // The foreground process group id, which is the pid of the command the user
+  // started in the pane. One tmux and one ps call cover every requested session.
+  async foregroundProcessIds(sessions: readonly string[]): Promise<Map<string, number>> {
+    const foreground = new Map<string, number>();
+    if (sessions.length === 0) return foreground;
 
-    const processGroupResult = await this.runner.run('ps', [
-      '-o',
-      'tpgid=',
-      '-p',
-      String(panePid),
+    const panesResult = await this.runner.run('tmux', [
+      ...this.baseArgs(),
+      'list-panes',
+      '-a',
+      '-F',
+      '#{session_name}\t#{pane_pid}',
     ]);
-    if (processGroupResult.code !== 0) return undefined;
-    const processGroup = Number(processGroupResult.stdout.trim());
-    if (!Number.isInteger(processGroup) || processGroup <= 0) return undefined;
+    if (panesResult.code !== 0) return foreground;
+    const requested = new Set(sessions);
+    const sessionsByPanePid = new Map<number, string>();
+    for (const line of panesResult.stdout.trim().split('\n')) {
+      const [session, pid] = line.split('\t', 2);
+      const panePid = Number(pid);
+      if (requested.has(session) && isPid(panePid)) sessionsByPanePid.set(panePid, session);
+    }
+    if (sessionsByPanePid.size === 0) return foreground;
 
-    const commandResult = await this.runner.run('ps', [
-      '-ww',
+    const processGroupsResult = await this.runner.run('ps', [
       '-o',
-      'command=',
+      'pid=,tpgid=',
       '-p',
-      String(processGroup),
+      [...sessionsByPanePid.keys()].join(','),
     ]);
-    if (commandResult.code !== 0) return undefined;
-    return commandResult.stdout.trim() || undefined;
+    for (const line of processGroupsResult.stdout.trim().split('\n')) {
+      const [panePid, processGroup] = line.trim().split(/\s+/).map(Number);
+      const session = sessionsByPanePid.get(panePid);
+      if (session !== undefined && isPid(processGroup)) foreground.set(session, processGroup);
+    }
+    return foreground;
+  }
+
+  async processCommandLine(pid: number): Promise<string | undefined> {
+    const result = await this.runner.run('ps', ['-ww', '-o', 'command=', '-p', String(pid)]);
+    if (result.code !== 0) return undefined;
+    return result.stdout.trim() || undefined;
   }
 
   async serverStartTime(): Promise<string | undefined> {
@@ -359,6 +380,10 @@ export class TmuxCli {
   private baseArgs(): string[] {
     return ['-L', 'deck', '-f', this.configPath];
   }
+}
+
+function isPid(value: number): boolean {
+  return Number.isInteger(value) && value > 0;
 }
 
 function exactSessionTarget(session: string): string {

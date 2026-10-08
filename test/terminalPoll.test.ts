@@ -13,12 +13,13 @@ describe('TerminalPoll', () => {
     }));
     const poll = new TerminalPoll({
       listSessions: vi.fn(async () => [
-        { sessionName: 'term-1', windowName: 'node', paneTitle: '⠋ npm Codex' },
+        { sessionName: 'term-1', windowName: 'node', paneCommand: 'node', paneTitle: '⠋ npm Codex' },
       ]),
       reconcileObservation: reconcile,
       isFocused: () => true,
       onDidChangeFocus: () => ({ dispose: vi.fn() }),
       scheduler,
+      readForegroundProcessIds: async () => new Map([['term-1', 4321]]),
       resolveCodexPaneIdentity,
       observeCodexPanes,
     });
@@ -27,17 +28,88 @@ describe('TerminalPoll', () => {
     await flush();
 
     expect(reconcile).toHaveBeenCalledWith([
-      { sessionName: 'term-1', windowName: 'node', paneTitle: '⠋ npm Codex', agentName: 'codex' },
+      {
+        sessionName: 'term-1',
+        windowName: 'node',
+        paneCommand: 'node',
+        paneTitle: '⠋ npm Codex',
+        agentName: 'codex',
+      },
     ]);
     expect(observeCodexPanes).toHaveBeenCalledWith([{
       sessionName: 'term-1',
       identity: { agentName: 'codex', hasNoDaemon: false },
+      processId: 4321,
     }]);
 
     await scheduler.runNext();
     await flush();
 
     expect(resolveCodexPaneIdentity).toHaveBeenCalledOnce();
+  });
+
+  it('re-reads a Codex restarted under the same window name', async () => {
+    const scheduler = new ManualScheduler();
+    const observeCodexPanes = vi.fn();
+    let foregroundProcessId = 101;
+    const resolveCodexPaneIdentity = vi.fn(async (_windowName: string, processId: number) => ({
+      agentName: 'codex' as const,
+      hasNoDaemon: processId === 101,
+    }));
+    const poll = new TerminalPoll({
+      listSessions: vi.fn(async () => [
+        { sessionName: 'term-1', windowName: 'codex', paneCommand: 'codex', paneTitle: '' },
+      ]),
+      reconcileObservation: vi.fn(async () => undefined),
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler,
+      readForegroundProcessIds: async () => new Map([['term-1', foregroundProcessId]]),
+      resolveCodexPaneIdentity,
+      observeCodexPanes,
+    });
+    poll.start();
+    await flush();
+
+    foregroundProcessId = 202;
+    await scheduler.runNext();
+    await flush();
+
+    expect(resolveCodexPaneIdentity).toHaveBeenLastCalledWith('codex', 202);
+    expect(observeCodexPanes).toHaveBeenLastCalledWith([{
+      sessionName: 'term-1',
+      identity: { agentName: 'codex', hasNoDaemon: false },
+      processId: 202,
+    }]);
+  });
+
+  it('finds Codex by foreground command when a custom format names the window', async () => {
+    const reconcile = vi.fn(async () => undefined);
+    const observeCodexPanes = vi.fn();
+    const readForegroundProcessIds = vi.fn(async () => new Map([['term-1', 4321]]));
+    const poll = new TerminalPoll({
+      listSessions: vi.fn(async () => [
+        { sessionName: 'term-1', windowName: 'vscode-deck', paneCommand: 'codex', paneTitle: '' },
+        { sessionName: 'term-2', windowName: 'codex', paneCommand: 'zsh', paneTitle: '' },
+      ]),
+      reconcileObservation: reconcile,
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler: new ManualScheduler(),
+      readForegroundProcessIds,
+      resolveCodexPaneIdentity: async () => ({ agentName: 'codex' as const, hasNoDaemon: false }),
+      observeCodexPanes,
+    });
+
+    poll.start();
+    await flush();
+
+    expect(readForegroundProcessIds).toHaveBeenCalledWith(['term-1']);
+    expect(observeCodexPanes).toHaveBeenCalledWith([
+      { sessionName: 'term-1', identity: { agentName: 'codex', hasNoDaemon: false }, processId: 4321 },
+      { sessionName: 'term-2' },
+    ]);
+    expect(reconcile.mock.calls[0][0][0]).toMatchObject({ sessionName: 'term-1', agentName: 'codex' });
   });
 
   it('hands each observed Terminal set to reconciliation with resolved agent identities', async () => {

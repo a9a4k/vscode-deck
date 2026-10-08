@@ -18,17 +18,18 @@ describe('resolveCodexPaneIdentity', () => {
       { agentName: 'codex', hasNoDaemon: true },
     ],
     ['unrelated node', 'node', '/usr/bin/node /work/server.js', undefined],
+    ['shell after Codex exited between reads', 'codex', '-zsh', undefined],
     [
       'prompt text after program word',
       'codex',
       '/opt/codex explain --no-daemon',
       { agentName: 'codex', hasNoDaemon: true },
     ],
-  ])('resolves %s', async (_case, windowName, commandLine, expected) => {
-    await expect(resolveCodexPaneIdentity(windowName, async () => commandLine)).resolves.toEqual(expected);
+  ])('resolves %s', async (_case, paneCommand, commandLine, expected) => {
+    await expect(resolveCodexPaneIdentity(paneCommand, async () => commandLine)).resolves.toEqual(expected);
   });
 
-  it('does not read a command line for a non-Codex window name', async () => {
+  it('does not read a command line for a non-Codex foreground command', async () => {
     const readForegroundCommandLine = vi.fn(async () => '/opt/codex');
 
     await expect(resolveCodexPaneIdentity('zsh', readForegroundCommandLine)).resolves.toBeUndefined();

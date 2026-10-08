@@ -462,9 +462,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.window.onDidChangeWindowState((state) => listener(state.focused)),
         onError: (error) => console.warn('Deck: terminal poll failed', error),
         resolveAgentName,
-        resolveCodexPaneIdentity: (sessionName, windowName) => resolveCodexPaneIdentity(
-          windowName,
-          () => tmux.paneForegroundCommandLine(sessionName),
+        readForegroundProcessIds: (sessionNames) => tmux.foregroundProcessIds(sessionNames),
+        resolveCodexPaneIdentity: (paneCommand, processId) => resolveCodexPaneIdentity(
+          paneCommand,
+          () => tmux.processCommandLine(processId),
         ),
         observeCodexPanes: (observations) => codexNoDaemonBanner.observe(observations),
       })

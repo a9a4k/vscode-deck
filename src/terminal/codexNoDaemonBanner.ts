@@ -11,6 +11,7 @@ export interface CodexNoDaemonBannerScheduler {
 export interface CodexPaneObservation {
   sessionName: string;
   identity?: CodexPaneIdentity;
+  processId?: number;
 }
 
 interface CodexNoDaemonBannerOptions {
@@ -25,6 +26,7 @@ interface CodexNoDaemonBannerOptions {
 }
 
 interface BannerState {
+  processId?: number;
   probeIndex: number;
   dismissed?: boolean;
   timer?: unknown;
@@ -47,20 +49,22 @@ export class CodexNoDaemonBanner {
       this.stopAll();
       return;
     }
-    const affectedSessions = new Set(
+    // A different process is a new Codex run, so it starts over, × included.
+    const affectedProcesses = new Map(
       observations
         .filter(({ identity }) => identity !== undefined && !identity.hasNoDaemon)
-        .map(({ sessionName }) => sessionName),
+        .map(({ sessionName, processId }) => [sessionName, processId]),
     );
     for (const [sessionName, state] of this.statesBySessionName) {
-      if (affectedSessions.has(sessionName)) continue;
+      if (affectedProcesses.has(sessionName)
+        && affectedProcesses.get(sessionName) === state.processId) continue;
       this.stopTracking(sessionName, state);
     }
 
     for (const observation of observations) {
       if (!observation.identity || observation.identity.hasNoDaemon) continue;
       if (this.statesBySessionName.has(observation.sessionName)) continue;
-      const state = { probeIndex: 0 };
+      const state = { processId: observation.processId, probeIndex: 0 };
       this.statesBySessionName.set(observation.sessionName, state);
       this.scheduleProbe(observation.sessionName, state);
     }

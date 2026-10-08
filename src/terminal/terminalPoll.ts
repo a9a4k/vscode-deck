@@ -2,7 +2,7 @@ import { agentNameFromWindowName, resolveTerminalLabel } from './terminalLabelRe
 import type { TmuxSession } from './tmuxCli';
 import type { AgentName } from '../agent/agentTypes';
 import type { Disposable } from '../agent/agentStatusStore';
-import type { CodexPaneIdentity } from './codexPaneIdentity';
+import { mayRunCodex, type CodexPaneIdentity } from './codexPaneIdentity';
 import type { CodexPaneObservation } from './codexNoDaemonBanner';
 
 export interface TerminalPollScheduler {
@@ -19,9 +19,10 @@ interface TerminalPollOptions {
   intervalMs?: number;
   onError?: (error: unknown) => void;
   resolveAgentName?: (sessionName: string) => Promise<AgentName | undefined>;
+  readForegroundProcessIds?: (sessionNames: readonly string[]) => Promise<Map<string, number>>;
   resolveCodexPaneIdentity?: (
-    sessionName: string,
-    windowName: string,
+    paneCommand: string,
+    foregroundProcessId: number,
   ) => Promise<CodexPaneIdentity | undefined>;
   observeCodexPanes?: (observations: readonly CodexPaneObservation[]) => void;
 }
@@ -36,7 +37,7 @@ export class TerminalPoll implements Disposable {
   private readonly labels = new Map<string, string>();
   private readonly codexIdentities = new Map<
     string,
-    { windowName: string; identity?: CodexPaneIdentity }
+    { paneCommand: string; processId: number; identity?: CodexPaneIdentity }
   >();
   private focusSubscription: Disposable | undefined;
   private timer: unknown;
@@ -129,7 +130,7 @@ export class TerminalPoll implements Disposable {
     const resolvedIdentities = agentIdentities.map((identity, index) => {
       if (identity.explicit) return identity;
 
-      const codexIdentity = codexIdentities[index];
+      const codexIdentity = codexIdentities[index].identity;
       if (codexIdentity) return { agentName: codexIdentity.agentName, explicit: true };
 
       return identity;
@@ -142,7 +143,7 @@ export class TerminalPoll implements Disposable {
     });
     this.options.observeCodexPanes?.(sessions.map((session, index) => ({
       sessionName: session.sessionName,
-      identity: codexIdentities[index],
+      ...codexIdentities[index],
     })));
     await this.options.reconcileObservation(observedSessions);
     const nextLabels = new Map<string, string>();
@@ -186,24 +187,36 @@ export class TerminalPoll implements Disposable {
     }));
   }
 
+  // Keyed on the foreground process: a Codex restarted in the same Terminal
+  // keeps the same program name.
   private async resolveCodexPaneIdentities(
     sessions: readonly TmuxSession[],
-  ): Promise<Array<CodexPaneIdentity | undefined>> {
-    const presentSessions = new Set(sessions.map(({ sessionName }) => sessionName));
-    for (const sessionName of this.codexIdentities.keys()) {
-      if (!presentSessions.has(sessionName)) this.codexIdentities.delete(sessionName);
-    }
+  ): Promise<Array<{ identity?: CodexPaneIdentity; processId?: number }>> {
+    const candidates = sessions
+      .filter(({ paneCommand }) => mayRunCodex(paneCommand ?? ''))
+      .map(({ sessionName }) => sessionName);
+    const { readForegroundProcessIds, resolveCodexPaneIdentity } = this.options;
+    const processIds = candidates.length > 0 && readForegroundProcessIds && resolveCodexPaneIdentity
+      ? await readForegroundProcessIds(candidates)
+      : new Map<string, number>();
 
-    return Promise.all(sessions.map(async (session) => {
-      const cached = this.codexIdentities.get(session.sessionName);
-      if (cached?.windowName === session.windowName) return cached.identity;
-      const identity = await this.options.resolveCodexPaneIdentity?.(
-        session.sessionName,
-        session.windowName,
-      );
-      this.codexIdentities.set(session.sessionName, { windowName: session.windowName, identity });
-      return identity;
+    const resolved = await Promise.all(sessions.map(async ({ sessionName, paneCommand = '' }) => {
+      const processId = processIds.get(sessionName);
+      if (processId === undefined) return {};
+      const cached = this.codexIdentities.get(sessionName);
+      const identity = cached?.paneCommand === paneCommand && cached.processId === processId
+        ? cached.identity
+        : await resolveCodexPaneIdentity!(paneCommand, processId);
+      return { identity, processId };
     }));
+
+    this.codexIdentities.clear();
+    resolved.forEach(({ identity, processId }, index) => {
+      if (processId === undefined) return;
+      const { sessionName, paneCommand = '' } = sessions[index];
+      this.codexIdentities.set(sessionName, { paneCommand, processId, identity });
+    });
+    return resolved;
   }
 
   private clearTimer(): void {

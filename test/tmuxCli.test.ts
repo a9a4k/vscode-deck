@@ -339,19 +339,24 @@ describe('TmuxCli', () => {
     }]);
   });
 
-  it('lists Deck sessions with window names and pane titles', async () => {
+  it('lists Deck sessions with window names, foreground commands and pane titles', async () => {
     const runner = new MockRunner([
       {
         code: 0,
-        stdout: 'wt-_work_repo__term-1\tzsh\t:/work/repo\nwt-_work_repo__term-2\tclaude\t✳ fix issue 129\n',
+        stdout: 'wt-_work_repo__term-1\tzsh\tzsh\t:/work/repo\nwt-_work_repo__term-2\tclaude\t2.1.285\t✳ fix issue 129\n',
         stderr: '',
       },
     ]);
     const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
 
     await expect(tmux.listSessions()).resolves.toEqual([
-      { sessionName: 'wt-_work_repo__term-1', windowName: 'zsh', paneTitle: ':/work/repo' },
-      { sessionName: 'wt-_work_repo__term-2', windowName: 'claude', paneTitle: '✳ fix issue 129' },
+      { sessionName: 'wt-_work_repo__term-1', windowName: 'zsh', paneCommand: 'zsh', paneTitle: ':/work/repo' },
+      {
+        sessionName: 'wt-_work_repo__term-2',
+        windowName: 'claude',
+        paneCommand: '2.1.285',
+        paneTitle: '✳ fix issue 129',
+      },
     ]);
     expect(runner.calls[0].args).toEqual([
       '-L',
@@ -360,7 +365,7 @@ describe('TmuxCli', () => {
       '/ext/resources/deck.conf',
       'list-sessions',
       '-F',
-      '#{session_name}\t#{window_name}\t#{pane_title}',
+      '#{session_name}\t#{window_name}\t#{pane_current_command}\t#{pane_title}',
     ]);
   });
 
@@ -470,21 +475,45 @@ describe('TmuxCli', () => {
     await expect(garbage.panePid('term-1')).resolves.toBeUndefined();
   });
 
-  it('reads the pane foreground process group command line', async () => {
+  it('reads the foreground process group of each requested session in one ps call', async () => {
     const runner = new MockRunner([
-      { code: 0, stdout: '1234\n', stderr: '' },
-      { code: 0, stdout: '5678\n', stderr: '' },
+      { code: 0, stdout: 'term-1\t1234\nterm-2\t2345\nterm-3\t3456\n', stderr: '' },
+      { code: 0, stdout: ' 1234  5678\n 3456  3456\n', stderr: '' },
+    ]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.foregroundProcessIds(['term-1', 'term-3'])).resolves.toEqual(
+      new Map([['term-1', 5678], ['term-3', 3456]]),
+    );
+    expect(runner.calls[0].args.slice(4)).toEqual([
+      'list-panes',
+      '-a',
+      '-F',
+      '#{session_name}\t#{pane_pid}',
+    ]);
+    expect(runner.calls[1]).toEqual(
+      { command: 'ps', args: ['-o', 'pid=,tpgid=', '-p', '1234,3456'], cwd: undefined },
+    );
+  });
+
+  it('reads no foreground processes when no session is requested', async () => {
+    const runner = new MockRunner([]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.foregroundProcessIds([])).resolves.toEqual(new Map());
+    expect(runner.calls).toEqual([]);
+  });
+
+  it('reads a process command line without truncation', async () => {
+    const runner = new MockRunner([
       { code: 0, stdout: '/usr/bin/node /opt/codex/bin/codex.js\n', stderr: '' },
     ]);
     const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
 
-    await expect(tmux.paneForegroundCommandLine('wt-_work_repo__term-1')).resolves.toBe(
-      '/usr/bin/node /opt/codex/bin/codex.js',
-    );
-    expect(runner.calls.slice(1)).toEqual([
-      { command: 'ps', args: ['-o', 'tpgid=', '-p', '1234'], cwd: undefined },
+    await expect(tmux.processCommandLine(5678)).resolves.toBe('/usr/bin/node /opt/codex/bin/codex.js');
+    expect(runner.calls[0]).toEqual(
       { command: 'ps', args: ['-ww', '-o', 'command=', '-p', '5678'], cwd: undefined },
-    ]);
+    );
   });
 
   it('reads the tmux server start time from the server pid', async () => {
@@ -522,9 +551,9 @@ describe('TmuxCli', () => {
       {
         code: 0,
         stdout: [
-          'wt-_work_repo__term-2\tclaude\t✳ work with spaces',
-          'wt-_work_other__term-1\tzsh\t:/work/other',
-          'wt-_work_repo__term-1\tterm-1\tplain shell',
+          'wt-_work_repo__term-2\tclaude\t2.1.285\t✳ work with spaces',
+          'wt-_work_other__term-1\tzsh\tzsh\t:/work/other',
+          'wt-_work_repo__term-1\tterm-1\tzsh\tplain shell',
         ].join('\n'),
         stderr: '',
       },
@@ -533,8 +562,13 @@ describe('TmuxCli', () => {
     const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
 
     await expect(tmux.listSessions('wt-_work_repo__term-')).resolves.toEqual([
-      { sessionName: 'wt-_work_repo__term-2', windowName: 'claude', paneTitle: '✳ work with spaces' },
-      { sessionName: 'wt-_work_repo__term-1', windowName: 'term-1', paneTitle: 'plain shell' },
+      {
+        sessionName: 'wt-_work_repo__term-2',
+        windowName: 'claude',
+        paneCommand: '2.1.285',
+        paneTitle: '✳ work with spaces',
+      },
+      { sessionName: 'wt-_work_repo__term-1', windowName: 'term-1', paneCommand: 'zsh', paneTitle: 'plain shell' },
     ]);
     await expect(tmux.listSessions('wt-_work_repo__term-')).resolves.toEqual([]);
   });

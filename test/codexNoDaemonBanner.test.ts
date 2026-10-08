@@ -133,6 +133,26 @@ describe('CodexNoDaemonBanner', () => {
     expect(show).toHaveBeenCalledTimes(2);
   });
 
+  it('warns again for a new Codex process seen without an exit in between', async () => {
+    const scheduler = new ManualScheduler();
+    const show = vi.fn();
+    const banner = new CodexNoDaemonBanner({
+      probe: { probe: vi.fn(async () => 'live' as const) },
+      settings: { isEnabled: () => true, disable: vi.fn(async () => undefined) },
+      scheduler,
+      show,
+      hide: vi.fn(),
+    });
+    banner.observe([sharedCodex('term-1', 101)]);
+    await scheduler.runNext();
+    banner.dismiss('term-1');
+
+    banner.observe([sharedCodex('term-1', 202)]);
+    await scheduler.runNext();
+
+    expect(show).toHaveBeenCalledTimes(2);
+  });
+
   it("Don't Show Again disables the setting and hides every banner", async () => {
     const scheduler = new ManualScheduler();
     const disable = vi.fn(async () => undefined);
@@ -156,10 +176,11 @@ describe('CodexNoDaemonBanner', () => {
   });
 });
 
-function sharedCodex(sessionName: string) {
+function sharedCodex(sessionName: string, processId = 100) {
   return {
     sessionName,
     identity: { agentName: 'codex' as const, hasNoDaemon: false },
+    processId,
   };
 }
 

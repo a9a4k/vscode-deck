@@ -37,10 +37,14 @@ Terminal's `DECK_SESSION`.
    mentions `app-server`; a TUI in a Terminal always has a tty. A server started
    by hand in a terminal keeps its tty and is not detected.
 
-4. TerminalPoll identifies Codex from each Terminal's window name and foreground
-   command line. A `codex` window is native Codex; a `node` window is Codex only
-   when its program is the npm launcher's `codex.js`. The command line is read
-   only when the window name changes. A whole `--no-daemon` argument after the
+4. TerminalPoll identifies Codex from each Terminal's foreground command
+   (`pane_current_command`, read in the same tmux call as the window name) and
+   command line. The window name is not used: the hook pins it to `codex`, and
+   a custom `deck.tmux.automaticRenameFormat` replaces it. A `codex` command is
+   native Codex; a `node` command is Codex only when its program is the npm
+   launcher's `codex.js`. The command line is read only when the foreground
+   command or its process changes, so a Codex restarted in the same Terminal
+   is checked again. A whole `--no-daemon` argument after the
    Codex program marks the process unshared. When the argument is absent, Deck
    probes `$CODEX_HOME/app-server-control/app-server-control.sock` after 1, 4,
    and 10 seconds. It connects rather than checking the socket file, so only a
