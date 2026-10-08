@@ -127,13 +127,12 @@ export class TerminalPoll implements Disposable {
       this.resolveCodexPaneIdentities(sessions),
     ]);
     const resolvedIdentities = agentIdentities.map((identity, index) => {
+      if (identity.explicit) return identity;
+
       const codexIdentity = codexIdentities[index];
-      return {
-        agentName: identity.explicit
-          ? identity.agentName
-          : codexIdentity?.agentName ?? identity.agentName,
-        explicit: identity.explicit || codexIdentity !== undefined,
-      };
+      if (codexIdentity) return { agentName: codexIdentity.agentName, explicit: true };
+
+      return identity;
     });
     const observedSessions = sessions.map((session, index) => {
       const identity = resolvedIdentities[index];

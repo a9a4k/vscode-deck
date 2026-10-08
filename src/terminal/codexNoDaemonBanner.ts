@@ -1,7 +1,7 @@
 import type { CodexPaneIdentity } from './codexPaneIdentity';
 import type { CodexSharedServerState } from './codexSharedServerProbe';
 
-const RETRY_DELAYS_MS = [1000, 4000, 10000] as const;
+const PROBE_DELAYS_MS = [1000, 4000, 10000] as const;
 
 export interface CodexNoDaemonBannerScheduler {
   setTimeout(callback: () => void, delay: number): unknown;
@@ -25,7 +25,7 @@ interface CodexNoDaemonBannerOptions {
 }
 
 interface BannerState {
-  attempt: number;
+  probeIndex: number;
   dismissed?: boolean;
   timer?: unknown;
   visible?: boolean;
@@ -33,7 +33,7 @@ interface BannerState {
 
 export class CodexNoDaemonBanner {
   private readonly scheduler: CodexNoDaemonBannerScheduler;
-  private readonly states = new Map<string, BannerState>();
+  private readonly statesBySessionName = new Map<string, BannerState>();
 
   constructor(private readonly options: CodexNoDaemonBannerOptions) {
     this.scheduler = options.scheduler ?? {
@@ -43,9 +43,8 @@ export class CodexNoDaemonBanner {
   }
 
   observe(observations: readonly CodexPaneObservation[]): void {
-    const enabled = this.options.settings.isEnabled();
-    if (!enabled) {
-      for (const [sessionName, state] of [...this.states]) this.stop(sessionName, state);
+    if (!this.options.settings.isEnabled()) {
+      this.stopAll();
       return;
     }
     const affectedSessions = new Set(
@@ -53,22 +52,22 @@ export class CodexNoDaemonBanner {
         .filter(({ identity }) => identity !== undefined && !identity.hasNoDaemon)
         .map(({ sessionName }) => sessionName),
     );
-    for (const [sessionName, state] of this.states) {
+    for (const [sessionName, state] of this.statesBySessionName) {
       if (affectedSessions.has(sessionName)) continue;
-      this.stop(sessionName, state);
+      this.stopTracking(sessionName, state);
     }
 
     for (const observation of observations) {
       if (!observation.identity || observation.identity.hasNoDaemon) continue;
-      if (this.states.has(observation.sessionName)) continue;
-      const state = { attempt: 0 };
-      this.states.set(observation.sessionName, state);
-      this.schedule(observation.sessionName, state);
+      if (this.statesBySessionName.has(observation.sessionName)) continue;
+      const state = { probeIndex: 0 };
+      this.statesBySessionName.set(observation.sessionName, state);
+      this.scheduleProbe(observation.sessionName, state);
     }
   }
 
   dismiss(sessionName: string): void {
-    const state = this.states.get(sessionName);
+    const state = this.statesBySessionName.get(sessionName);
     if (!state) return;
     state.dismissed = true;
     if (state.timer !== undefined) {
@@ -83,34 +82,44 @@ export class CodexNoDaemonBanner {
 
   async disable(): Promise<void> {
     await this.options.settings.disable();
-    for (const [sessionName, state] of [...this.states]) this.stop(sessionName, state);
+    this.stopAll();
   }
 
   dispose(): void {
-    for (const [sessionName, state] of [...this.states]) this.stop(sessionName, state);
+    this.stopAll();
   }
 
-  private schedule(sessionName: string, state: BannerState): void {
-    const delay = RETRY_DELAYS_MS[state.attempt];
+  private scheduleProbe(sessionName: string, state: BannerState): void {
+    const delay = PROBE_DELAYS_MS[state.probeIndex];
     if (delay === undefined) return;
     state.timer = this.scheduler.setTimeout(() => {
       state.timer = undefined;
-      void this.options.probe.probe().catch((): CodexSharedServerState => 'unknown').then((result) => {
-        if (this.states.get(sessionName) !== state || state.dismissed) return;
-        if (result === 'live') {
-          state.visible = true;
-          this.options.show(sessionName);
-          return;
-        }
-        state.attempt += 1;
-        this.schedule(sessionName, state);
-      });
+      void this.probeSharedServer(sessionName, state);
     }, delay);
   }
 
-  private stop(sessionName: string, state: BannerState): void {
+  private async probeSharedServer(sessionName: string, state: BannerState): Promise<void> {
+    const result = await this.options.probe.probe()
+      .catch((): CodexSharedServerState => 'unknown');
+    if (this.statesBySessionName.get(sessionName) !== state || state.dismissed) return;
+    if (result === 'live') {
+      state.visible = true;
+      this.options.show(sessionName);
+      return;
+    }
+    state.probeIndex += 1;
+    this.scheduleProbe(sessionName, state);
+  }
+
+  private stopAll(): void {
+    for (const [sessionName, state] of [...this.statesBySessionName]) {
+      this.stopTracking(sessionName, state);
+    }
+  }
+
+  private stopTracking(sessionName: string, state: BannerState): void {
     if (state.timer !== undefined) this.scheduler.clearTimeout(state.timer);
     if (state.visible) this.options.hide(sessionName);
-    this.states.delete(sessionName);
+    this.statesBySessionName.delete(sessionName);
   }
 }
