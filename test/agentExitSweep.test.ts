@@ -366,6 +366,7 @@ describe('AgentExitSweep', () => {
         children: async () => [],
         startTime: async () => startTime,
         command: async () => '/usr/local/bin/codex app-server --listen unix://',
+        hasControllingTerminal: async () => false,
       }),
       teardown: {
         restoreAutomaticRename: async () => undefined,

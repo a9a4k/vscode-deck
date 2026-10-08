@@ -81,6 +81,7 @@ export function renderAgentHookScript(
     'done',
     'agent_start_time=$(ps -o lstart= -p "$agent_pid" 2>/dev/null | awk \'{$1=$1; print}\' || true)',
     'agent_command=$(ps -o command= -p "$agent_pid" 2>/dev/null | awk \'{$1=$1; print}\' || true)',
+    'agent_tty=$(ps -o tty= -p "$agent_pid" 2>/dev/null | awk \'{$1=$1; print}\' || true)',
     'hook_event_name=$(json_field hook_event_name)',
     'session_id=$(json_field session_id)',
     'if [ -z "$session_id" ]; then',
@@ -92,9 +93,16 @@ export function renderAgentHookScript(
     'json_escape() {',
     '  printf "%s" "$1" | sed \'s/\\\\/\\\\\\\\/g; s/"/\\\\"/g\'',
     '}',
+    // A Codex TUI in a Terminal always has a controlling tty; a shared server
+    // (setsid daemon, desktop app) has none. The command line alone also matches
+    // a TUI whose prompt or path mentions app-server.
     'if [ "$agent" = "codex" ]; then',
     '  case "$agent_command" in',
-    '    *codex*app-server*) exit 0 ;;',
+    '    *codex*app-server*)',
+    '      case "$agent_tty" in',
+    '        ""|"?"|"??") exit 0 ;;',
+    '      esac',
+    '      ;;',
     '  esac',
     'fi',
     'write_sidecar() {',

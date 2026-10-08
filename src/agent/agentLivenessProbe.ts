@@ -10,6 +10,7 @@ export interface ProcessProbe {
   children(pid: number): Promise<number[]>;
   startTime(pid: number): Promise<string>;
   command(pid: number): Promise<string>;
+  hasControllingTerminal(pid: number): Promise<boolean>;
 }
 
 export class AgentLivenessProbe {
@@ -19,7 +20,9 @@ export class AgentLivenessProbe {
     if (!(await this.processes.isAlive(process.pid))) return false;
     if ((await this.processes.startTime(process.pid)) !== process.startTime) return false;
     try {
-      return !isCodexAppServer(await this.processes.command(process.pid));
+      if (!isCodexAppServer(await this.processes.command(process.pid))) return true;
+      // A shared server has no controlling tty; a TUI whose args mention app-server does.
+      return await this.processes.hasControllingTerminal(process.pid);
     } catch {
       return true;
     }
@@ -42,6 +45,11 @@ export class PsProcessProbe implements ProcessProbe {
 
   async command(pid: number): Promise<string> {
     return this.ps(pid, 'command=');
+  }
+
+  async hasControllingTerminal(pid: number): Promise<boolean> {
+    const tty = await this.ps(pid, 'tty=');
+    return tty !== '' && !/^\?+$/.test(tty);
   }
 
   async children(pid: number): Promise<number[]> {

@@ -28,10 +28,14 @@ Terminal's `DECK_SESSION`.
    stay alive because they install an exit trap. The resolved process supplies
    the sidecar's pid and start time for both Claude Code and Codex.
 
-3. If a resolved Codex process command line contains `codex … app-server`, the
-   hook writes no AgentStatus or AgentSession sidecar and does not rename a
-   Terminal. An app-server never speaks for a Terminal, whether it is Codex's
-   managed daemon, the desktop app's server, or a manually started server.
+3. If a resolved Codex process command line contains `codex … app-server` and
+   the process has no controlling tty, the hook writes no AgentStatus or
+   AgentSession sidecar and does not rename a Terminal. An app-server never
+   speaks for a Terminal, whether it is Codex's managed daemon (started with
+   `setsid`) or the desktop app's server. The tty test is required because the
+   command line alone also matches a Terminal's Codex TUI whose prompt or path
+   mentions `app-server`; a TUI in a Terminal always has a tty. A server started
+   by hand in a terminal keeps its tty and is not detected.
 
 4. TerminalPoll identifies Codex from each Terminal's window name and foreground
    command line. A `codex` window is native Codex; a `node` window is Codex only
@@ -49,10 +53,10 @@ Terminal's `DECK_SESSION`.
    global `deck.warnCodexWithoutNoDaemon` setting. The same identity gives an
    npm-installed Codex the Codex label and icon instead of Node's.
 
-6. Agent liveness treats a recorded Codex app-server pid as dead even when its
-   pid and start time match. The existing AgentExitSweep then remains the sole
-   remover of the misattributed sidecar and status, preserving ADR-0033's
-   ownership and server-lifetime gate.
+6. Agent liveness treats a recorded Codex app-server pid without a controlling
+   tty as dead even when its pid and start time match. The existing
+   AgentExitSweep then remains the sole remover of the misattributed sidecar and
+   status, preserving ADR-0033's ownership and server-lifetime gate.
 
 7. Launcher setting descriptions and the README make `--no-daemon` and its
    tradeoff visible. Shared-server features such as `codex agents`, `codex

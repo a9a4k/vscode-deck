@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -475,6 +475,26 @@ describe('renderAgentHookScript', () => {
     expect(existsSync(markerPath)).toBe(false);
   });
 
+  it('attributes a Terminal Codex whose prompt mentions app-server to its Terminal', async () => {
+    const root = tempRoot();
+    const sidecarDir = join(root, 'hooks');
+    const statusDir = join(root, 'status');
+    const scriptPath = writeScript(root, renderAgentHookScript(sidecarDir, 'codex'));
+
+    await runScriptFromTerminalCodex(scriptPath, {
+      env: { ...process.env, DECK_SESSION: 'wt-_work_repo__term-1' },
+      input: JSON.stringify({
+        session_id: 'codex-123',
+        cwd: '/work/repo',
+        hook_event_name: 'UserPromptSubmit',
+      }),
+    });
+
+    expect(JSON.parse(readFileSync(join(statusDir, 'wt-_work_repo__term-1.json'), 'utf8')).status)
+      .toBe('inProgress');
+    expect(existsSync(join(root, 'codex-shared-server.json'))).toBe(false);
+  });
+
   it('writes Codex in-progress status on UserPromptSubmit without breaking the sidecar', async () => {
     const root = tempRoot();
     const sidecarDir = join(root, 'hooks');
@@ -735,27 +755,63 @@ function runScriptResult(
   });
 }
 
+const HOOK_PARENT_SOURCE = [
+  "const { spawn } = require('node:child_process');",
+  'const hook = spawn(\'sh\', [\'-c\', \'"$DECK_TEST_HOOK"; :\'], { env: process.env, stdio: [\'pipe\', \'inherit\', \'inherit\'] });',
+  'hook.stdin.end(process.env.DECK_TEST_INPUT);',
+  'hook.on(\'exit\', (code) => process.exit(code ?? 1));',
+].join('');
+
 function runScriptFromCodexAppServer(
   scriptPath: string,
   options: { env: NodeJS.ProcessEnv; input: string },
 ): Promise<number> {
-  const parent = [
-    "const { spawn } = require('node:child_process');",
-    'const hook = spawn(\'sh\', [\'-c\', \'"$DECK_TEST_HOOK"; :\'], { env: process.env, stdio: [\'pipe\', \'inherit\', \'inherit\'] });',
-    'hook.stdin.end(process.env.DECK_TEST_INPUT);',
-    'hook.on(\'exit\', (code) => process.exit(code ?? 1));',
-  ].join('');
-
+  // detached: setsid, so the fake server has no controlling tty like the real
+  // daemon, even when the test runner itself runs in a terminal.
   return new Promise((resolve, reject) => {
-    const child = execFile(
+    const child = spawn(
       process.execPath,
-      ['-e', parent, 'codex', 'app-server', scriptPath],
-      { env: { ...options.env, DECK_TEST_HOOK: scriptPath, DECK_TEST_INPUT: options.input } },
-      (error) => {
-        if (error) reject(error);
-        else resolve(child.pid!);
+      ['-e', HOOK_PARENT_SOURCE, 'codex', 'app-server', scriptPath],
+      {
+        env: { ...options.env, DECK_TEST_HOOK: scriptPath, DECK_TEST_INPUT: options.input },
+        detached: true,
+        stdio: 'ignore',
       },
     );
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve(child.pid!);
+      else reject(new Error(`fake app-server exited ${code}`));
+    });
+  });
+}
+
+// A Codex TUI in a Terminal: controlling tty (via script's pty) and a prompt
+// that mentions app-server.
+function runScriptFromTerminalCodex(
+  scriptPath: string,
+  options: { env: NodeJS.ProcessEnv; input: string },
+): Promise<void> {
+  const prompt = 'fix the app-server bug';
+  const args = process.platform === 'darwin'
+    ? ['-q', '/dev/null', process.execPath, '-e', HOOK_PARENT_SOURCE, 'codex', prompt]
+    : ['-qec', `"$DECK_TEST_NODE" -e "$DECK_TEST_PARENT" codex '${prompt}'`, '/dev/null'];
+  return new Promise((resolve, reject) => {
+    const child = spawn('script', args, {
+      env: {
+        ...options.env,
+        DECK_TEST_HOOK: scriptPath,
+        DECK_TEST_INPUT: options.input,
+        DECK_TEST_NODE: process.execPath,
+        DECK_TEST_PARENT: HOOK_PARENT_SOURCE,
+      },
+      stdio: 'ignore',
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`script exited ${code}`));
+    });
   });
 }
 
