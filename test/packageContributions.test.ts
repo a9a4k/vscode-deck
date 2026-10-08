@@ -105,6 +105,14 @@ describe('package contributions', () => {
     });
   });
 
+  it('contributes the Codex no-daemon warning setting enabled by default', () => {
+    expect(pkg.contributes.configuration?.properties?.['deck.warnCodexWithoutNoDaemon']).toEqual({
+      type: 'boolean',
+      default: true,
+      description: 'Show a banner in a Terminal whose Codex was started without --no-daemon while Codex\'s shared server is running.',
+    });
+  });
+
   it('contributes the release-notice setting enabled by default', () => {
     expect(pkg.contributes.configuration?.properties?.['deck.showReleaseNotes']).toMatchObject({
       type: 'boolean',

@@ -33,17 +33,21 @@ Terminal's `DECK_SESSION`.
    Terminal. An app-server never speaks for a Terminal, whether it is Codex's
    managed daemon, the desktop app's server, or a manually started server.
 
-4. Instead, that hook atomically replaces the machine-global marker
-   `~/.local/share/deck/codex-shared-server.json` with
-   `{ serverPid, sessionId, cwd, at }`. The marker is beside the AgentStatus
-   directory because every JSON file inside that directory represents one
-   Terminal's status.
+4. TerminalPoll identifies Codex from each Terminal's window name and foreground
+   command line. A `codex` window is native Codex; a `node` window is Codex only
+   when its program is the npm launcher's `codex.js`. The command line is read
+   only when the window name changes. A whole `--no-daemon` argument after the
+   Codex program marks the process unshared. When the argument is absent, Deck
+   probes `$CODEX_HOME/app-server-control/app-server-control.sock` after 1, 4,
+   and 10 seconds. It connects rather than checking the socket file, so only a
+   live shared server is evidence.
 
-5. Each Deck window watches the marker. It warns once per app-server pid and
-   once per new registered Worktree reached by that pid. The Worktree is the
-   longest path prefix containing the marker's `cwd`, and is named
-   `<Repository>/<branch>`. Events outside registered Worktrees get a generic
-   warning. The warning links to launcher settings and the README.
+5. A Terminal whose Codex lacks `--no-daemon` while the shared server is live
+   shows a warning banner in its own tab. The banner reserves space above the
+   Terminal, disappears when that Codex exits, and offers Learn More, dismissal
+   for the current Codex run, and Don't Show Again. The last action disables the
+   global `deck.warnCodexWithoutNoDaemon` setting. The same identity gives an
+   npm-installed Codex the Codex label and icon instead of Node's.
 
 6. Agent liveness treats a recorded Codex app-server pid as dead even when its
    pid and start time match. The existing AgentExitSweep then remains the sole
@@ -60,14 +64,15 @@ Terminal's `DECK_SESSION`.
   Terminals can share a Worktree and the hook carries no Terminal identity.
 - Rewrite launchers, add a PATH shim, or change Codex's global config — rejected.
   Those hide the operational choice and mutate user or repository-owned config.
-- Detect attachment by polling pane process trees or the daemon socket —
-  rejected. The hook already supplies decisive evidence at the boundary.
+- Raise a toast from a hook-written machine-global marker — rejected. The hook
+  cannot name the affected Terminal, fires for Codex outside Deck, and may not
+  run at all on a shared server.
 
 ## Consequences
 
 - Unshared Codex sessions keep correct status, notifications, and reboot resume.
 - Shared Codex sessions deliberately have no Deck status or resume sidecar and
-  produce an actionable, deduplicated warning.
+  show an actionable warning only in their own Terminal tabs.
 - Existing wrong sidecars and statuses are removed by the next exit sweep.
 - Codex versions that predate `--no-daemon` show their own resume error and leave
   the user at the pane's shell; Deck does not probe versions or rewrite config.
@@ -84,4 +89,4 @@ Terminal's `DECK_SESSION`.
 
 ## Status
 
-Accepted by PRD #228.
+Accepted by PRD #229; decisions 1–3, 6, and 7 originated in PRD #228.

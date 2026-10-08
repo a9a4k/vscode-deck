@@ -454,14 +454,14 @@ describe('renderAgentHookScript', () => {
     expect(existsSync(statusDir)).toBe(false);
   });
 
-  it('refuses to attribute a Codex app-server hook to a Terminal', async () => {
+  it('refuses to attribute a tty-less Codex app-server hook to a Terminal', async () => {
     const root = tempRoot();
     const sidecarDir = join(root, 'hooks');
     const statusDir = join(root, 'status');
     const markerPath = join(root, 'codex-shared-server.json');
     const scriptPath = writeScript(root, renderAgentHookScript(sidecarDir, 'codex'));
 
-    const serverPid = await runScriptFromCodexAppServer(scriptPath, {
+    await runScriptFromCodexAppServer(scriptPath, {
       env: { ...process.env, DECK_SESSION: 'wt-_work_repo__term-1' },
       input: JSON.stringify({
         session_id: 'codex-123',
@@ -472,13 +472,7 @@ describe('renderAgentHookScript', () => {
 
     expect(existsSync(sidecarDir)).toBe(false);
     expect(existsSync(statusDir)).toBe(false);
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
-    expect(marker).toMatchObject({
-      serverPid,
-      sessionId: 'codex-123',
-      cwd: '/work/repo',
-    });
-    expect(typeof marker.at).toBe('number');
+    expect(existsSync(markerPath)).toBe(false);
   });
 
   it('writes Codex in-progress status on UserPromptSubmit without breaking the sidecar', async () => {

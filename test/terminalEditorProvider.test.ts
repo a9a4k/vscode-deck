@@ -189,6 +189,94 @@ function clipboardLifecycle() {
 }
 
 describe('TerminalEditorProvider', () => {
+  it('shows and hides the Codex no-daemon banner in its Terminal webview', () => {
+    const { terminalPanel, ready } = focusLifecycle();
+    const { provider, document } = providerDocument();
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    terminalPanel.webview.postMessage.mockClear();
+
+    provider.showCodexNoDaemonBanner('wt-_work_alpha-main__term-1');
+    provider.hideCodexNoDaemonBanner('wt-_work_alpha-main__term-1');
+
+    expect(terminalPanel.webview.postMessage.mock.calls).toEqual([
+      [{ type: 'showCodexNoDaemonBanner' }],
+      [{ type: 'hideCodexNoDaemonBanner' }],
+    ]);
+  });
+
+  it('restores a visible Codex no-daemon banner when the webview becomes ready', () => {
+    const { terminalPanel, ready } = focusLifecycle();
+    const { provider, document } = providerDocument();
+    provider.showCodexNoDaemonBanner('wt-_work_alpha-main__term-1');
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    terminalPanel.webview.postMessage.mockClear();
+
+    ready();
+
+    expect(terminalPanel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'showCodexNoDaemonBanner',
+    });
+  });
+
+  it('routes Codex no-daemon banner actions to the extension', async () => {
+    let receiveMessage: ((message: { type: string }) => Promise<void>) | undefined;
+    const terminalPanel = panel();
+    terminalPanel.webview.onDidReceiveMessage.mockImplementation((handler: typeof receiveMessage) => {
+      receiveMessage = handler;
+      return { dispose: vi.fn() };
+    });
+    const dismiss = vi.fn();
+    const disable = vi.fn(async () => undefined);
+    const learnMore = vi.fn(async () => undefined);
+    const provider = new TerminalEditorProvider(
+      { fsPath: '/extension' } as never,
+      '/extension/resources/deck.conf',
+      undefined,
+      () => bridge(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      '/tmp/deck-drops',
+      undefined,
+      { dismiss, disable, learnMore },
+    );
+    const document = provider.openCustomDocument({
+      scheme: 'deck-terminal',
+      path: '/work/alpha-main/term-1',
+    } as never);
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    if (!receiveMessage) throw new Error('Webview message handler is not registered');
+
+    await receiveMessage({ type: 'dismissCodexNoDaemonBanner' });
+    await receiveMessage({ type: 'disableCodexNoDaemonBanner' });
+    await receiveMessage({ type: 'learnMoreCodexNoDaemonBanner' });
+
+    expect(dismiss).toHaveBeenCalledWith('wt-_work_alpha-main__term-1');
+    expect(disable).toHaveBeenCalledOnce();
+    expect(learnMore).toHaveBeenCalledOnce();
+  });
+
+  it('renders a theme-aware Codex warning that reserves space above the Terminal', () => {
+    const terminalPanel = panel();
+    const { provider, document } = providerDocument();
+
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    const html = terminalPanel.webview.html;
+    expect(html).toContain('id="codex-no-daemon-banner"');
+    expect(html).toContain('Start Codex with <code>--no-daemon</code>');
+    expect(html).toContain('Deck can show its status and resume it after a restart.');
+    expect(html).toContain('Learn More');
+    expect(html).toContain("type: 'disableCodexNoDaemonBanner'");
+    expect(html).toContain("type: 'dismissCodexNoDaemonBanner'");
+    expect(html).toContain('var(--vscode-inputValidation-warningBackground)');
+    expect(html).toContain('body {');
+    expect(html).toContain('flex-direction: column;');
+  });
+
   it('writes decoded OSC 52 text to the system clipboard', async () => {
     clipboardWriteText.mockClear();
     const clipboardWrite = clipboardLifecycle();

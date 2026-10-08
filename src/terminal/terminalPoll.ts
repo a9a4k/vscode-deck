@@ -2,6 +2,8 @@ import { agentNameFromWindowName, resolveTerminalLabel } from './terminalLabelRe
 import type { TmuxSession } from './tmuxCli';
 import type { AgentName } from '../agent/agentTypes';
 import type { Disposable } from '../agent/agentStatusStore';
+import type { CodexPaneIdentity } from './codexPaneIdentity';
+import type { CodexPaneObservation } from './codexNoDaemonBanner';
 
 export interface TerminalPollScheduler {
   setTimeout(callback: () => void, ms: number): unknown;
@@ -17,6 +19,11 @@ interface TerminalPollOptions {
   intervalMs?: number;
   onError?: (error: unknown) => void;
   resolveAgentName?: (sessionName: string) => Promise<AgentName | undefined>;
+  resolveCodexPaneIdentity?: (
+    sessionName: string,
+    windowName: string,
+  ) => Promise<CodexPaneIdentity | undefined>;
+  observeCodexPanes?: (observations: readonly CodexPaneObservation[]) => void;
 }
 
 type LabelChangeListener = (changedSessions: readonly TmuxSession[]) => void;
@@ -27,6 +34,10 @@ export class TerminalPoll implements Disposable {
   private readonly onError: (error: unknown) => void;
   private readonly labelListeners = new Set<LabelChangeListener>();
   private readonly labels = new Map<string, string>();
+  private readonly codexIdentities = new Map<
+    string,
+    { windowName: string; identity?: CodexPaneIdentity }
+  >();
   private focusSubscription: Disposable | undefined;
   private timer: unknown;
   private running = false;
@@ -83,6 +94,7 @@ export class TerminalPoll implements Disposable {
     this.focusSubscription?.dispose();
     this.focusSubscription = undefined;
     this.labelListeners.clear();
+    this.codexIdentities.clear();
   }
 
   private runAndSchedule(): void {
@@ -110,19 +122,35 @@ export class TerminalPoll implements Disposable {
 
   private async runOnce(): Promise<void> {
     const sessions = await this.options.listSessions();
-    const agentIdentities = await this.resolveAgentNames(sessions);
+    const [agentIdentities, codexIdentities] = await Promise.all([
+      this.resolveAgentNames(sessions),
+      this.resolveCodexPaneIdentities(sessions),
+    ]);
+    const resolvedIdentities = agentIdentities.map((identity, index) => {
+      const codexIdentity = codexIdentities[index];
+      return {
+        agentName: identity.explicit
+          ? identity.agentName
+          : codexIdentity?.agentName ?? identity.agentName,
+        explicit: identity.explicit || codexIdentity !== undefined,
+      };
+    });
     const observedSessions = sessions.map((session, index) => {
-      const identity = agentIdentities[index];
+      const identity = resolvedIdentities[index];
       return identity.explicit && identity.agentName !== undefined
         ? { ...session, agentName: identity.agentName }
         : session;
     });
+    this.options.observeCodexPanes?.(sessions.map((session, index) => ({
+      sessionName: session.sessionName,
+      identity: codexIdentities[index],
+    })));
     await this.options.reconcileObservation(observedSessions);
     const nextLabels = new Map<string, string>();
     const changedSessions: TmuxSession[] = [];
 
     for (const [index, session] of observedSessions.entries()) {
-      const { agentName } = agentIdentities[index];
+      const { agentName } = resolvedIdentities[index];
       const label = resolveTerminalLabel(session.windowName, session.paneTitle, agentName);
       nextLabels.set(session.sessionName, label);
       const previousLabel = this.labels.get(session.sessionName);
@@ -156,6 +184,26 @@ export class TerminalPoll implements Disposable {
         return { agentName: explicitAgentName, explicit: true };
       }
       return { agentName: agentNameFromWindowName(session.windowName), explicit: false };
+    }));
+  }
+
+  private async resolveCodexPaneIdentities(
+    sessions: readonly TmuxSession[],
+  ): Promise<Array<CodexPaneIdentity | undefined>> {
+    const presentSessions = new Set(sessions.map(({ sessionName }) => sessionName));
+    for (const sessionName of this.codexIdentities.keys()) {
+      if (!presentSessions.has(sessionName)) this.codexIdentities.delete(sessionName);
+    }
+
+    return Promise.all(sessions.map(async (session) => {
+      const cached = this.codexIdentities.get(session.sessionName);
+      if (cached?.windowName === session.windowName) return cached.identity;
+      const identity = await this.options.resolveCodexPaneIdentity?.(
+        session.sessionName,
+        session.windowName,
+      );
+      this.codexIdentities.set(session.sessionName, { windowName: session.windowName, identity });
+      return identity;
     }));
   }
 

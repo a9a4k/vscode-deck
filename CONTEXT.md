@@ -87,7 +87,7 @@ The capture of every Terminal on the DeckSocket — each one's working directory
 _Avoid_: backup, session dump
 
 **AgentSession**:
-The resumable AI-agent conversation (Claude Code or Codex) a Terminal was running, identified by the agent's own session id. Deck only *observes* it — the user starts the agent — and captures it in the TerminalSnapshot so that on restore the Terminal relaunches the agent (`claude --resume` / `codex --no-daemon resume`) instead of returning to a bare shell. Discovered via a Deck hook installed in the agent's config, keyed to the Terminal by an injected `DECK_SESSION` env var. Codex must run unshared (`--no-daemon`): a shared app-server runs hooks outside the Terminal and cannot identify which Terminal owns an event, so Deck refuses to attribute its status or AgentSession.
+The resumable AI-agent conversation (Claude Code or Codex) a Terminal was running, identified by the agent's own session id. Deck only *observes* it — the user starts the agent — and captures it in the TerminalSnapshot so that on restore the Terminal relaunches the agent (`claude --resume` / `codex --no-daemon resume`) instead of returning to a bare shell. Discovered via a Deck hook installed in the agent's config, keyed to the Terminal by an injected `DECK_SESSION` env var. Codex must run unshared (`--no-daemon`): a shared app-server runs hooks outside the Terminal and cannot identify which Terminal owns an event, so Deck refuses to attribute its status or AgentSession and warns in that Terminal's tab instead.
 _Avoid_: agent chat session (implies a separate chat surface; this is an attribute of a Terminal), conversation, thread, agent process
 
 **AgentStatus**:

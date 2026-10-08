@@ -1,8 +1,8 @@
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { listWorktrees, type Worktree } from './git/worktrees';
+import { listWorktrees } from './git/worktrees';
 import { RepositoryTreeProvider, type RepositoryTreeNode } from './tree/repositoryTree';
 import { ActiveWorktreeStore } from './switch/activeWorktreeStore';
 import { DetachedOpener } from './switch/detachedOpener';
@@ -63,12 +63,10 @@ import { AgentPaneProbe } from './agent/agentPaneProbe';
 import { DeckDecorationProvider } from './tree/deckDecorationProvider';
 import { AgentStatusNotifier } from './agent/agentStatusNotifier';
 import { AgentStatusStore } from './agent/agentStatusStore';
-import { SharedCodexServerMarkerFile } from './agent/sharedCodexServerMarkerFile';
-import {
-  SharedCodexServerNotice,
-  type SharedCodexWorktree,
-} from './agent/sharedCodexServerNotice';
 import { TerminalPoll } from './terminal/terminalPoll';
+import { resolveCodexPaneIdentity } from './terminal/codexPaneIdentity';
+import { CodexSharedServerProbe } from './terminal/codexSharedServerProbe';
+import { CodexNoDaemonBanner } from './terminal/codexNoDaemonBanner';
 import { TerminalModel } from './terminal/terminalModel';
 import { TerminalReconciler, type TerminalLocation } from './terminal/terminalReconciler';
 import type { AgentName } from './agent/agentTypes';
@@ -382,6 +380,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     resolveCommonDir: (repositoryPath) =>
       resolveCommonDirSafe(repositoryCommonDirCache, repositoryPath),
   });
+  let codexNoDaemonBanner: CodexNoDaemonBanner;
   const terminalEditorProvider = new TerminalEditorProvider(
     context.extensionUri,
     tmuxConfigPath,
@@ -395,7 +394,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ensureSnapshotRestored,
     resolveAgentName,
     join(tmpdir(), 'deck-drops'),
+    undefined,
+    {
+      dismiss: (sessionName) => codexNoDaemonBanner.dismiss(sessionName),
+      disable: () => codexNoDaemonBanner.disable(),
+      learnMore: async () => {
+        await vscode.env.openExternal(vscode.Uri.parse(
+          'https://github.com/a9a4k/vscode-deck#codex-and-shared-servers',
+        ));
+      },
+    },
   );
+  codexNoDaemonBanner = new CodexNoDaemonBanner({
+    probe: new CodexSharedServerProbe(),
+    settings: {
+      isEnabled: () => vscode.workspace.getConfiguration('deck').get<boolean>(
+        'warnCodexWithoutNoDaemon',
+        true,
+      ),
+      disable: async () => {
+        await vscode.workspace.getConfiguration('deck').update(
+          'warnCodexWithoutNoDaemon',
+          false,
+          vscode.ConfigurationTarget.Global,
+        );
+      },
+    },
+    show: (sessionName) => terminalEditorProvider.showCodexNoDaemonBanner(sessionName),
+    hide: (sessionName) => terminalEditorProvider.hideCodexNoDaemonBanner(sessionName),
+  });
   const focusTerminal = (sessionName: string) =>
     terminalEditorProvider.focusTerminal(sessionName);
   const addTerminal = new AddTerminalCommand(
@@ -435,6 +462,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.window.onDidChangeWindowState((state) => listener(state.focused)),
         onError: (error) => console.warn('Deck: terminal poll failed', error),
         resolveAgentName,
+        resolveCodexPaneIdentity: (sessionName, windowName) => resolveCodexPaneIdentity(
+          windowName,
+          () => tmux.paneForegroundCommandLine(sessionName),
+        ),
+        observeCodexPanes: (observations) => codexNoDaemonBanner.observe(observations),
       })
     : undefined;
   const terminalLabelWatch = terminalPoll?.onDidChangeLabels((changedSessions) => {
@@ -593,27 +625,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       terminalModel.find(sessionName) ?? await tmux.terminalSession(sessionName),
     describeSession: (sessionName) => tree.describeSession(sessionName),
   }).start();
-  const sharedCodexServerNoticeWatch = new SharedCodexServerNotice({
-    marker: new SharedCodexServerMarkerFile(join(deckDir, 'codex-shared-server.json')),
-    worktrees: {
-      list: () => sharedCodexWorktrees(
-        repositoryRegistry,
-        repositoryCommonDirCache,
-        worktreeListCache,
-        pendingWorktreeRemovals,
-      ),
-    },
-    notifications: vscode.window,
-    openLauncherSettings: () => vscode.commands.executeCommand(
-      'workbench.action.openSettings',
-      '@ext:a9a4k.deck launcher',
-    ),
-    learnMore: async () => {
-      await vscode.env.openExternal(vscode.Uri.parse(
-        'https://github.com/a9a4k/vscode-deck#codex-and-shared-servers',
-      ));
-    },
-  }).start();
   const addRepository = new AddRepositoryCommand(
     new VsCodeRepositoryFolderPicker(),
     repositoryRegistry,
@@ -638,13 +649,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ...(agentExitSweep ? [agentExitSweep] : []),
     ...(terminalPoll ? [terminalPoll] : []),
     ...(terminalLabelWatch ? [terminalLabelWatch] : []),
+    codexNoDaemonBanner,
     deckDecorationProvider,
     deckDecorationWatch,
     disconnectedTabBadgeWatch,
     agentStatusCollapseWatch,
     agentStatusExpandWatch,
     agentStatusNotifierWatch,
-    sharedCodexServerNoticeWatch,
     externalGitWatch,
     vscode.window.registerCustomEditorProvider(terminalEditorViewType, terminalEditorProvider, {
       webviewOptions: {
@@ -708,11 +719,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => tree.refreshWorkspaceFolders()),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
-      if (!event.affectsConfiguration('deck.tmux')) return;
-      const tmuxOptions = deckTmuxOptionsFromSettings();
-      showDeckTmuxOptionWarnings(tmuxOptions);
-      await writeDeckConf(context, tmuxOptions);
-      await applyDeckTmuxOptionsIfServerRunning(tmux, tmuxOptions, tmuxAvailability.available);
+      if (event.affectsConfiguration('deck.warnCodexWithoutNoDaemon')) terminalPoll?.wake();
+      if (event.affectsConfiguration('deck.tmux')) {
+        const tmuxOptions = deckTmuxOptionsFromSettings();
+        showDeckTmuxOptionWarnings(tmuxOptions);
+        await writeDeckConf(context, tmuxOptions);
+        await applyDeckTmuxOptionsIfServerRunning(tmux, tmuxOptions, tmuxAvailability.available);
+      }
     }),
     vscode.window.tabGroups.onDidChangeTabs(async () => {
       await markActiveTerminalRead(agentStatuses);
@@ -889,53 +902,13 @@ interface RepositoryRegistryReader {
   list(): readonly string[];
 }
 
-interface RegisteredWorktree {
-  repositoryPath: string;
-  worktree: Worktree;
-}
-
 function terminalLocations(
   repositoryRegistry: RepositoryRegistryReader,
   repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
   worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
   pendingWorktreeRemovals: ReadonlySet<string>,
 ): TerminalLocation[] {
-  return registeredWorktrees(
-    repositoryRegistry,
-    repositoryCommonDirCache,
-    worktreeListCache,
-    pendingWorktreeRemovals,
-  ).map(({ repositoryPath, worktree }) => ({
-    repositoryPath,
-    worktreePath: worktree.path,
-  }));
-}
-
-function sharedCodexWorktrees(
-  repositoryRegistry: RepositoryRegistryReader,
-  repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
-  worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
-  pendingWorktreeRemovals: ReadonlySet<string>,
-): SharedCodexWorktree[] {
-  return registeredWorktrees(
-    repositoryRegistry,
-    repositoryCommonDirCache,
-    worktreeListCache,
-    pendingWorktreeRemovals,
-  ).map(({ repositoryPath, worktree }) => ({
-    path: worktree.path,
-    repo: basename(repositoryPath),
-    branch: worktree.branch ?? basename(worktree.path),
-  }));
-}
-
-function registeredWorktrees(
-  repositoryRegistry: RepositoryRegistryReader,
-  repositoryCommonDirCache: Pick<RepositoryCommonDirCache, 'get'>,
-  worktreeListCache: Pick<WorktreeListCacheStore, 'get'>,
-  pendingWorktreeRemovals: ReadonlySet<string>,
-): RegisteredWorktree[] {
-  const registered: RegisteredWorktree[] = [];
+  const locations: TerminalLocation[] = [];
   for (const repositoryPath of repositoryRegistry.list()) {
     const commonDir = repositoryCommonDirCache.get(repositoryPath);
     if (commonDir === undefined) continue;
@@ -943,10 +916,10 @@ function registeredWorktrees(
     if (worktrees === undefined) continue;
     for (const worktree of worktrees) {
       if (worktree.bare || pendingWorktreeRemovals.has(worktree.path)) continue;
-      registered.push({ repositoryPath, worktree });
+      locations.push({ repositoryPath, worktreePath: worktree.path });
     }
   }
-  return registered;
+  return locations;
 }
 
 async function registeredCommonDirs(

@@ -201,6 +201,31 @@ export class TmuxCli {
     return Number.isInteger(pid) && pid > 0 ? pid : undefined;
   }
 
+  async paneForegroundCommandLine(session: string): Promise<string | undefined> {
+    const panePid = await this.panePid(session);
+    if (panePid === undefined) return undefined;
+
+    const processGroupResult = await this.runner.run('ps', [
+      '-o',
+      'tpgid=',
+      '-p',
+      String(panePid),
+    ]);
+    if (processGroupResult.code !== 0) return undefined;
+    const processGroup = Number(processGroupResult.stdout.trim());
+    if (!Number.isInteger(processGroup) || processGroup <= 0) return undefined;
+
+    const commandResult = await this.runner.run('ps', [
+      '-ww',
+      '-o',
+      'command=',
+      '-p',
+      String(processGroup),
+    ]);
+    if (commandResult.code !== 0) return undefined;
+    return commandResult.stdout.trim() || undefined;
+  }
+
   async serverStartTime(): Promise<string | undefined> {
     const pidResult = await this.runner.run('tmux', [
       ...this.baseArgs(),

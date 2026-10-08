@@ -72,6 +72,18 @@ interface ClearHistoryMessage {
   type: 'clearHistory';
 }
 
+interface DismissCodexNoDaemonBannerMessage {
+  type: 'dismissCodexNoDaemonBanner';
+}
+
+interface DisableCodexNoDaemonBannerMessage {
+  type: 'disableCodexNoDaemonBanner';
+}
+
+interface LearnMoreCodexNoDaemonBannerMessage {
+  type: 'learnMoreCodexNoDaemonBanner';
+}
+
 interface TerminalConfig {
   fontFamily: string;
   fontSize: number;
@@ -87,7 +99,10 @@ type TerminalWebviewMessage =
   | ResizeMessage
   | ExitMessage
   | FocusedMessage
-  | ClearHistoryMessage;
+  | ClearHistoryMessage
+  | DismissCodexNoDaemonBannerMessage
+  | DisableCodexNoDaemonBannerMessage
+  | LearnMoreCodexNoDaemonBannerMessage;
 
 type TerminalTabIconPath = vscode.IconPath;
 
@@ -106,10 +121,17 @@ export type TerminalTransportFactory = () => TerminalTransportLike;
 export type TerminalEditorDisposeHandler = (sessionName: string) => Promise<void> | void;
 export type TerminalEditorTitleChangeHandler = (sessionName: string) => Promise<void> | void;
 
+export interface CodexNoDaemonBannerHandlers {
+  dismiss(sessionName: string): Promise<void> | void;
+  disable(): Promise<void> | void;
+  learnMore(): Promise<void> | void;
+}
+
 export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvider<TerminalDocument> {
   private readonly panels = new Map<string, vscode.WebviewPanel>();
   private readonly readyPanels = new Set<vscode.WebviewPanel>();
   private readonly pendingTerminalFocus = new Set<string>();
+  private readonly codexNoDaemonBanners = new Set<string>();
   // Sessions whose decoration we skipped while hidden — re-applied when shown.
   private readonly staleDecorations = new Set<string>();
   private readonly configChangeSubscription: vscode.Disposable;
@@ -135,6 +157,11 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       undefined,
     private readonly imageDropDirectory: string = join(tmpdir(), 'deck-drops'),
     private readonly imageDropDependencies?: ImageDropDependencies,
+    private readonly codexNoDaemonBannerHandlers: CodexNoDaemonBannerHandlers = {
+      dismiss: () => undefined,
+      disable: () => undefined,
+      learnMore: () => undefined,
+    },
   ) {
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
       const fontKeys = [
@@ -187,6 +214,22 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       return;
     }
     void panel.webview.postMessage({ type: 'focus' });
+  }
+
+  showCodexNoDaemonBanner(sessionName: string): void {
+    this.codexNoDaemonBanners.add(sessionName);
+    const panel = this.panels.get(sessionName);
+    if (panel && this.readyPanels.has(panel)) {
+      void panel.webview.postMessage({ type: 'showCodexNoDaemonBanner' });
+    }
+  }
+
+  hideCodexNoDaemonBanner(sessionName: string): void {
+    this.codexNoDaemonBanners.delete(sessionName);
+    const panel = this.panels.get(sessionName);
+    if (panel && this.readyPanels.has(panel)) {
+      void panel.webview.postMessage({ type: 'hideCodexNoDaemonBanner' });
+    }
   }
 
   refreshTitles(changedSessionNames: readonly string[]): void {
@@ -258,6 +301,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
           this.readyPanels.add(panel);
+          if (this.codexNoDaemonBanners.has(document.sessionName)) {
+            void panel.webview.postMessage({ type: 'showCodexNoDaemonBanner' });
+          }
           const focusRequested = this.pendingTerminalFocus.delete(document.sessionName);
           if (focusRequested || panel.active) {
             void panel.webview.postMessage({ type: 'focus' });
@@ -306,6 +352,15 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (message.type === 'clearHistory') transport.clearHistory();
         if (message.type === 'focused') this.activePanel = panel;
         if (message.type === 'exit') panel.dispose();
+        if (message.type === 'dismissCodexNoDaemonBanner') {
+          await this.codexNoDaemonBannerHandlers.dismiss(document.sessionName);
+        }
+        if (message.type === 'disableCodexNoDaemonBanner') {
+          await this.codexNoDaemonBannerHandlers.disable();
+        }
+        if (message.type === 'learnMoreCodexNoDaemonBanner') {
+          await this.codexNoDaemonBannerHandlers.learnMore();
+        }
       }),
     );
 
@@ -396,7 +451,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <link rel="stylesheet" href="${xtermCss}">
   <style>
-    html, body, #terminal {
+    html, body {
       box-sizing: border-box;
       width: 100%;
       height: 100%;
@@ -405,12 +460,60 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       background: var(--vscode-editor-background);
     }
     body {
+      display: flex;
+      flex-direction: column;
       color: var(--vscode-editor-foreground);
       font-family: var(--vscode-font-family);
       /* Override VS Code's injected 0 20px padding. The right side already
          carries xterm's ~14px scrollbar-lane reserve, so 6px there + 14px lane
          visually balances the 20px on the left. */
       padding: 0 6px 0 20px;
+    }
+    #terminal {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+      background: var(--vscode-editor-background);
+    }
+    #codex-no-daemon-banner {
+      display: none;
+      flex: none;
+      align-items: center;
+      gap: 8px;
+      margin: 0 -6px 0 -20px;
+      padding: 6px 8px 6px 20px;
+      color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+      background: var(--vscode-inputValidation-warningBackground);
+      border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
+      font-family: var(--vscode-font-family);
+      font-size: var(--vscode-font-size);
+    }
+    #codex-no-daemon-banner.visible {
+      display: flex;
+    }
+    #codex-no-daemon-banner .message {
+      flex: 1;
+      min-width: 0;
+    }
+    #codex-no-daemon-banner button {
+      flex: none;
+      border: 0;
+      padding: 2px 4px;
+      color: var(--vscode-textLink-foreground);
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+    }
+    #codex-no-daemon-banner button:hover {
+      color: var(--vscode-textLink-activeForeground);
+      text-decoration: underline;
+    }
+    #codex-no-daemon-banner .dismiss {
+      color: inherit;
+      font-size: 16px;
+      line-height: 1;
     }
     #file-drop-overlay {
       position: fixed;
@@ -460,6 +563,13 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
   </style>
 </head>
 <body>
+  <div id="codex-no-daemon-banner" role="status">
+    <span aria-hidden="true">⚠</span>
+    <span class="message">Start Codex with <code>--no-daemon</code> so Deck can show its status and resume it after a restart.</span>
+    <button id="codex-no-daemon-learn-more" type="button">Learn More</button>
+    <button id="codex-no-daemon-disable" type="button">Don't Show Again</button>
+    <button id="codex-no-daemon-dismiss" class="dismiss" type="button" aria-label="Dismiss" title="Dismiss">×</button>
+  </div>
   <div id="terminal"></div>
   <div id="file-drop-overlay">Drop files into Terminal</div>
   <div id="find-widget">
@@ -480,6 +590,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     (async () => {
       const vscode = acquireVsCodeApi();
       const terminalElement = document.getElementById('terminal');
+      const codexNoDaemonBanner = document.getElementById('codex-no-daemon-banner');
       const initialConfig = ${JSON.stringify(initialConfig).replace(/<\//g, "<\\/")};
 
       // Theme: borrow editor-namespace CSS vars (terminal.* vars aren't
@@ -585,6 +696,19 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       function debounceResize() {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(postResize, 50);
+      }
+
+      function showCodexNoDaemonBanner() {
+        codexNoDaemonBanner.classList.add('visible');
+        requestAnimationFrame(postResize);
+      }
+
+      function hideCodexNoDaemonBanner() {
+        codexNoDaemonBanner.classList.remove('visible');
+        requestAnimationFrame(() => {
+          postResize();
+          terminal.focus();
+        });
       }
 
       terminal.loadAddon(fitAddon);
@@ -829,6 +953,15 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       document.getElementById('find-prev').addEventListener('click', findPrevious);
       document.getElementById('find-next').addEventListener('click', findNext);
       document.getElementById('find-close').addEventListener('click', closeFindWidget);
+      document.getElementById('codex-no-daemon-learn-more').addEventListener('click', () => {
+        vscode.postMessage({ type: 'learnMoreCodexNoDaemonBanner' });
+      });
+      document.getElementById('codex-no-daemon-disable').addEventListener('click', () => {
+        vscode.postMessage({ type: 'disableCodexNoDaemonBanner' });
+      });
+      document.getElementById('codex-no-daemon-dismiss').addEventListener('click', () => {
+        vscode.postMessage({ type: 'dismissCodexNoDaemonBanner' });
+      });
 
       window.addEventListener('message', async (event) => {
         const message = event.data;
@@ -844,6 +977,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (message.type === 'find') openFindWidget();
         if (message.type === 'menu') runMenuAction(message.action);
         if (message.type === 'focus') terminal.focus();
+        if (message.type === 'showCodexNoDaemonBanner') showCodexNoDaemonBanner();
+        if (message.type === 'hideCodexNoDaemonBanner') hideCodexNoDaemonBanner();
         if (message.type === 'exit') {
           terminal.writeln('\\r\\n[process exited ' + message.code + ']');
           vscode.postMessage({ type: 'exit' });

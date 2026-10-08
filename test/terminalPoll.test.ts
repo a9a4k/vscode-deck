@@ -3,6 +3,43 @@ import { TerminalPoll, type TerminalPollScheduler } from '../src/terminal/termin
 import type { TmuxSession } from '../src/terminal/tmuxCli';
 
 describe('TerminalPoll', () => {
+  it('resolves an npm Codex pane to Codex identity and banner observation', async () => {
+    const scheduler = new ManualScheduler();
+    const reconcile = vi.fn(async () => undefined);
+    const observeCodexPanes = vi.fn();
+    const resolveCodexPaneIdentity = vi.fn(async () => ({
+      agentName: 'codex' as const,
+      hasNoDaemon: false,
+    }));
+    const poll = new TerminalPoll({
+      listSessions: vi.fn(async () => [
+        { sessionName: 'term-1', windowName: 'node', paneTitle: '⠋ npm Codex' },
+      ]),
+      reconcileObservation: reconcile,
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler,
+      resolveCodexPaneIdentity,
+      observeCodexPanes,
+    });
+
+    poll.start();
+    await flush();
+
+    expect(reconcile).toHaveBeenCalledWith([
+      { sessionName: 'term-1', windowName: 'node', paneTitle: '⠋ npm Codex', agentName: 'codex' },
+    ]);
+    expect(observeCodexPanes).toHaveBeenCalledWith([{
+      sessionName: 'term-1',
+      identity: { agentName: 'codex', hasNoDaemon: false },
+    }]);
+
+    await scheduler.runNext();
+    await flush();
+
+    expect(resolveCodexPaneIdentity).toHaveBeenCalledOnce();
+  });
+
   it('hands each observed Terminal set to reconciliation with resolved agent identities', async () => {
     const reconcile = vi.fn(async () => undefined);
     const poll = new TerminalPoll({

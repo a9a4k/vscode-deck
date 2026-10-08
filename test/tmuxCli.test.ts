@@ -470,6 +470,23 @@ describe('TmuxCli', () => {
     await expect(garbage.panePid('term-1')).resolves.toBeUndefined();
   });
 
+  it('reads the pane foreground process group command line', async () => {
+    const runner = new MockRunner([
+      { code: 0, stdout: '1234\n', stderr: '' },
+      { code: 0, stdout: '5678\n', stderr: '' },
+      { code: 0, stdout: '/usr/bin/node /opt/codex/bin/codex.js\n', stderr: '' },
+    ]);
+    const tmux = new TmuxCli('/ext/resources/deck.conf', runner);
+
+    await expect(tmux.paneForegroundCommandLine('wt-_work_repo__term-1')).resolves.toBe(
+      '/usr/bin/node /opt/codex/bin/codex.js',
+    );
+    expect(runner.calls.slice(1)).toEqual([
+      { command: 'ps', args: ['-o', 'tpgid=', '-p', '1234'], cwd: undefined },
+      { command: 'ps', args: ['-ww', '-o', 'command=', '-p', '5678'], cwd: undefined },
+    ]);
+  });
+
   it('reads the tmux server start time from the server pid', async () => {
     const runner = new MockRunner([
       { code: 0, stdout: '1234\n', stderr: '' },

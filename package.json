@@ -89,6 +89,11 @@
           "default": true,
           "description": "Show a notification when an agent completes a turn. Suppressed when you are already viewing that Terminal's tab."
         },
+        "deck.warnCodexWithoutNoDaemon": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a banner in a Terminal whose Codex was started without --no-daemon while Codex's shared server is running."
+        },
         "deck.showReleaseNotes": {
           "type": "boolean",
           "default": true,
