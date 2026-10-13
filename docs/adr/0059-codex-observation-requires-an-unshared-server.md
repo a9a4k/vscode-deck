@@ -51,18 +51,34 @@ Terminal's `DECK_SESSION`.
    live shared server is evidence.
 
 5. A Terminal whose Codex lacks `--no-daemon` while the shared server is live
-   shows a warning banner in its own tab. The banner reserves space above the
-   Terminal, disappears when that Codex exits, and offers Learn More, dismissal
-   for the current Codex run, and Don't Show Again. The last action disables the
-   global `deck.warnCodexWithoutNoDaemon` setting. The same identity gives an
-   npm-installed Codex the Codex label and icon instead of Node's.
+   shows a notice banner in its own tab: "Deck can't see this Codex yet." The
+   banner reserves space above the Terminal, disappears when that Codex exits,
+   and offers Learn More, dismissal for the current Codex run, and Don't Show
+   Again. The last action disables the global `deck.warnCodexWithoutNoDaemon`
+   setting. It is styled with VS Code's `banner.background` and
+   `banner.foreground` colours, with no icon or border; links and the code chip
+   inherit the banner foreground so they stay readable in every theme. The same
+   identity gives an npm-installed Codex the Codex label and icon instead of
+   Node's.
 
-6. Agent liveness treats a recorded Codex app-server pid without a controlling
+6. The banner is hidden once Deck observes that Codex. A Codex counts as
+   observed when its Terminal has an AgentSession sidecar that passes the
+   liveness check (pid alive, start time matching) and whose pid is in the
+   Terminal's foreground process group. The group test also covers an npm
+   install, where the sidecar names the native child of the foreground `node`.
+   This matters because the command line alone cannot tell a plain `codex`
+   from one that Codex itself switched to an in-process server through its
+   "Run without daemon this time" choice. Codex fires no hook at launch:
+   `SessionStart` is deferred into the first turn. The banner therefore shows
+   from launch until the first prompt, then hides. The wording says Deck can't
+   see this Codex "yet" so it stays true during that window.
+
+7. Agent liveness treats a recorded Codex app-server pid without a controlling
    tty as dead even when its pid and start time match. The existing
    AgentExitSweep then remains the sole remover of the misattributed sidecar and
    status, preserving ADR-0033's ownership and server-lifetime gate.
 
-7. Launcher setting descriptions and the README make `--no-daemon` and its
+8. Launcher setting descriptions and the README make `--no-daemon` and its
    tradeoff visible. Shared-server features such as `codex agents`, `codex
    queue`, and remote control are unavailable for unshared sessions.
 
@@ -72,6 +88,10 @@ Terminal's `DECK_SESSION`.
   Terminals can share a Worktree and the hook carries no Terminal identity.
 - Rewrite launchers, add a PATH shim, or change Codex's global config — rejected.
   Those hide the operational choice and mutate user or repository-owned config.
+- Hold the banner until the first prompt so it is never wrong — rejected. A
+  genuinely shared Codex would then show nothing until its first prompt.
+- Detect an in-process server from the Codex process, for example its open
+  sockets — rejected. No reliable signal; the sockets carry no readable path.
 - Raise a toast from a hook-written machine-global marker — rejected. The hook
   cannot name the affected Terminal, fires for Codex outside Deck, and may not
   run at all on a shared server.
@@ -80,7 +100,8 @@ Terminal's `DECK_SESSION`.
 
 - Unshared Codex sessions keep correct status, notifications, and reboot resume.
 - Shared Codex sessions deliberately have no Deck status or resume sidecar and
-  show an actionable warning only in their own Terminal tabs.
+  show an actionable notice only in their own Terminal tabs, until Deck can
+  observe them.
 - Existing wrong sidecars and statuses are removed by the next exit sweep.
 - Codex versions that predate `--no-daemon` show their own resume error and leave
   the user at the pane's shell; Deck does not probe versions or rewrite config.
@@ -97,4 +118,5 @@ Terminal's `DECK_SESSION`.
 
 ## Status
 
-Accepted by PRD #229; decisions 1–3, 6, and 7 originated in PRD #228.
+Accepted by PRD #229; decisions 1–3, 7, and 8 originated in PRD #228. Decision 6 and
+the banner styling in decision 5 come from the follow-up PRD #230.
