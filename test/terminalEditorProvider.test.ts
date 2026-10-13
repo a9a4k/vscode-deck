@@ -259,7 +259,7 @@ describe('TerminalEditorProvider', () => {
     expect(learnMore).toHaveBeenCalledOnce();
   });
 
-  it('renders a theme-aware Codex warning that reserves space above the Terminal', () => {
+  it('renders the Codex observation notice above the Terminal', () => {
     const terminalPanel = panel();
     const { provider, document } = providerDocument();
 
@@ -267,12 +267,13 @@ describe('TerminalEditorProvider', () => {
 
     const html = terminalPanel.webview.html;
     expect(html).toContain('id="codex-no-daemon-banner"');
-    expect(html).toContain('Start Codex with <code>--no-daemon</code>');
-    expect(html).toContain('Deck can show its status and resume it after a restart.');
+    expect(html).toContain(
+      'Deck can\'t see this Codex yet. Start it with <code>--no-daemon</code> for status and resume.',
+    );
     expect(html).toContain('Learn More');
     expect(html).toContain("type: 'disableCodexNoDaemonBanner'");
     expect(html).toContain("type: 'dismissCodexNoDaemonBanner'");
-    expect(html).toContain('var(--vscode-inputValidation-warningBackground)');
+    expect(html).not.toContain('<span aria-hidden="true">⚠</span>');
     expect(html).toContain('body {');
     expect(html).toContain('flex-direction: column;');
   });

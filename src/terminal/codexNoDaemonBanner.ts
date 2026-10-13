@@ -12,6 +12,7 @@ export interface CodexPaneObservation {
   sessionName: string;
   identity?: CodexPaneIdentity;
   processId?: number;
+  observedByDeck?: boolean;
 }
 
 interface CodexNoDaemonBannerOptions {
@@ -29,6 +30,7 @@ interface BannerState {
   processId?: number;
   probeIndex: number;
   dismissed?: boolean;
+  observedByDeck?: boolean;
   timer?: unknown;
   visible?: boolean;
 }
@@ -63,7 +65,15 @@ export class CodexNoDaemonBanner {
 
     for (const observation of observations) {
       if (!observation.identity || observation.identity.hasNoDaemon) continue;
-      if (this.statesBySessionName.has(observation.sessionName)) continue;
+      const existing = this.statesBySessionName.get(observation.sessionName);
+      if (observation.observedByDeck) {
+        const state = existing ?? { processId: observation.processId, probeIndex: 0 };
+        this.statesBySessionName.set(observation.sessionName, state);
+        state.observedByDeck = true;
+        this.hideAndCancel(observation.sessionName, state);
+        continue;
+      }
+      if (existing) continue;
       const state = { processId: observation.processId, probeIndex: 0 };
       this.statesBySessionName.set(observation.sessionName, state);
       this.scheduleProbe(observation.sessionName, state);
@@ -74,6 +84,10 @@ export class CodexNoDaemonBanner {
     const state = this.statesBySessionName.get(sessionName);
     if (!state) return;
     state.dismissed = true;
+    this.hideAndCancel(sessionName, state);
+  }
+
+  private hideAndCancel(sessionName: string, state: BannerState): void {
     if (state.timer !== undefined) {
       this.scheduler.clearTimeout(state.timer);
       state.timer = undefined;
@@ -105,7 +119,11 @@ export class CodexNoDaemonBanner {
   private async probeSharedServer(sessionName: string, state: BannerState): Promise<void> {
     const result = await this.options.probe.probe()
       .catch((): CodexSharedServerState => 'unknown');
-    if (this.statesBySessionName.get(sessionName) !== state || state.dismissed) return;
+    if (
+      this.statesBySessionName.get(sessionName) !== state
+      || state.dismissed
+      || state.observedByDeck
+    ) return;
     if (result === 'live') {
       state.visible = true;
       this.options.show(sessionName);

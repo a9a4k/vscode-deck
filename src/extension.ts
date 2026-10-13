@@ -58,7 +58,7 @@ import { deckSocketPath, WedgeRecovery } from './terminal/deckSocketRecovery';
 import { SNAPSHOT_LOCK_FILENAME, RecoveryLock } from './terminal/recoveryLock';
 import { AgentSidecarStore } from './agent/agentSidecarStore';
 import { AgentExitSweep } from './agent/agentExitSweep';
-import { PsProcessProbe } from './agent/agentLivenessProbe';
+import { AgentLivenessProbe, PsProcessProbe } from './agent/agentLivenessProbe';
 import { AgentPaneProbe } from './agent/agentPaneProbe';
 import { DeckDecorationProvider } from './tree/deckDecorationProvider';
 import { AgentStatusNotifier } from './agent/agentStatusNotifier';
@@ -67,6 +67,7 @@ import { TerminalPoll } from './terminal/terminalPoll';
 import { resolveCodexPaneIdentity } from './terminal/codexPaneIdentity';
 import { CodexSharedServerProbe } from './terminal/codexSharedServerProbe';
 import { CodexNoDaemonBanner } from './terminal/codexNoDaemonBanner';
+import { CodexObservationResolver } from './terminal/codexObservationResolver';
 import { TerminalModel } from './terminal/terminalModel';
 import { TerminalReconciler, type TerminalLocation } from './terminal/terminalReconciler';
 import type { AgentName } from './agent/agentTypes';
@@ -423,6 +424,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     show: (sessionName) => terminalEditorProvider.showCodexNoDaemonBanner(sessionName),
     hide: (sessionName) => terminalEditorProvider.hideCodexNoDaemonBanner(sessionName),
   });
+  const codexProcesses = new PsProcessProbe();
+  const codexObservation = new CodexObservationResolver({
+    sidecars: agentSidecars,
+    liveness: new AgentLivenessProbe(codexProcesses),
+    processGroup: (pid) => codexProcesses.processGroup(pid),
+  });
   const focusTerminal = (sessionName: string) =>
     terminalEditorProvider.focusTerminal(sessionName);
   const addTerminal = new AddTerminalCommand(
@@ -467,6 +474,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           paneCommand,
           () => tmux.processCommandLine(processId),
         ),
+        resolveCodexObservation: (sessionName, processId) =>
+          codexObservation.isObserved(sessionName, processId),
         observeCodexPanes: (observations) => codexNoDaemonBanner.observe(observations),
       })
     : undefined;

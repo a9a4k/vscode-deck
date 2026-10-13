@@ -11,6 +11,7 @@ export interface ProcessProbe {
   startTime(pid: number): Promise<string>;
   command(pid: number): Promise<string>;
   hasControllingTerminal(pid: number): Promise<boolean>;
+  processGroup(pid: number): Promise<number | undefined>;
 }
 
 export class AgentLivenessProbe {
@@ -50,6 +51,11 @@ export class PsProcessProbe implements ProcessProbe {
   async hasControllingTerminal(pid: number): Promise<boolean> {
     const tty = await this.ps(pid, 'tty=');
     return tty !== '' && !/^\?+$/.test(tty);
+  }
+
+  async processGroup(pid: number): Promise<number | undefined> {
+    const processGroup = Number(await this.ps(pid, 'pgid='));
+    return Number.isInteger(processGroup) && processGroup > 0 ? processGroup : undefined;
   }
 
   async children(pid: number): Promise<number[]> {

@@ -24,6 +24,10 @@ interface TerminalPollOptions {
     paneCommand: string,
     foregroundProcessId: number,
   ) => Promise<CodexPaneIdentity | undefined>;
+  resolveCodexObservation?: (
+    sessionName: string,
+    foregroundProcessId: number,
+  ) => Promise<boolean>;
   observeCodexPanes?: (observations: readonly CodexPaneObservation[]) => void;
 }
 
@@ -127,6 +131,7 @@ export class TerminalPoll implements Disposable {
       this.resolveAgentNames(sessions),
       this.resolveCodexPaneIdentities(sessions),
     ]);
+    const codexObservations = await this.resolveCodexObservations(sessions, codexIdentities);
     const resolvedIdentities = agentIdentities.map((identity, index) => {
       if (identity.explicit) return identity;
 
@@ -141,10 +146,7 @@ export class TerminalPoll implements Disposable {
         ? { ...session, agentName: identity.agentName }
         : session;
     });
-    this.options.observeCodexPanes?.(sessions.map((session, index) => ({
-      sessionName: session.sessionName,
-      ...codexIdentities[index],
-    })));
+    this.options.observeCodexPanes?.(codexObservations);
     await this.options.reconcileObservation(observedSessions);
     const nextLabels = new Map<string, string>();
     const changedSessions: TmuxSession[] = [];
@@ -217,6 +219,31 @@ export class TerminalPoll implements Disposable {
       this.codexIdentities.set(sessionName, { paneCommand, processId, identity });
     });
     return resolved;
+  }
+
+  private async resolveCodexObservations(
+    sessions: readonly TmuxSession[],
+    identities: readonly { identity?: CodexPaneIdentity; processId?: number }[],
+  ): Promise<CodexPaneObservation[]> {
+    return Promise.all(sessions.map(async (session, index) => {
+      const resolved = identities[index];
+      if (
+        !resolved.identity
+        || resolved.identity.hasNoDaemon
+        || resolved.processId === undefined
+        || !this.options.resolveCodexObservation
+      ) {
+        return { sessionName: session.sessionName, ...resolved };
+      }
+      return {
+        sessionName: session.sessionName,
+        ...resolved,
+        observedByDeck: await this.options.resolveCodexObservation(
+          session.sessionName,
+          resolved.processId,
+        ),
+      };
+    }));
   }
 
   private clearTimer(): void {

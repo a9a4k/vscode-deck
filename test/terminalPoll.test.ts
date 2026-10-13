@@ -3,6 +3,49 @@ import { TerminalPoll, type TerminalPollScheduler } from '../src/terminal/termin
 import type { TmuxSession } from '../src/terminal/tmuxCli';
 
 describe('TerminalPoll', () => {
+  it('resolves Deck observation only for Codex panes without --no-daemon', async () => {
+    const observeCodexPanes = vi.fn();
+    const resolveCodexObservation = vi.fn(async () => true);
+    const poll = new TerminalPoll({
+      listSessions: vi.fn(async () => [
+        { sessionName: 'term-1', windowName: 'codex', paneCommand: 'codex', paneTitle: '' },
+        { sessionName: 'term-2', windowName: 'codex', paneCommand: 'codex', paneTitle: '' },
+        { sessionName: 'term-3', windowName: 'zsh', paneCommand: 'zsh', paneTitle: '' },
+      ]),
+      reconcileObservation: vi.fn(),
+      isFocused: () => true,
+      onDidChangeFocus: () => ({ dispose: vi.fn() }),
+      scheduler: new ManualScheduler(),
+      readForegroundProcessIds: async () => new Map([['term-1', 111], ['term-2', 222]]),
+      resolveCodexPaneIdentity: vi.fn(async (_command, processId) => ({
+        agentName: 'codex' as const,
+        hasNoDaemon: processId === 222,
+      })),
+      resolveCodexObservation,
+      observeCodexPanes,
+    });
+
+    poll.start();
+    await flush();
+
+    expect(resolveCodexObservation).toHaveBeenCalledOnce();
+    expect(resolveCodexObservation).toHaveBeenCalledWith('term-1', 111);
+    expect(observeCodexPanes).toHaveBeenCalledWith([
+      {
+        sessionName: 'term-1',
+        identity: { agentName: 'codex', hasNoDaemon: false },
+        processId: 111,
+        observedByDeck: true,
+      },
+      {
+        sessionName: 'term-2',
+        identity: { agentName: 'codex', hasNoDaemon: true },
+        processId: 222,
+      },
+      { sessionName: 'term-3' },
+    ]);
+  });
+
   it('resolves an npm Codex pane to Codex identity and banner observation', async () => {
     const scheduler = new ManualScheduler();
     const reconcile = vi.fn(async () => undefined);

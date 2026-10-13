@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AgentLivenessProbe, type ProcessProbe } from '../src/agent/agentLivenessProbe';
+import {
+  AgentLivenessProbe,
+  PsProcessProbe,
+  type ProcessProbe,
+} from '../src/agent/agentLivenessProbe';
 
 class FakeProcessProbe implements ProcessProbe {
   constructor(
@@ -32,6 +36,10 @@ class FakeProcessProbe implements ProcessProbe {
     if (this.process.tty === undefined) throw new Error('tty should not be consulted');
     return this.process.tty;
   }
+
+  async processGroup(): Promise<number | undefined> {
+    return undefined;
+  }
 }
 
 describe('AgentLivenessProbe', () => {
@@ -50,5 +58,9 @@ describe('AgentLivenessProbe', () => {
       pid: 1234,
       startTime: 'Thu Jun 11 20:00:00 2026',
     })).resolves.toBe(expected);
+  });
+
+  it('reads the process group for a live process', async () => {
+    await expect(new PsProcessProbe().processGroup(process.pid)).resolves.toBeGreaterThan(0);
   });
 });

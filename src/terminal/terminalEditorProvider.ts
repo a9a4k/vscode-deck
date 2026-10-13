@@ -484,9 +484,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       gap: 8px;
       margin: 0 -6px 0 -20px;
       padding: 6px 8px 6px 20px;
-      color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
-      background: var(--vscode-inputValidation-warningBackground);
-      border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
+      color: var(--vscode-banner-foreground);
+      background: var(--vscode-banner-background);
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
     }
@@ -497,17 +496,22 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
       flex: 1;
       min-width: 0;
     }
+    #codex-no-daemon-banner code {
+      color: inherit;
+      background: color-mix(in srgb, currentColor 12%, transparent);
+      border-radius: 2px;
+      padding: 1px 3px;
+    }
     #codex-no-daemon-banner button {
       flex: none;
       border: 0;
       padding: 2px 4px;
-      color: var(--vscode-textLink-foreground);
+      color: inherit;
       background: transparent;
       font: inherit;
       cursor: pointer;
     }
-    #codex-no-daemon-banner button:hover {
-      color: var(--vscode-textLink-activeForeground);
+    #codex-no-daemon-banner button:not(.dismiss) {
       text-decoration: underline;
     }
     #codex-no-daemon-banner .dismiss {
@@ -564,8 +568,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
 </head>
 <body>
   <div id="codex-no-daemon-banner" role="status">
-    <span aria-hidden="true">⚠</span>
-    <span class="message">Start Codex with <code>--no-daemon</code> so Deck can show its status and resume it after a restart.</span>
+    <span class="message">Deck can't see this Codex yet. Start it with <code>--no-daemon</code> for status and resume.</span>
     <button id="codex-no-daemon-learn-more" type="button">Learn More</button>
     <button id="codex-no-daemon-disable" type="button">Don't Show Again</button>
     <button id="codex-no-daemon-dismiss" class="dismiss" type="button" aria-label="Dismiss" title="Dismiss">×</button>

@@ -88,6 +88,86 @@ describe('CodexNoDaemonBanner', () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
+  it('does not probe for a Codex that Deck observes', () => {
+    const scheduler = new ManualScheduler();
+    const probe = vi.fn(async () => 'live' as const);
+    const banner = new CodexNoDaemonBanner({
+      probe: { probe },
+      settings: { isEnabled: () => true, disable: vi.fn(async () => undefined) },
+      scheduler,
+      show: vi.fn(),
+      hide: vi.fn(),
+    });
+
+    banner.observe([{ ...sharedCodex('term-1'), observedByDeck: true }]);
+
+    expect(scheduler.nextDelay()).toBeUndefined();
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('hides a visible banner once Deck observes that Codex and keeps it hidden', async () => {
+    const scheduler = new ManualScheduler();
+    const hide = vi.fn();
+    const banner = new CodexNoDaemonBanner({
+      probe: { probe: vi.fn(async () => 'live' as const) },
+      settings: { isEnabled: () => true, disable: vi.fn(async () => undefined) },
+      scheduler,
+      show: vi.fn(),
+      hide,
+    });
+    banner.observe([sharedCodex('term-1', 101)]);
+    await scheduler.runNext();
+
+    banner.observe([{ ...sharedCodex('term-1', 101), observedByDeck: true }]);
+    banner.observe([sharedCodex('term-1', 101)]);
+
+    expect(hide).toHaveBeenCalledOnce();
+    expect(scheduler.nextDelay()).toBeUndefined();
+  });
+
+  it('ignores an in-flight probe result after Deck observes that Codex', async () => {
+    const scheduler = new ManualScheduler();
+    let finishProbe: (result: CodexSharedServerState) => void = () => undefined;
+    const probeResult = new Promise<CodexSharedServerState>((resolve) => {
+      finishProbe = resolve;
+    });
+    const show = vi.fn();
+    const banner = new CodexNoDaemonBanner({
+      probe: { probe: vi.fn(() => probeResult) },
+      settings: { isEnabled: () => true, disable: vi.fn(async () => undefined) },
+      scheduler,
+      show,
+      hide: vi.fn(),
+    });
+    banner.observe([sharedCodex('term-1', 101)]);
+    await scheduler.runNext();
+
+    banner.observe([{ ...sharedCodex('term-1', 101), observedByDeck: true }]);
+    finishProbe('live');
+    await probeResult;
+    await Promise.resolve();
+
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('checks a new Codex process after the previous one was observed', async () => {
+    const scheduler = new ManualScheduler();
+    const show = vi.fn();
+    const banner = new CodexNoDaemonBanner({
+      probe: { probe: vi.fn(async () => 'live' as const) },
+      settings: { isEnabled: () => true, disable: vi.fn(async () => undefined) },
+      scheduler,
+      show,
+      hide: vi.fn(),
+    });
+    banner.observe([{ ...sharedCodex('term-1', 101), observedByDeck: true }]);
+
+    banner.observe([sharedCodex('term-1', 202)]);
+    await scheduler.runNext();
+
+    expect(show).toHaveBeenCalledWith('term-1');
+  });
+
   it('hides the banner when Codex exits the Terminal', async () => {
     const scheduler = new ManualScheduler();
     const hide = vi.fn();
