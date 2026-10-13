@@ -15,7 +15,8 @@ export class CodexObservationResolver {
       const sidecar = await this.options.sidecars.read(sessionName);
       if (sidecar?.agent !== 'codex') return false;
       if (!(await this.options.liveness.isAgentAlive(sidecar))) return false;
-      return await this.options.processGroup(sidecar.pid) === foregroundProcessGroup;
+      const sidecarProcessGroup = await this.options.processGroup(sidecar.pid);
+      return sidecarProcessGroup === foregroundProcessGroup;
     } catch {
       return false;
     }

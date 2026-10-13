@@ -26,7 +26,7 @@ interface TerminalPollOptions {
   ) => Promise<CodexPaneIdentity | undefined>;
   resolveCodexObservation?: (
     sessionName: string,
-    foregroundProcessId: number,
+    foregroundProcessGroup: number,
   ) => Promise<boolean>;
   observeCodexPanes?: (observations: readonly CodexPaneObservation[]) => void;
 }

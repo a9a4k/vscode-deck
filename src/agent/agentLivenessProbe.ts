@@ -15,7 +15,12 @@ export interface ProcessProbe {
 }
 
 export class AgentLivenessProbe {
-  constructor(private readonly processes: ProcessProbe = new PsProcessProbe()) {}
+  constructor(
+    private readonly processes: Pick<
+      ProcessProbe,
+      'isAlive' | 'startTime' | 'command' | 'hasControllingTerminal'
+    > = new PsProcessProbe(),
+  ) {}
 
   async isAgentAlive(process: AgentProcessIdentity): Promise<boolean> {
     if (!(await this.processes.isAlive(process.pid))) return false;

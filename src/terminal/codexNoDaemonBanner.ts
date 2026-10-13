@@ -29,8 +29,7 @@ interface CodexNoDaemonBannerOptions {
 interface BannerState {
   processId?: number;
   probeIndex: number;
-  dismissed?: boolean;
-  observedByDeck?: boolean;
+  suppressed?: boolean;
   timer?: unknown;
   visible?: boolean;
 }
@@ -69,8 +68,7 @@ export class CodexNoDaemonBanner {
       if (observation.observedByDeck) {
         const state = existing ?? { processId: observation.processId, probeIndex: 0 };
         this.statesBySessionName.set(observation.sessionName, state);
-        state.observedByDeck = true;
-        this.hideAndCancel(observation.sessionName, state);
+        this.suppress(observation.sessionName, state);
         continue;
       }
       if (existing) continue;
@@ -83,11 +81,11 @@ export class CodexNoDaemonBanner {
   dismiss(sessionName: string): void {
     const state = this.statesBySessionName.get(sessionName);
     if (!state) return;
-    state.dismissed = true;
-    this.hideAndCancel(sessionName, state);
+    this.suppress(sessionName, state);
   }
 
-  private hideAndCancel(sessionName: string, state: BannerState): void {
+  private suppress(sessionName: string, state: BannerState): void {
+    state.suppressed = true;
     if (state.timer !== undefined) {
       this.scheduler.clearTimeout(state.timer);
       state.timer = undefined;
@@ -121,8 +119,7 @@ export class CodexNoDaemonBanner {
       .catch((): CodexSharedServerState => 'unknown');
     if (
       this.statesBySessionName.get(sessionName) !== state
-      || state.dismissed
-      || state.observedByDeck
+      || state.suppressed
     ) return;
     if (result === 'live') {
       state.visible = true;

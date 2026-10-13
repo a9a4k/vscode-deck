@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   AgentLivenessProbe,
   PsProcessProbe,
-  type ProcessProbe,
 } from '../src/agent/agentLivenessProbe';
 
-class FakeProcessProbe implements ProcessProbe {
+class FakeProcessProbe {
   constructor(
     private readonly process: {
       alive: boolean;
@@ -23,10 +22,6 @@ class FakeProcessProbe implements ProcessProbe {
     return this.process.startTime;
   }
 
-  async children(): Promise<number[]> {
-    return [];
-  }
-
   async command(): Promise<string> {
     if (this.process.command === undefined) throw new Error('command should not be consulted');
     return this.process.command;
@@ -35,10 +30,6 @@ class FakeProcessProbe implements ProcessProbe {
   async hasControllingTerminal(): Promise<boolean> {
     if (this.process.tty === undefined) throw new Error('tty should not be consulted');
     return this.process.tty;
-  }
-
-  async processGroup(): Promise<number | undefined> {
-    return undefined;
   }
 }
 

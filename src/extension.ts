@@ -424,11 +424,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     show: (sessionName) => terminalEditorProvider.showCodexNoDaemonBanner(sessionName),
     hide: (sessionName) => terminalEditorProvider.hideCodexNoDaemonBanner(sessionName),
   });
-  const codexProcesses = new PsProcessProbe();
-  const codexObservation = new CodexObservationResolver({
+  const codexProcessProbe = new PsProcessProbe();
+  const codexObservationResolver = new CodexObservationResolver({
     sidecars: agentSidecars,
-    liveness: new AgentLivenessProbe(codexProcesses),
-    processGroup: (pid) => codexProcesses.processGroup(pid),
+    liveness: new AgentLivenessProbe(codexProcessProbe),
+    processGroup: (pid) => codexProcessProbe.processGroup(pid),
   });
   const focusTerminal = (sessionName: string) =>
     terminalEditorProvider.focusTerminal(sessionName);
@@ -474,8 +474,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           paneCommand,
           () => tmux.processCommandLine(processId),
         ),
-        resolveCodexObservation: (sessionName, processId) =>
-          codexObservation.isObserved(sessionName, processId),
+        resolveCodexObservation: (sessionName, foregroundProcessGroup) =>
+          codexObservationResolver.isObserved(sessionName, foregroundProcessGroup),
         observeCodexPanes: (observations) => codexNoDaemonBanner.observe(observations),
       })
     : undefined;
