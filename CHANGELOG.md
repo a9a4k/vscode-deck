@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.25.12
+
+Codex status, notifications and resume work again, as long as Codex runs with
+`--no-daemon`. Since Codex 0.156, a plain `codex` can attach to one shared
+background server. That server runs Codex's hooks with its own environment, so
+a hook could not say which Terminal an event came from. Status and
+notifications went missing, or landed on the wrong Terminal, and a restart could
+resume the wrong session. Deck now observes Codex only when it runs with
+`--no-daemon`, which keeps its hooks tied to the Terminal. Deck's built-in
+resume command is `codex --no-daemon resume {id}`. Add the flag to your own
+Codex launchers; Deck runs launcher commands exactly as you wrote them and
+never edits them.
+
+A Terminal running a Codex that Deck cannot see now shows a notice at the top of
+its own tab: "Deck can't see this Codex yet", with Learn More, a close button
+for that Codex run, and Don't Show Again (the `deck.warnCodexWithoutNoDaemon`
+setting). It only appears while the shared server is live, and it never appears
+for Codex outside Deck's Terminals. Deck finds Codex by the program in the
+foreground, so it works with a custom `deck.tmux.automaticRenameFormat` and with
+the npm-installed Codex, and the npm one now shows the Codex icon and label.
+The notice hides as soon as Deck can see the Codex, which happens at your first
+prompt. That covers a Codex that runs without a shared server for another
+reason, such as `-c` overrides or Codex's own "Run without daemon this time".
+It uses VS Code's banner colours, so its text and links stay readable in light,
+dark and high-contrast themes.
+
+Sessions that the shared server already misattributed are cleaned up within a
+few seconds of installing this version.
+
 ## 0.25.11
 
 Programs running in a Terminal can now copy to your clipboard with OSC 52, the
