@@ -107,7 +107,7 @@ type TerminalWebviewMessage =
 type TerminalTabIconPath = vscode.IconPath;
 
 export interface TerminalTransportLike {
-  start(sessionName: string, cwd: string, cols: number, rows: number): Promise<void> | void;
+  start(sessionName: string, cwd: string, cols: number, rows: number, front: boolean): Promise<void> | void;
   comeToFront(): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
@@ -262,8 +262,18 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     this.activePanel = panel;
     const transport = this.transportFactory();
     const transportDisposables: vscode.Disposable[] = [];
+    // Claims only on becoming the FrontTab, not on every window-state event
+    // (those also fire on mere user activity). Held back until start settles:
+    // the transport ignores a claim before its client is ready, and start
+    // itself claims for a tab that is already in front.
+    let wasFront = false;
+    let startSettled = false;
+    const isFrontTab = () => panel.active && vscode.window.state.focused;
     const claimFrontTab = () => {
-      if (panel.active && vscode.window.state.focused) transport.comeToFront();
+      if (!startSettled) return;
+      const front = isFrontTab();
+      if (front && !wasFront) transport.comeToFront();
+      wasFront = front;
     };
 
     panel.webview.options = {
@@ -323,7 +333,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
             } catch {
               // A transient DeckSocket failure must not permanently close the tab.
             }
-            await transport.start(document.sessionName, document.cwd, cols, rows);
+            wasFront = isFrontTab();
+            await transport.start(document.sessionName, document.cwd, cols, rows, wasFront);
+            startSettled = true;
             claimFrontTab();
           });
           return;

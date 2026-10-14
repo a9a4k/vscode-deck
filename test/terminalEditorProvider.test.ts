@@ -212,7 +212,7 @@ function clipboardLifecycle() {
 }
 
 describe('TerminalEditorProvider', () => {
-  it('makes an active Terminal the FrontTab when it becomes ready in the focused window', async () => {
+  it('starts an active Terminal as the FrontTab when it becomes ready in the focused window', async () => {
     const { terminalPanel, ready } = focusLifecycle(true);
     const { terminalBridge, provider, document } = connectedProviderDocument();
     provider.resolveCustomEditor(document, terminalPanel as never);
@@ -220,10 +220,16 @@ describe('TerminalEditorProvider', () => {
     ready();
     await flush();
 
-    expect(terminalBridge.comeToFront).toHaveBeenCalledOnce();
+    expect(terminalBridge.start).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      expect.any(Number),
+      true,
+    );
   });
 
-  it('does not make a background Terminal the FrontTab when it becomes ready', async () => {
+  it('starts a background Terminal without claiming the FrontTab', async () => {
     const { terminalPanel, ready } = focusLifecycle();
     const { terminalBridge, provider, document } = connectedProviderDocument();
     provider.resolveCustomEditor(document, terminalPanel as never);
@@ -231,7 +237,40 @@ describe('TerminalEditorProvider', () => {
     ready();
     await flush();
 
+    expect(terminalBridge.start).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      expect.any(Number),
+      false,
+    );
     expect(terminalBridge.comeToFront).not.toHaveBeenCalled();
+  });
+
+  it('does not claim again for window activity while its tab is already the FrontTab', async () => {
+    const { terminalPanel, ready } = focusLifecycle(true);
+    const { terminalBridge, provider, document } = connectedProviderDocument();
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    await flush();
+
+    windowFocus.handler?.(windowFocus.state);
+    windowFocus.handler?.({ focused: true, active: false });
+
+    expect(terminalBridge.comeToFront).not.toHaveBeenCalled();
+  });
+
+  it('claims the FrontTab when it was activated while the Terminal was still starting', async () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle();
+    const { terminalBridge, provider, document } = connectedProviderDocument();
+    terminalBridge.start.mockReturnValue(new Promise<void>((resolve) => setTimeout(resolve, 10)));
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    await flush();
+    setViewState(true);
+    expect(terminalBridge.comeToFront).not.toHaveBeenCalled();
+
+    await vi.waitFor(() => expect(terminalBridge.comeToFront).toHaveBeenCalledOnce());
   });
 
   it('makes a Terminal the FrontTab when its panel becomes active', async () => {
@@ -915,12 +954,12 @@ describe('TerminalEditorProvider', () => {
     receiveMessage?.({ type: 'ready', cols: 100, rows: 30 });
     await flush();
 
-    expect(terminalBridge.start).toHaveBeenCalledWith(
+    expect(terminalBridge.start.mock.calls[0]?.slice(0, 4)).toEqual([
       'wt-_work_alpha-main__term-1',
       '/work/alpha-main',
       100,
       30,
-    );
+    ]);
     expect(terminalPanel.dispose).not.toHaveBeenCalled();
   });
 

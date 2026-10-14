@@ -1,11 +1,15 @@
 import { execFile, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   TmuxControlClient,
   type TmuxControlChild,
   type TmuxControlSpawnFactory,
 } from '../src/terminal/tmuxControlClient';
+import { TerminalTransport } from '../src/terminal/terminalTransport';
 
 const exec = promisify(execFile);
 
@@ -44,7 +48,43 @@ describe.skipIf(!supportsTmux32())('shared Terminal sizing with real tmux', () =
       await exec('tmux', ['-L', socketName, 'kill-server']).catch(() => undefined);
     }
   });
+
+  it('delivers the post-attach repaint to the program when another tab already holds the same size', async () => {
+    const socketName = `deck-test-${process.pid}-${Date.now()}-repaint`;
+    const sessionName = 'repaint-after-attach';
+    const logDir = mkdtempSync(join(tmpdir(), 'deck-winch-'));
+    const winchLog = join(logDir, 'winch.log');
+    const spawnOnTestSocket: TmuxControlSpawnFactory = (file, args, options) =>
+      spawn(file, withSocket(args, socketName), options) as TmuxControlChild;
+    const clientOnTestSocket = (configPath: string) => new TmuxControlClient(configPath, spawnOnTestSocket);
+    const first = clientOnTestSocket('resources/deck.conf');
+    const second = new TerminalTransport('resources/deck.conf', clientOnTestSocket);
+
+    try {
+      await exec('tmux', [
+        '-L', socketName, '-f', '/dev/null', 'new-session', '-d', '-s', sessionName, '-x', '100', '-y', '40',
+        `sh -c 'trap "echo w >> ${winchLog}" WINCH; while :; do sleep 0.1; done'`,
+      ]);
+      await first.start(sessionName, process.cwd(), 100);
+      await first.resize(100, 40);
+      await first.comeToFront();
+      const signalsBeforeSecondTab = winchCount(winchLog);
+
+      await second.start(sessionName, process.cwd(), 100, 40, true);
+
+      await vi.waitFor(() => expect(winchCount(winchLog)).toBeGreaterThan(signalsBeforeSecondTab));
+    } finally {
+      first.kill();
+      second.dispose();
+      await exec('tmux', ['-L', socketName, 'kill-server']).catch(() => undefined);
+      rmSync(logDir, { recursive: true, force: true });
+    }
+  });
 });
+
+function winchCount(path: string): number {
+  return existsSync(path) ? readFileSync(path, 'utf8').split('\n').filter(Boolean).length : 0;
+}
 
 function withSocket(args: string[], socketName: string): string[] {
   const socketIndex = args.indexOf('-L') + 1;

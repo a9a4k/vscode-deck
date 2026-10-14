@@ -28,8 +28,13 @@ did not define which tab owns the pane size.
    panel view state changes, or the VS Code window focus changes. Keyboard focus
    inside xterm is not part of the rule.
 5. The transport serializes a claim against resize events and replays the newest
-   measured size after the claim. A claim before the control client is ready is
-   ignored.
+   measured size after the claim, even when the claim itself fails. A claim before
+   the control client is ready is ignored, so a tab that is already in front at
+   start claims as part of start, before the seed repaint: the repaint's one-row
+   perturbation is what delivers SIGWINCH, and a still-flagged tab's resizes are
+   ignored while another tab holds the width. The provider claims only when a tab
+   becomes the FrontTab, not on every window-state event, which also fires on
+   user activity.
 6. The minimum supported tmux version is 3.2, where the required client flags
    are available. Preflight, the unavailable Worktree row, and README state the
    new floor.
@@ -44,6 +49,8 @@ did not define which tab owns the pane size.
   the established durable-Terminal/disposable-tab model.
 - Claim on xterm keyboard focus only: switching windows to read or scroll a
   Terminal would leave the old window's size in force.
+- Keep tmux 3.1 and skip `ignore-size` when it is missing: leaves the reload case
+  broken for a small audience at the cost of a version branch.
 
 ## Consequences
 
@@ -53,6 +60,9 @@ did not define which tab owns the pane size.
   replays its current size, causing full-screen programs to redraw correctly.
 - Closing the FrontTab lets tmux choose a remaining unflagged client; if only a
   flagged client remains, tmux includes that lone client in sizing.
+- Not verified at write time: whether `WebviewPanel.active` means "active editor
+  in the active group" rather than "active tab in its group". A manual reload
+  check with two windows of different widths settles it.
 - Tests assert command order through the control-client and transport APIs, and
   a tmux 3.2+ integration test verifies the real shared-pane semantics.
 

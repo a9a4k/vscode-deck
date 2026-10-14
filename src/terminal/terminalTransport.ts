@@ -37,7 +37,13 @@ export class TerminalTransport {
     private readonly clientFactory: TmuxControlClientFactory = defaultClientFactory,
   ) {}
 
-  start(sessionName: string, cwd: string, cols: number, rows: number): Promise<void> | undefined {
+  start(
+    sessionName: string,
+    cwd: string,
+    cols: number,
+    rows: number,
+    front = false,
+  ): Promise<void> | undefined {
     if (this.client) return this.startPromise;
     const size = this.pendingSize ?? { cols, rows };
     this.pendingSize = undefined;
@@ -58,9 +64,12 @@ export class TerminalTransport {
     );
 
     this.startPromise = Promise.resolve(client.start(sessionName, cwd, TERMINAL_SCROLLBACK_LINES))
-      .then(() => {
+      .then(async () => {
         if (this.client !== client) return;
         this.ready = true;
+        // Claim before the repaint: a flagged tab's resizes are ignored while
+        // another tab holds the width, which would swallow the SIGWINCH.
+        if (front) await this.claimFront(client);
         return this.repaintAfterSeed(client);
       })
       .catch((error: unknown) => {
@@ -68,7 +77,7 @@ export class TerminalTransport {
         console.error('[deck] terminal transport failed to start:', error);
         client.kill();
         this.emitExit(1);
-    });
+      });
     void Promise.resolve(client.resize(size.cols, size.rows)).catch(() => undefined);
     return this.startPromise;
   }
@@ -117,16 +126,26 @@ export class TerminalTransport {
   comeToFront(): void {
     const client = this.client;
     if (!client || !this.ready || this.frontClaim) return;
-    const frontClaim = Promise.resolve(client.comeToFront())
+    void this.claimFront(client);
+  }
+
+  // Replays the latest size even when the claim fails: resizes arriving while a
+  // claim is in flight are deferred to here, and dropping them would leave the
+  // pane at a stale size.
+  private claimFront(client: TmuxControlClientLike): Promise<void> {
+    const claim = Promise.resolve()
+      .then(() => client.comeToFront())
+      .catch(() => undefined)
       .then(() => {
         if (this.client !== client || !this.ready) return;
         return client.resize(this.size.cols, this.size.rows);
       })
       .catch(() => undefined)
       .finally(() => {
-        if (this.frontClaim === frontClaim) this.frontClaim = undefined;
+        if (this.frontClaim === claim) this.frontClaim = undefined;
       });
-    this.frontClaim = frontClaim;
+    this.frontClaim = claim;
+    return claim;
   }
 
   // The reattach seed is capture-pane *text* plus one absolute cursor

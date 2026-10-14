@@ -173,6 +173,43 @@ describe('TerminalTransport', () => {
     await vi.waitFor(() => expect(client.resize).toHaveBeenCalledWith(132, 41));
   });
 
+  it('claims the FrontTab before the seed repaint so the program receives it', async () => {
+    const client = fakeClient();
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+
+    transport.start('wt-_work_repo__term-1', '/work/repo', 120, 32, true);
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(4));
+
+    const shrink = client.resize.mock.calls.findIndex(([, rows]) => rows === 31);
+    expect(client.comeToFront).toHaveBeenCalledOnce();
+    expect(client.comeToFront.mock.invocationCallOrder[0])
+      .toBeLessThan(client.resize.mock.invocationCallOrder[shrink]);
+  });
+
+  it('does not claim the FrontTab at start for a background tab', async () => {
+    const client = fakeClient();
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+
+    transport.start('wt-_work_repo__term-1', '/work/repo', 120, 32, false);
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(3));
+
+    expect(client.comeToFront).not.toHaveBeenCalled();
+  });
+
+  it('still applies the latest size when a FrontTab claim fails', async () => {
+    const client = fakeClient();
+    client.comeToFront.mockRejectedValue(new Error('session is gone'));
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+    transport.start('wt-_work_repo__term-1', '/work/repo', 80, 24);
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(3));
+    client.resize.mockClear();
+
+    transport.comeToFront();
+    transport.resize(132, 41);
+
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledWith(132, 41));
+  });
+
   it('ignores a FrontTab claim before the control client is ready', async () => {
     let finishStart: (() => void) | undefined;
     const client = fakeClient();

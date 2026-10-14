@@ -110,7 +110,7 @@ Alternatives considered:
    silently until the floor moves. Hence the comma-separated format: an
    unknown field expands to empty instead of shifting the ones after it.
 
-   Bracketed paste is the bounded exception while the tmux floor remains 3.1.
+   Bracketed paste is the bounded exception while the tmux floor stays below 3.7.
    Deck scans pane output for mode 2004 only and writes transitions to the
    pane-scoped `@deck_bracket_paste` user option. That option survives Switches
    and extension-host restarts, is removed with the pane, and is replayed as one
