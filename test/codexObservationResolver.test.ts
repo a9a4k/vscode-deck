@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CodexObservationResolver } from '../src/terminal/codexObservationResolver';
 
 describe('CodexObservationResolver', () => {
-  it('observes a live Codex AgentSession in the foreground process group', async () => {
+  it('observes a live Codex AgentSession in the foreground group even when it is not the group leader', async () => {
     const resolver = new CodexObservationResolver({
       sidecars: {
         read: vi.fn(async () => ({
@@ -21,10 +21,9 @@ describe('CodexObservationResolver', () => {
 
   it.each([
     ['no sidecar', undefined, true, 111, false],
-    ['dead sidecar process', codexSidecar(), false, 111, false],
-    ['reused sidecar pid', codexSidecar(), false, 111, false],
+    ['sidecar process not alive or pid reused', codexSidecar(), false, 111, false],
     ['sidecar in another process group', codexSidecar(), true, 333, false],
-    ['npm Codex child in the foreground group', codexSidecar(), true, 111, true],
+    ['sidecar with no readable process group', codexSidecar(), true, undefined, false],
     ['Claude sidecar', { ...codexSidecar(), agent: 'claude' as const }, true, 111, false],
   ])('%s is classified correctly', async (_name, sidecar, alive, processGroup, expected) => {
     const resolver = new CodexObservationResolver({

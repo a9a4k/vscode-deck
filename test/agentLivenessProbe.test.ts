@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   AgentLivenessProbe,
@@ -51,7 +52,29 @@ describe('AgentLivenessProbe', () => {
     })).resolves.toBe(expected);
   });
 
-  it('reads the process group for a live process', async () => {
-    await expect(new PsProcessProbe().processGroup(process.pid)).resolves.toBeGreaterThan(0);
+  describe('process group', () => {
+    // npm's Codex is `node …/codex.js` leading the foreground group, with the native
+    // binary as its child; the child must report that same group.
+    it('puts a child in the group led by its parent', async () => {
+      const leader = spawn('sh', ['-c', 'sleep 30 & echo $!; wait'], {
+        detached: true,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      try {
+        const childPid = await new Promise<number>((resolve) => {
+          leader.stdout.once('data', (chunk) => resolve(Number(String(chunk).trim())));
+        });
+        const probe = new PsProcessProbe();
+
+        await expect(probe.processGroup(leader.pid!)).resolves.toBe(leader.pid);
+        await expect(probe.processGroup(childPid)).resolves.toBe(leader.pid);
+      } finally {
+        process.kill(-leader.pid!, 'SIGKILL');
+      }
+    });
+
+    it('has no group for a process that does not exist', async () => {
+      await expect(new PsProcessProbe().processGroup(2 ** 22 + 1)).resolves.toBeUndefined();
+    });
   });
 });

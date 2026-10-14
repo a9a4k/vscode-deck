@@ -43,6 +43,7 @@ export class TerminalPoll implements Disposable {
     string,
     { paneCommand: string; processId: number; identity?: CodexPaneIdentity }
   >();
+  private readonly observedCodexProcesses = new Map<string, number>();
   private focusSubscription: Disposable | undefined;
   private timer: unknown;
   private running = false;
@@ -100,6 +101,7 @@ export class TerminalPoll implements Disposable {
     this.focusSubscription = undefined;
     this.labelListeners.clear();
     this.codexIdentities.clear();
+    this.observedCodexProcesses.clear();
   }
 
   private runAndSchedule(): void {
@@ -225,7 +227,7 @@ export class TerminalPoll implements Disposable {
     sessions: readonly TmuxSession[],
     identities: readonly { identity?: CodexPaneIdentity; processId?: number }[],
   ): Promise<CodexPaneObservation[]> {
-    return Promise.all(sessions.map(async (session, index) => {
+    const observations = await Promise.all(sessions.map(async (session, index): Promise<CodexPaneObservation> => {
       const resolved = identities[index];
       if (
         !resolved.identity
@@ -235,15 +237,17 @@ export class TerminalPoll implements Disposable {
       ) {
         return { sessionName: session.sessionName, ...resolved };
       }
-      return {
-        sessionName: session.sessionName,
-        ...resolved,
-        observedByDeck: await this.options.resolveCodexObservation(
-          session.sessionName,
-          resolved.processId,
-        ),
-      };
+      // Observation of one Codex process cannot be undone, so it is looked up once.
+      const observedByDeck = this.observedCodexProcesses.get(session.sessionName) === resolved.processId
+        || await this.options.resolveCodexObservation(session.sessionName, resolved.processId);
+      return { sessionName: session.sessionName, ...resolved, observedByDeck };
     }));
+
+    this.observedCodexProcesses.clear();
+    for (const { sessionName, processId, observedByDeck } of observations) {
+      if (observedByDeck && processId !== undefined) this.observedCodexProcesses.set(sessionName, processId);
+    }
+    return observations;
   }
 
   private clearTimer(): void {

@@ -46,6 +46,110 @@ describe('TerminalPoll', () => {
     ]);
   });
 
+  describe('a Codex that Deck observes', () => {
+    function pollWith(options: {
+      scheduler: ManualScheduler;
+      listSessions: () => Promise<TmuxSession[]>;
+      foregroundProcessId: () => number | undefined;
+      resolveCodexObservation: (sessionName: string, processId: number) => Promise<boolean>;
+      observeCodexPanes: (observations: readonly unknown[]) => void;
+    }) {
+      return new TerminalPoll({
+        listSessions: options.listSessions,
+        reconcileObservation: vi.fn(async () => undefined),
+        isFocused: () => true,
+        onDidChangeFocus: () => ({ dispose: vi.fn() }),
+        scheduler: options.scheduler,
+        readForegroundProcessIds: async () => {
+          const processId = options.foregroundProcessId();
+          return processId === undefined ? new Map() : new Map([['term-1', processId]]);
+        },
+        resolveCodexPaneIdentity: async () => ({ agentName: 'codex' as const, hasNoDaemon: false }),
+        resolveCodexObservation: options.resolveCodexObservation,
+        observeCodexPanes: options.observeCodexPanes,
+      });
+    }
+    const codexPane = { sessionName: 'term-1', windowName: 'codex', paneCommand: 'codex', paneTitle: '' };
+
+    it('is not looked up again while the same Codex process keeps running', async () => {
+      const scheduler = new ManualScheduler();
+      const resolveCodexObservation = vi.fn(async () => true);
+      const observeCodexPanes = vi.fn();
+      const poll = pollWith({
+        scheduler,
+        listSessions: async () => [codexPane],
+        foregroundProcessId: () => 111,
+        resolveCodexObservation,
+        observeCodexPanes,
+      });
+
+      poll.start();
+      await flush();
+      await scheduler.runNext();
+      await flush();
+
+      expect(resolveCodexObservation).toHaveBeenCalledOnce();
+      expect(observeCodexPanes).toHaveBeenLastCalledWith([expect.objectContaining({
+        sessionName: 'term-1',
+        processId: 111,
+        observedByDeck: true,
+      })]);
+    });
+
+    it('is looked up again for a new Codex process', async () => {
+      const scheduler = new ManualScheduler();
+      let foregroundProcessId = 111;
+      const resolveCodexObservation = vi.fn(async (_sessionName: string, processId: number) => processId === 111);
+      const observeCodexPanes = vi.fn();
+      const poll = pollWith({
+        scheduler,
+        listSessions: async () => [codexPane],
+        foregroundProcessId: () => foregroundProcessId,
+        resolveCodexObservation,
+        observeCodexPanes,
+      });
+      poll.start();
+      await flush();
+
+      foregroundProcessId = 222;
+      await scheduler.runNext();
+      await flush();
+
+      expect(resolveCodexObservation).toHaveBeenLastCalledWith('term-1', 222);
+      expect(observeCodexPanes).toHaveBeenLastCalledWith([expect.objectContaining({
+        processId: 222,
+        observedByDeck: false,
+      })]);
+    });
+
+    it('is looked up again after Codex left the Terminal and a plain one started', async () => {
+      const scheduler = new ManualScheduler();
+      let sessions: TmuxSession[] = [codexPane];
+      let foregroundProcessId: number | undefined = 111;
+      const resolveCodexObservation = vi.fn(async () => true);
+      const poll = pollWith({
+        scheduler,
+        listSessions: async () => sessions,
+        foregroundProcessId: () => foregroundProcessId,
+        resolveCodexObservation,
+        observeCodexPanes: vi.fn(),
+      });
+      poll.start();
+      await flush();
+
+      sessions = [{ ...codexPane, windowName: 'zsh', paneCommand: 'zsh' }];
+      foregroundProcessId = undefined;
+      await scheduler.runNext();
+      await flush();
+      sessions = [codexPane];
+      foregroundProcessId = 111;
+      await scheduler.runNext();
+      await flush();
+
+      expect(resolveCodexObservation).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('resolves an npm Codex pane to Codex identity and banner observation', async () => {
     const scheduler = new ManualScheduler();
     const reconcile = vi.fn(async () => undefined);
