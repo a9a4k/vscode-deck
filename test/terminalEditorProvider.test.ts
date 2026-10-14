@@ -9,6 +9,10 @@ const cfg = vi.hoisted(() => ({
   'terminal.integrated': { fontFamily: '', fontSize: 0 } as Record<string, unknown>,
 }));
 const clipboardWriteText = vi.hoisted(() => vi.fn(async () => undefined));
+const windowFocus = vi.hoisted(() => ({
+  state: { focused: true, active: true },
+  handler: undefined as ((state: { focused: boolean; active: boolean }) => void) | undefined,
+}));
 
 vi.mock('vscode', () => ({
   ThemeIcon: class {
@@ -34,6 +38,11 @@ vi.mock('vscode', () => ({
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
   },
   window: {
+    state: windowFocus.state,
+    onDidChangeWindowState: vi.fn((handler) => {
+      windowFocus.handler = handler;
+      return { dispose: vi.fn() };
+    }),
     showErrorMessage: vi.fn(),
   },
   env: {
@@ -99,6 +108,7 @@ function focusLifecycle(active = false, visible = active) {
 function bridge() {
   return {
     start: vi.fn(),
+    comeToFront: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
     clearHistory: vi.fn(),
@@ -125,6 +135,19 @@ function providerDocument(
       path: '/work/alpha-main/term-1',
     } as never),
   };
+}
+
+function connectedProviderDocument(terminalBridge = bridge()) {
+  const provider = new TerminalEditorProvider(
+    { fsPath: '/extension' } as never,
+    '/extension/resources/deck.conf',
+    undefined,
+    () => terminalBridge,
+    undefined,
+    undefined,
+    async () => ({}) as never,
+  );
+  return { terminalBridge, ...providerDocument(terminalBridge, provider) };
 }
 
 function dropLifecycle(dependencies: ImageDropDependencies) {
@@ -189,6 +212,59 @@ function clipboardLifecycle() {
 }
 
 describe('TerminalEditorProvider', () => {
+  it('makes an active Terminal the FrontTab when it becomes ready in the focused window', async () => {
+    const { terminalPanel, ready } = focusLifecycle(true);
+    const { terminalBridge, provider, document } = connectedProviderDocument();
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    ready();
+    await flush();
+
+    expect(terminalBridge.comeToFront).toHaveBeenCalledOnce();
+  });
+
+  it('does not make a background Terminal the FrontTab when it becomes ready', async () => {
+    const { terminalPanel, ready } = focusLifecycle();
+    const { terminalBridge, provider, document } = connectedProviderDocument();
+    provider.resolveCustomEditor(document, terminalPanel as never);
+
+    ready();
+    await flush();
+
+    expect(terminalBridge.comeToFront).not.toHaveBeenCalled();
+  });
+
+  it('makes a Terminal the FrontTab when its panel becomes active', async () => {
+    const { terminalPanel, ready, setViewState } = focusLifecycle();
+    const { terminalBridge, provider, document } = connectedProviderDocument();
+    provider.resolveCustomEditor(document, terminalPanel as never);
+    ready();
+    await flush();
+
+    setViewState(true);
+
+    expect(terminalBridge.comeToFront).toHaveBeenCalledOnce();
+  });
+
+  it('makes the active Terminal the FrontTab when its window gains focus', async () => {
+    windowFocus.state.focused = false;
+    try {
+      const { terminalPanel, ready } = focusLifecycle(true);
+      const { terminalBridge, provider, document } = connectedProviderDocument();
+      provider.resolveCustomEditor(document, terminalPanel as never);
+      ready();
+      await flush();
+      expect(terminalBridge.comeToFront).not.toHaveBeenCalled();
+
+      windowFocus.state.focused = true;
+      windowFocus.handler?.(windowFocus.state);
+
+      expect(terminalBridge.comeToFront).toHaveBeenCalledOnce();
+    } finally {
+      windowFocus.state.focused = true;
+    }
+  });
+
   it('shows and hides the Codex no-daemon banner in its Terminal webview', () => {
     const { terminalPanel, ready } = focusLifecycle();
     const { provider, document } = providerDocument();
@@ -1415,6 +1491,7 @@ function panelStub() {
 function bridgeStub() {
   return {
     start: vi.fn(),
+    comeToFront: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
     onData: vi.fn(() => ({ dispose: vi.fn() })),

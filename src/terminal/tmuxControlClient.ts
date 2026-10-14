@@ -58,6 +58,9 @@ const RECORDED_BRACKET_PASTE_INDEX = PANE_MODES.findIndex(([format]) => format =
 export class TmuxControlClient {
   private child: TmuxControlChild | undefined;
   private startPromise: Promise<void> | undefined;
+  private sizeCommandsReady: Promise<void> | undefined;
+  private sizeCommandsEnabled = false;
+  private sessionTarget: string | undefined;
   private lineBuffer = Buffer.alloc(0);
   private paneId: string | undefined;
   private activeReply: { token: string; clientOriginated: boolean; body: string[] } | undefined;
@@ -89,6 +92,7 @@ export class TmuxControlClient {
   start(sessionName: string, cwd: string, seedLines: number): Promise<void> {
     if (this.startPromise) return this.startPromise;
 
+    this.sessionTarget = controlModeTarget(sessionName);
     this.startPromise = this.startControlClient(sessionName, cwd, seedLines);
     return this.startPromise;
   }
@@ -125,7 +129,11 @@ export class TmuxControlClient {
       this.fireExit(1);
     });
 
-    await attach;
+    this.sizeCommandsReady = attach.then(async () => {
+      await this.command('refresh-client -f ignore-size');
+      this.sizeCommandsEnabled = true;
+    });
+    await this.sizeCommandsReady;
     // Fetch the cursor position alongside the pane id in the one list-panes we
     // already issue — capture-pane restores the screen text but no cursor, so
     // without this the cursor sits at end-of-content until the next redraw. The
@@ -160,7 +168,7 @@ export class TmuxControlClient {
       for (const handler of this.seedHandlers) handler(modes);
     }
     // -q: a pane that died between attach and capture is not a startup error.
-    // -N: preserve trailing spaces (tmux >= 3.1, our preflight floor).
+    // -N: preserve trailing spaces (available by our tmux 3.2 floor).
     // A failed capture costs history, not the terminal: the gate still opens
     // on the %error so live output flows.
     await this.command(`capture-pane -p -e -q -J -N -S -${seedLines}`, { seed: true }).catch(() => undefined);
@@ -210,7 +218,14 @@ export class TmuxControlClient {
   }
 
   async resize(cols: number, rows: number): Promise<void> {
+    if (!this.sizeCommandsEnabled) await this.sizeCommandsReady;
     await this.command(`refresh-client -C ${cols}x${rows}`);
+  }
+
+  async comeToFront(): Promise<void> {
+    if (!this.sessionTarget) throw new Error('tmux control client has not started');
+    await this.command('refresh-client -f !ignore-size');
+    await this.command(`switch-client -t ${this.sessionTarget}`);
   }
 
   async clearHistory(): Promise<void> {

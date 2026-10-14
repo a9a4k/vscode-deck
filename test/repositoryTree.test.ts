@@ -2141,7 +2141,7 @@ describe('RepositoryTreeProvider', () => {
     expect(Array.isArray(terminalRows)).toBe(true);
     expect((terminalRows as Array<{ label: string; command?: unknown }>)).toEqual([
       expect.objectContaining({
-        label: 'tmux ≥3.1 not found · install ↗',
+        label: 'tmux ≥3.2 not found · install ↗',
         command: undefined,
       }),
     ]);
@@ -2184,7 +2184,7 @@ describe('RepositoryTreeProvider', () => {
     const rows = provider.getChildren(worktrees[0]);
 
     expect((rows as Array<{ label: string }>).map((row) => row.label)).toEqual([
-      'tmux ≥3.1 not found · install ↗',
+      'tmux ≥3.2 not found · install ↗',
       'second',
       'first',
     ]);

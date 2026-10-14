@@ -5,6 +5,29 @@ import { describe, expect, it, vi } from 'vitest';
 import { TmuxControlClient, type TmuxControlSpawnFactory } from '../src/terminal/tmuxControlClient';
 
 describe('TmuxControlClient', () => {
+  it('ignores its size before the first resize on attach', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+
+    const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
+    const resized = client.resize(120, 40);
+    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
+    await untilWrites(child, 1);
+    expect(child.writes[0]).toBe('refresh-client -f ignore-size\n');
+    child.emitStdout('%begin 1 2 1\n%end 1 2 1\n');
+    await untilWrites(child, 3);
+    expect(child.writes).toEqual([
+      'refresh-client -f ignore-size\n',
+      expect.stringContaining('list-panes'),
+      'refresh-client -C 120x40\n',
+    ]);
+
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n%begin 1 4 1\n%end 1 4 1\n');
+    await untilWrites(child, 4);
+    child.emitStdout('%begin 1 5 1\n%end 1 5 1\n');
+    await Promise.all([started, resized]);
+  });
+
   it('starts tmux control mode, discovers the single pane, and seeds from capture-pane', async () => {
     const child = fakeChild();
     const spawn: TmuxControlSpawnFactory = vi.fn(() => child);
@@ -12,11 +35,11 @@ describe('TmuxControlClient', () => {
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
 
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nhistory\n%end 1 3 1\n');
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nhistory\n%end 1 4 1\n');
     await started;
 
     expect(spawn).toHaveBeenCalledWith('tmux', [
@@ -35,6 +58,7 @@ describe('TmuxControlClient', () => {
       '/work/repo',
     ], { cwd: '/work/repo', stdio: 'pipe' });
     expect(child.writes).toEqual([
+      'refresh-client -f ignore-size\n',
       'list-panes -s -t "=wt-_work_repo__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag},#{@deck_bracket_paste}"\n',
       'capture-pane -p -e -q -J -N -S -5000\n',
     ]);
@@ -46,14 +70,14 @@ describe('TmuxControlClient', () => {
 
     const started = client.start('wt-_work_my "repo"\\branch__term-1', '/work/my "repo"\\branch', 5000);
 
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nhistory\n%end 1 3 1\n');
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nhistory\n%end 1 4 1\n');
     await started;
 
-    expect(child.writes[0]).toBe(
+    expect(child.writes[1]).toBe(
       'list-panes -s -t "=wt-_work_my \\"repo\\"\\\\branch__term-1" -F "#{pane_id},#{cursor_y},#{cursor_x},#{alternate_on},#{mouse_standard_flag},#{mouse_button_flag},#{mouse_all_flag},#{mouse_sgr_flag},#{cursor_flag},#{keypad_cursor_flag},#{keypad_flag},#{bracket_paste_flag},#{@deck_bracket_paste}"\n',
     );
   });
@@ -71,7 +95,7 @@ describe('TmuxControlClient', () => {
 
     await finishStart(child);
     await Promise.all([firstStart, secondStart]);
-    expect(child.writes).toHaveLength(2);
+    expect(child.writes).toHaveLength(3);
   });
 
   it('drops pane output that predates the seed and dispatches the seed first', async () => {
@@ -82,11 +106,11 @@ describe('TmuxControlClient', () => {
     client.onOutput((data) => events.push(`live:${data}`));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%output %0 before-attach\n%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+    await finishAttach(child, '%output %0 before-attach\n');
     await untilWrites(child, 2);
-    child.emitStdout('%output %0 already-in-capture\n%begin 1 3 1\nhistory\n%end 1 3 1\n%output %0 fresh\n');
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%output %0 already-in-capture\n%begin 1 4 1\nhistory\n%end 1 4 1\n%output %0 fresh\n');
     await started;
 
     expect(events).toEqual(['seed:history', 'live:fresh']);
@@ -99,14 +123,14 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%output %0 \\033[?2004h\n%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0,0,0,0,0,0,0,0,1,0,0,,\n%end 1 2 1\n');
-    await untilWrites(child, 3);
-    child.emitStdout('%begin 1 3 1\n%end 1 3 1\n%begin 1 4 1\n$ \n%end 1 4 1\n');
+    await finishAttach(child, '%output %0 \\033[?2004h\n');
+    await untilWrites(child, 2);
+    child.emitStdout('%begin 1 3 1\n%0,0,0,0,0,0,0,0,1,0,0,,\n%end 1 3 1\n');
+    await untilWrites(child, 4);
+    child.emitStdout('%begin 1 4 1\n%end 1 4 1\n%begin 1 5 1\n$ \n%end 1 5 1\n');
     await started;
 
-    expect(child.writes.slice(1)).toEqual([
+    expect(child.writes.slice(2)).toEqual([
       'set-option -p -t %0 @deck_bracket_paste 1\n',
       'capture-pane -p -e -q -J -N -S -5000\n',
     ]);
@@ -120,12 +144,12 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    // pane id, cursor_y, cursor_x
-    child.emitStdout('%begin 1 2 1\n%0,3,7\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nhistory\n%end 1 3 1\n');
+    // pane id, cursor_y, cursor_x
+    child.emitStdout('%begin 1 3 1\n%0,3,7\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nhistory\n%end 1 4 1\n');
     await started;
 
     // content first, then an absolute reposition (CUP) to 1-based row 4, col 8.
@@ -139,12 +163,12 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    // pane id, cursor_y, cursor_x, alternate_on=1
-    child.emitStdout('%begin 1 2 1\n%0,3,7,1\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nframe\n%end 1 3 1\n');
+    // pane id, cursor_y, cursor_x, alternate_on=1
+    child.emitStdout('%begin 1 3 1\n%0,3,7,1\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nframe\n%end 1 4 1\n');
     await started;
 
     // Alt-screen enter first (so the captured frame fills xterm's alternate
@@ -159,13 +183,13 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
+    await finishAttach(child);
+    await untilWrites(child, 2);
     // alt screen on; mouse button+SGR tracking on (standard/all off); cursor
     // hidden; application cursor keys + keypad on; bracketed paste on.
-    child.emitStdout('%begin 1 2 1\n%0,3,7,1,0,1,0,1,0,1,1,1\n%end 1 2 1\n');
-    await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nframe\n%end 1 3 1\n');
+    child.emitStdout('%begin 1 3 1\n%0,3,7,1,0,1,0,1,0,1,1,1\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nframe\n%end 1 4 1\n');
     await started;
 
     expect(seeds).toEqual([
@@ -182,12 +206,12 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    // Normal screen, SGR mouse on, cursor visible, bracket_paste_flag unknown.
-    child.emitStdout('%begin 1 2 1\n%0,0,0,0,1,0,0,1,1,0,0,\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\n$ \n%end 1 3 1\n');
+    // Normal screen, SGR mouse on, cursor visible, bracket_paste_flag unknown.
+    child.emitStdout('%begin 1 3 1\n%0,0,0,0,1,0,0,1,1,0,0,\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\n$ \n%end 1 4 1\n');
     await started;
 
     expect(seeds).toEqual(['\x1b[?1000h\x1b[?1006h', '$ ', '\x1b[1;1H']);
@@ -200,11 +224,11 @@ describe('TmuxControlClient', () => {
     client.onSeed((seed) => seeds.push(seed));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0,0,0,0,0,0,0,0,1,0,0,,1\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\n$ \n%end 1 3 1\n');
+    child.emitStdout('%begin 1 3 1\n%0,0,0,0,0,0,0,0,1,0,0,,1\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\n$ \n%end 1 4 1\n');
     await started;
 
     expect(seeds).toEqual(['\x1b[?2004h', '$ ', '\x1b[1;1H']);
@@ -218,11 +242,11 @@ describe('TmuxControlClient', () => {
     client.onOutput((data) => events.push(`live:${data}`));
 
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
-    child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-    await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+    await finishAttach(child);
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\nno history\n%error 1 3 1\n%output %0 fresh\n');
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\nno history\n%error 1 4 1\n%output %0 fresh\n');
     await started;
 
     expect(events).toEqual(['live:fresh']);
@@ -274,19 +298,19 @@ describe('TmuxControlClient', () => {
     await startClient(client, child);
 
     child.emitStdout('%output %0 \\033[?2004h\n');
-    await untilWrites(child, 3);
+    await untilWrites(child, 4);
     child.emitStdout('%begin 1 4 1\n%end 1 4 1\n');
     child.emitStdout('%output %0 \\033[?2004h\n');
 
-    expect(child.writes.slice(2)).toEqual([
+    expect(child.writes.slice(3)).toEqual([
       'set-option -p -t %0 @deck_bracket_paste 1\n',
     ]);
 
     child.emitStdout('%output %0 \\033[?2004l\n');
-    await untilWrites(child, 4);
+    await untilWrites(child, 5);
     child.emitStdout('%output %0 \\033[?2004l\n');
 
-    expect(child.writes.slice(2)).toEqual([
+    expect(child.writes.slice(3)).toEqual([
       'set-option -p -t %0 @deck_bracket_paste 1\n',
       'set-option -p -t %0 @deck_bracket_paste 0\n',
     ]);
@@ -302,11 +326,11 @@ describe('TmuxControlClient', () => {
 
     // Both chunk commands hit stdin synchronously, before any reply — a
     // concurrent keystroke cannot interleave into the middle of a paste.
-    expect(sendKeysByteLengths(child.writes.slice(2))).toEqual([4096, 2]);
+    expect(sendKeysByteLengths(child.writes.slice(3))).toEqual([4096, 2]);
 
     child.emitStdout('%begin 1 4 1\n%end 1 4 1\n%begin 1 5 1\n%end 1 5 1\n');
     await sent;
-    expect(reassembleSendKeys(child.writes.slice(2))).toEqual(Buffer.from(data, 'utf8'));
+    expect(reassembleSendKeys(child.writes.slice(3))).toEqual(Buffer.from(data, 'utf8'));
   });
 
   it('correlates command replies FIFO while ignoring notifications', async () => {
@@ -316,17 +340,32 @@ describe('TmuxControlClient', () => {
 
     const resized = client.resize(120, 40);
     const captured = client.capturePane(5);
-    await untilWrites(child, 4);
+    await untilWrites(child, 5);
 
     child.emitStdout('%sessions-changed\n%begin 1 4 1\n%end 1 4 1\n%window-close @1\n');
     await resized;
     child.emitStdout('%begin 1 5 1\nfirst line\nsecond line\n%end 1 5 1\n');
 
     await expect(captured).resolves.toBe('first line\nsecond line');
-    expect(child.writes.slice(2)).toEqual([
+    expect(child.writes.slice(3)).toEqual([
       'refresh-client -C 120x40\n',
       'capture-pane -p -e -q -J -N -S -5\n',
     ]);
+  });
+
+  it('makes this client latest when its tab comes to the front', async () => {
+    const child = fakeChild();
+    const client = new TmuxControlClient('/ext/resources/deck.conf', vi.fn(() => child));
+    await startClient(client, child);
+
+    const front = client.comeToFront();
+    expect(child.writes.at(-1)).toBe('refresh-client -f !ignore-size\n');
+    child.emitStdout('%begin 1 5 1\n%end 1 5 1\n');
+    await untilWrites(child, 5);
+    expect(child.writes.at(-1)).toBe('switch-client -t "=wt-_work_repo__term-1"\n');
+    child.emitStdout('%begin 1 6 1\n%end 1 6 1\n');
+
+    await expect(front).resolves.toBeUndefined();
   });
 
   it('fires onRename for %window-renamed / %window-pane-changed notifications', async () => {
@@ -348,7 +387,7 @@ describe('TmuxControlClient', () => {
     await startClient(client, child);
 
     const cleared = client.clearHistory();
-    await untilWrites(child, 3);
+    await untilWrites(child, 4);
     expect(child.writes.at(-1)).toBe('clear-history -t %0\n');
 
     child.emitStdout('%begin 1 4 1\n%end 1 4 1\n');
@@ -361,7 +400,7 @@ describe('TmuxControlClient', () => {
     await startClient(client, child);
 
     const captured = client.capturePane(5);
-    await untilWrites(child, 3);
+    await untilWrites(child, 4);
     child.emitStdout('%begin 1 4 1\n%end 9 9 9\n%error 9 9 9\nreal tail\n%end 1 4 1\n');
 
     await expect(captured).resolves.toBe('%end 9 9 9\n%error 9 9 9\nreal tail');
@@ -373,7 +412,7 @@ describe('TmuxControlClient', () => {
     await startClient(client, child);
 
     const captured = client.capturePane(5);
-    await untilWrites(child, 3);
+    await untilWrites(child, 4);
     // flags=0 block (e.g. hook output) arrives before the real reply
     child.emitStdout('%begin 8 8 0\nhook noise\n%end 8 8 0\n%begin 1 4 1\nreal reply\n%end 1 4 1\n');
 
@@ -387,9 +426,11 @@ describe('TmuxControlClient', () => {
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
     child.emitStdout('%begin 1 1 1\n%end 1 1 1\n');
     await untilWrites(child, 1);
-    child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+    child.emitStdout('%begin 1 2 1\n%end 1 2 1\n');
     await untilWrites(child, 2);
-    child.emitStdout('%begin 1 3 1\n%end 1 3 1\n');
+    child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+    await untilWrites(child, 3);
+    child.emitStdout('%begin 1 4 1\n%end 1 4 1\n');
 
     await expect(started).resolves.toBeUndefined();
   });
@@ -400,7 +441,7 @@ describe('TmuxControlClient', () => {
     await startClient(client, child);
 
     const captured = client.capturePane(5);
-    await untilWrites(child, 3);
+    await untilWrites(child, 4);
     child.emitStdout('%begin 1 4 1\nparse error: yacc stack overflow\n%error 1 4 1\n');
 
     await expect(captured).rejects.toThrow('parse error: yacc stack overflow');
@@ -468,8 +509,10 @@ describe('TmuxControlClient', () => {
     const started = client.start('wt-_work_repo__term-1', '/work/repo', 5000);
     child.emitStdout(transcript.subarray(0, attachEnd));
     await untilWrites(child, 1);
-    child.emitStdout(transcript.subarray(attachEnd, listPanesEnd));
+    child.emitStdout('%begin 9 8 1\n%end 9 8 1\n');
     await untilWrites(child, 2);
+    child.emitStdout(transcript.subarray(attachEnd, listPanesEnd));
+    await untilWrites(child, 3);
     child.emitStdout('%begin 9 9 9\n%end 9 9 9\n');
     await started;
     child.emitStdout(transcript.subarray(listPanesEnd));
@@ -517,11 +560,20 @@ async function startClient(client: TmuxControlClient, child: ReturnType<typeof f
 }
 
 async function finishStart(child: ReturnType<typeof fakeChild>): Promise<void> {
-  child.emitStdout('%begin 1 1 0\n%end 1 1 0\n');
-  await untilWrites(child, 1);
-  child.emitStdout('%begin 1 2 1\n%0\n%end 1 2 1\n');
+  await finishAttach(child);
   await untilWrites(child, 2);
-  child.emitStdout('%begin 1 3 1\n%end 1 3 1\n');
+  child.emitStdout('%begin 1 3 1\n%0\n%end 1 3 1\n');
+  await untilWrites(child, 3);
+  child.emitStdout('%begin 1 4 1\n%end 1 4 1\n');
+}
+
+async function finishAttach(
+  child: ReturnType<typeof fakeChild>,
+  beforeAttachOutput = '',
+): Promise<void> {
+  child.emitStdout(`${beforeAttachOutput}%begin 1 1 0\n%end 1 1 0\n`);
+  await untilWrites(child, 1);
+  child.emitStdout('%begin 1 2 1\n%end 1 2 1\n');
 }
 
 function endOf(transcript: Buffer, marker: string): number {

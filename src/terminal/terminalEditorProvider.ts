@@ -107,7 +107,8 @@ type TerminalWebviewMessage =
 type TerminalTabIconPath = vscode.IconPath;
 
 export interface TerminalTransportLike {
-  start(sessionName: string, cwd: string, cols: number, rows: number): void;
+  start(sessionName: string, cwd: string, cols: number, rows: number): Promise<void> | void;
+  comeToFront(): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   clearHistory(): void;
@@ -261,6 +262,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     this.activePanel = panel;
     const transport = this.transportFactory();
     const transportDisposables: vscode.Disposable[] = [];
+    const bringToFront = () => {
+      if (panel.active && vscode.window.state.focused) transport.comeToFront();
+    };
 
     panel.webview.options = {
       enableScripts: true,
@@ -296,7 +300,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (panel.active) {
           this.focusTerminal(document.sessionName);
         }
+        bringToFront();
       }),
+      vscode.window.onDidChangeWindowState(bringToFront),
       panel.webview.onDidReceiveMessage(async (message: TerminalWebviewMessage) => {
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
@@ -317,7 +323,8 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
             } catch {
               // A transient DeckSocket failure must not permanently close the tab.
             }
-            transport.start(document.sessionName, document.cwd, cols, rows);
+            await transport.start(document.sessionName, document.cwd, cols, rows);
+            bringToFront();
           });
           return;
         }

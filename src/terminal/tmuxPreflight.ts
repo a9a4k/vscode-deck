@@ -24,6 +24,6 @@ export async function tmuxPreflight(
 
   const major = Number(match[1]);
   const minor = Number(match[2]);
-  const available = major > 3 || (major === 3 && minor >= 1);
-  return available ? { available: true } : { available: false, reason: `${stdout} is older than 3.1` };
+  const available = major > 3 || (major === 3 && minor >= 2);
+  return available ? { available: true } : { available: false, reason: `${stdout} is older than 3.2` };
 }

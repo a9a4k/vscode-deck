@@ -129,7 +129,7 @@ Unshared mode gives up shared-server features for sessions in Deck Terminals, in
 ## Requirements
 
 - **VS Code 1.110+**
-- **tmux ≥ 3.1** on your `PATH` — required for the persistent terminals only. Deck drives an isolated tmux server of its own (separate from your personal tmux) entirely for you; you never run a tmux command. Without tmux, worktree switching still works and the terminal UI is hidden.
+- **tmux ≥ 3.2** on your `PATH` — required for the persistent terminals only. Deck drives an isolated tmux server of its own (separate from your personal tmux) entirely for you; you never run a tmux command. Without tmux, worktree switching still works and the terminal UI is hidden.
 
 ## Settings
 

@@ -137,6 +137,59 @@ describe('TerminalTransport', () => {
     expect(client.resize).toHaveBeenCalledWith(132, 41);
   });
 
+  it('replays the latest size after its tab comes to the front', async () => {
+    const client = fakeClient();
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+    transport.start('wt-_work_repo__term-1', '/work/repo', 80, 24);
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(3));
+    transport.resize(132, 41);
+    client.comeToFront.mockClear();
+    client.resize.mockClear();
+
+    transport.comeToFront();
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledWith(132, 41));
+
+    expect(client.comeToFront).toHaveBeenCalledOnce();
+    expect(client.comeToFront.mock.invocationCallOrder[0])
+      .toBeLessThan(client.resize.mock.invocationCallOrder[0]);
+  });
+
+  it('defers resize events until a FrontTab claim finishes', async () => {
+    let finishClaim: (() => void) | undefined;
+    const client = fakeClient();
+    client.comeToFront.mockReturnValue(new Promise<void>((resolve) => {
+      finishClaim = resolve;
+    }));
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+    transport.start('wt-_work_repo__term-1', '/work/repo', 80, 24);
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(3));
+    client.resize.mockClear();
+
+    transport.comeToFront();
+    transport.resize(132, 41);
+    expect(client.resize).not.toHaveBeenCalled();
+
+    finishClaim?.();
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledWith(132, 41));
+  });
+
+  it('ignores a FrontTab claim before the control client is ready', async () => {
+    let finishStart: (() => void) | undefined;
+    const client = fakeClient();
+    client.start.mockReturnValue(new Promise<void>((resolve) => {
+      finishStart = resolve;
+    }));
+    const transport = new TerminalTransport('/ext/resources/deck.conf', vi.fn(() => client));
+
+    transport.start('wt-_work_repo__term-1', '/work/repo', 80, 24);
+    transport.comeToFront();
+    expect(client.comeToFront).not.toHaveBeenCalled();
+
+    finishStart?.();
+    await vi.waitFor(() => expect(client.resize).toHaveBeenCalledTimes(3));
+    expect(client.comeToFront).not.toHaveBeenCalled();
+  });
+
   it('waits for startup before forwarding writes to the control client', async () => {
     let resolveStart: (() => void) | undefined;
     const client = fakeClient();
@@ -223,6 +276,7 @@ function fakeClient() {
   let renameHandler: (() => void) | undefined;
   return {
     start: vi.fn(),
+    comeToFront: vi.fn(),
     sendKeys: vi.fn(),
     resize: vi.fn(),
     clearHistory: vi.fn(),

@@ -136,7 +136,8 @@ Alternatives considered:
 7. **`deck.conf` loses the `smcup@:rmcup@` override** — dead config
    once no regular client attaches. Nothing is added: `window-size`
    already defaults to `latest` (correct for a single control client
-   per session) and `default-terminal` to `tmux-256color`.
+   per session) and `default-terminal` to `tmux-256color`. ADR-0060
+   refines this assumption for a Terminal open in several windows.
 
 8. **Flow control is deferred.** `refresh-client -f pause-after` +
    `%pause`/`%continue` needs tmux ≥3.2 and solves a flood problem we

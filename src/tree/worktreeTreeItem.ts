@@ -45,10 +45,10 @@ interface TerminalTreeIconOptions<TUri, TThemeIcon> {
 }
 
 export interface TmuxUnavailableTreeItemDescription {
-  label: 'tmux ≥3.1 not found · install ↗';
+  label: 'tmux ≥3.2 not found · install ↗';
   iconId: 'warning';
   contextValue: 'deck.tmux.unavailable';
-  tooltip: 'Install tmux 3.1 or newer to use Deck-managed Terminals.';
+  tooltip: 'Install tmux 3.2 or newer to use Deck-managed Terminals.';
 }
 
 export function describeRepositoryTreeItem(
@@ -146,9 +146,9 @@ function agentNameFromStatus(status?: AgentStatus): AgentName | undefined {
 
 export function describeTmuxUnavailableTreeItem(): TmuxUnavailableTreeItemDescription {
   return {
-    label: 'tmux ≥3.1 not found · install ↗',
+    label: 'tmux ≥3.2 not found · install ↗',
     iconId: 'warning',
     contextValue: 'deck.tmux.unavailable',
-    tooltip: 'Install tmux 3.1 or newer to use Deck-managed Terminals.',
+    tooltip: 'Install tmux 3.2 or newer to use Deck-managed Terminals.',
   };
 }

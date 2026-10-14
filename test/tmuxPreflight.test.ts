@@ -11,7 +11,8 @@ function runner(stdout: string): CommandRunner {
 describe('tmuxPreflight', () => {
   it.each([
     ['tmux 3.4', true],
-    ['tmux 3.1', true],
+    ['tmux 3.2', true],
+    ['tmux 3.1', false],
     ['tmux next-3.5', true],
     ['tmux 3.0a', false],
   ])('parses %s', async (stdout, available) => {

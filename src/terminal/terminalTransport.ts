@@ -3,6 +3,7 @@ import { TERMINAL_SCROLLBACK_LINES } from './terminalScrollback';
 
 export interface TmuxControlClientLike {
   start(sessionName: string, cwd: string, seedLines: number): Promise<void> | void;
+  comeToFront(): Promise<void> | void;
   onOutput(handler: (data: string) => void): { dispose(): void };
   onSeed(handler: (seed: string) => void): { dispose(): void };
   onRename(handler: () => void): { dispose(): void };
@@ -21,6 +22,7 @@ const defaultClientFactory: TmuxControlClientFactory = (configPath) =>
 export class TerminalTransport {
   private client: TmuxControlClientLike | undefined;
   private startPromise: Promise<void> | undefined;
+  private frontPromise: Promise<void> | undefined;
   private ready = false;
   private exitEmitted = false;
   private size = { cols: 80, rows: 24 };
@@ -35,8 +37,8 @@ export class TerminalTransport {
     private readonly clientFactory: TmuxControlClientFactory = defaultClientFactory,
   ) {}
 
-  start(sessionName: string, cwd: string, cols: number, rows: number): void {
-    if (this.client) return;
+  start(sessionName: string, cwd: string, cols: number, rows: number): Promise<void> | undefined {
+    if (this.client) return this.startPromise;
     const size = this.pendingSize ?? { cols, rows };
     this.pendingSize = undefined;
     this.size = size;
@@ -59,15 +61,16 @@ export class TerminalTransport {
       .then(() => {
         if (this.client !== client) return;
         this.ready = true;
-        this.repaintAfterSeed(client);
+        return this.repaintAfterSeed(client);
       })
       .catch((error: unknown) => {
         if (this.client !== client) return;
         console.error('[deck] terminal transport failed to start:', error);
         client.kill();
         this.emitExit(1);
-      });
+    });
     void Promise.resolve(client.resize(size.cols, size.rows)).catch(() => undefined);
+    return this.startPromise;
   }
 
   onData(handler: (data: string) => void): { dispose(): void } {
@@ -106,8 +109,24 @@ export class TerminalTransport {
       this.pendingSize = { cols, rows };
       return;
     }
+    if (this.frontPromise) return;
 
     void Promise.resolve(this.client.resize(cols, rows)).catch(() => undefined);
+  }
+
+  comeToFront(): void {
+    const client = this.client;
+    if (!client || !this.ready || this.frontPromise) return;
+    const frontPromise = Promise.resolve(client.comeToFront())
+      .then(() => {
+        if (this.client !== client || !this.ready) return;
+        return client.resize(this.size.cols, this.size.rows);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.frontPromise === frontPromise) this.frontPromise = undefined;
+      });
+    this.frontPromise = frontPromise;
   }
 
   // The reattach seed is capture-pane *text* plus one absolute cursor
@@ -118,9 +137,9 @@ export class TerminalTransport {
   // deliver SIGWINCH, so the TUI repaints from scratch with absolute
   // positioning and the cursor snaps onto the right cell. A shell prompt
   // redraws in place; non-interactive output ignores the signal.
-  private repaintAfterSeed(client: TmuxControlClientLike): void {
+  private repaintAfterSeed(client: TmuxControlClientLike): Promise<void> {
     const { cols, rows } = this.size;
-    void Promise.resolve(client.resize(cols, Math.max(1, rows - 1)))
+    return Promise.resolve(client.resize(cols, Math.max(1, rows - 1)))
       .then(() => {
         if (this.client === client) return client.resize(cols, rows);
       })
@@ -140,6 +159,7 @@ export class TerminalTransport {
     this.client?.kill();
     this.client = undefined;
     this.startPromise = undefined;
+    this.frontPromise = undefined;
     this.ready = false;
     this.exitEmitted = false;
   }
