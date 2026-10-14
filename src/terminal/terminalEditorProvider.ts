@@ -262,7 +262,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
     this.activePanel = panel;
     const transport = this.transportFactory();
     const transportDisposables: vscode.Disposable[] = [];
-    const bringToFront = () => {
+    const claimFrontTab = () => {
       if (panel.active && vscode.window.state.focused) transport.comeToFront();
     };
 
@@ -300,9 +300,9 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
         if (panel.active) {
           this.focusTerminal(document.sessionName);
         }
-        bringToFront();
+        claimFrontTab();
       }),
-      vscode.window.onDidChangeWindowState(bringToFront),
+      vscode.window.onDidChangeWindowState(claimFrontTab),
       panel.webview.onDidReceiveMessage(async (message: TerminalWebviewMessage) => {
         if (message.type === 'ready') {
           const { cols = 80, rows = 24 } = message;
@@ -324,7 +324,7 @@ export class TerminalEditorProvider implements vscode.CustomReadonlyEditorProvid
               // A transient DeckSocket failure must not permanently close the tab.
             }
             await transport.start(document.sessionName, document.cwd, cols, rows);
-            bringToFront();
+            claimFrontTab();
           });
           return;
         }

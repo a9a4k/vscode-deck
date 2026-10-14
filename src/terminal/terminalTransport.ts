@@ -22,7 +22,7 @@ const defaultClientFactory: TmuxControlClientFactory = (configPath) =>
 export class TerminalTransport {
   private client: TmuxControlClientLike | undefined;
   private startPromise: Promise<void> | undefined;
-  private frontPromise: Promise<void> | undefined;
+  private frontClaim: Promise<void> | undefined;
   private ready = false;
   private exitEmitted = false;
   private size = { cols: 80, rows: 24 };
@@ -109,24 +109,24 @@ export class TerminalTransport {
       this.pendingSize = { cols, rows };
       return;
     }
-    if (this.frontPromise) return;
+    if (this.frontClaim) return;
 
     void Promise.resolve(this.client.resize(cols, rows)).catch(() => undefined);
   }
 
   comeToFront(): void {
     const client = this.client;
-    if (!client || !this.ready || this.frontPromise) return;
-    const frontPromise = Promise.resolve(client.comeToFront())
+    if (!client || !this.ready || this.frontClaim) return;
+    const frontClaim = Promise.resolve(client.comeToFront())
       .then(() => {
         if (this.client !== client || !this.ready) return;
         return client.resize(this.size.cols, this.size.rows);
       })
       .catch(() => undefined)
       .finally(() => {
-        if (this.frontPromise === frontPromise) this.frontPromise = undefined;
+        if (this.frontClaim === frontClaim) this.frontClaim = undefined;
       });
-    this.frontPromise = frontPromise;
+    this.frontClaim = frontClaim;
   }
 
   // The reattach seed is capture-pane *text* plus one absolute cursor
@@ -159,7 +159,7 @@ export class TerminalTransport {
     this.client?.kill();
     this.client = undefined;
     this.startPromise = undefined;
-    this.frontPromise = undefined;
+    this.frontClaim = undefined;
     this.ready = false;
     this.exitEmitted = false;
   }
