@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.25.13
+
+A Terminal open in two windows now keeps the width of the window you are using.
+Before, reloading or reopening the other window could resize the Terminal under
+you, and the window you were typing in wrapped lines at the wrong column. A
+Terminal has one width however many windows show it, so Deck now gives it to the
+tab in front of you: the active editor in the window that has focus. Switch
+windows or editor tabs and that tab takes the width, and full-screen programs
+redraw to fit. A tab that opens in the background, such as a window that is
+reloading, never takes it. The other window's tab can wrap wrongly until you
+bring it to the front, because one Terminal cannot have two widths.
+
+**tmux 3.2 or newer is now required** (it was 3.1). Deck relies on a tmux client
+flag that arrived in 3.2. On older tmux the Worktree rows show "tmux ≥3.2 not
+found" and Terminals are unavailable until you upgrade.
+
 ## 0.25.12
 
 Codex status, notifications and resume work again, as long as Codex runs with
