@@ -60,9 +60,11 @@ did not define which tab owns the pane size.
   replays its current size, causing full-screen programs to redraw correctly.
 - Closing the FrontTab lets tmux choose a remaining unflagged client; if only a
   flagged client remains, tmux includes that lone client in sizing.
-- Not verified at write time: whether `WebviewPanel.active` means "active editor
-  in the active group" rather than "active tab in its group". A manual reload
-  check with two windows of different widths settles it.
+- `WebviewPanel.active` means "active editor in the active group", verified by
+  hand: with the Terminal's tab selected in a non-active split group, switching
+  to that window leaves the other window's tab holding the width until the
+  Terminal's group is focused. A Terminal visible beside the focused group is a
+  background tab and wraps wrongly until focused.
 - Tests assert command order through the control-client and transport APIs, and
   a tmux 3.2+ integration test verifies the real shared-pane semantics.
 
